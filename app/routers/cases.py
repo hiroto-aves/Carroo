@@ -13,123 +13,178 @@ router = APIRouter(prefix="/cases", tags=["cases"])
 async def case_register_page():
     return """
     <!DOCTYPE html>
-    <html>
+    <html lang="ja">
     <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>OneLogi-Post - 案件登録</title>
         <script src="https://cdn.tailwindcss.com"></script>
     </head>
     <body class="bg-gray-50">
-        <div class="min-h-screen py-8">
-            <div class="max-w-2xl mx-auto bg-white p-8 rounded-lg shadow-md">
-                <h1 class="text-3xl font-bold mb-8 text-center">案件登録</h1>
+        <!-- ナビゲーションバー -->
+        <nav class="bg-white shadow-sm border-b border-gray-200">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex justify-between h-16 items-center">
+                    <div class="flex items-center">
+                        <span class="text-2xl font-bold text-blue-600">📦 OneLogi-Post</span>
+                    </div>
+                    <div class="flex items-center gap-4">
+                        <a href="/auth/me" class="text-gray-600 hover:text-gray-900">プロフィール</a>
+                        <a href="/auth/logout" class="text-red-600 hover:text-red-700">ログアウト</a>
+                    </div>
+                </div>
+            </div>
+        </nav>
 
-                <form method="post" action="/cases/register" class="space-y-6">
-                    <!-- 基本情報 -->
-                    <div class="border-b pb-6">
-                        <h2 class="text-lg font-semibold mb-4">基本情報</h2>
+        <div class="min-h-screen py-12 px-4">
+            <div class="max-w-4xl mx-auto">
+                <!-- ヘッダー -->
+                <div class="mb-8">
+                    <h1 class="text-4xl font-bold text-gray-900 mb-2">案件登録</h1>
+                    <p class="text-gray-600">複数のプラットフォームへ一括投稿できます</p>
+                </div>
 
-                        <div class="grid grid-cols-2 gap-4 mb-4">
-                            <div>
-                                <label class="block text-gray-700 mb-2">積地（都道府県）</label>
-                                <input type="text" name="pick_location" class="w-full px-4 py-2 border rounded" required placeholder="東京都">
+                <!-- フォーム -->
+                <div class="bg-white rounded-2xl shadow-lg overflow-hidden">
+                    <div class="p-8">
+
+                    <form method="post" action="/cases/register" class="space-y-8">
+                        <!-- セクション 1: 基本情報 -->
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                                <span class="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold mr-3">1</span>
+                                基本情報
+                            </h3>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">積地（都道府県）</label>
+                                    <input type="text" name="pick_location" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" required placeholder="東京都">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">卸地（都道府県）</label>
+                                    <input type="text" name="drop_location" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" required placeholder="大阪府">
+                                </div>
                             </div>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">荷物重量（kg）</label>
+                                    <input type="number" name="cargo_weight" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" step="0.1" required>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">車種</label>
+                                    <select name="vehicle_type" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" required>
+                                        <option value="">選択してください</option>
+                                        <option value="small_truck">小型トラック</option>
+                                        <option value="medium_truck">中型トラック</option>
+                                        <option value="large_truck">大型トラック</option>
+                                        <option value="trailer">トレーラー</option>
+                                    </select>
+                                </div>
+                            </div>
+
                             <div>
-                                <label class="block text-gray-700 mb-2">卸地（都道府県）</label>
-                                <input type="text" name="drop_location" class="w-full px-4 py-2 border rounded" required placeholder="大阪府">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">運賃（円）</label>
+                                <input type="number" name="freight_rate" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" step="100" required>
+                        </div>
+                    </div>
+
+                        </div>
+                        </div>
+
+                        <!-- セクション 2: 日時情報 -->
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                                <span class="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold mr-3">2</span>
+                                日時情報
+                            </h3>
+
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">積地日付</label>
+                                    <input type="date" name="pickup_date" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" required>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">積地時間</label>
+                                    <input type="time" name="pickup_time" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                                </div>
                             </div>
                         </div>
 
-                        <div class="mb-4">
-                            <label class="block text-gray-700 mb-2">荷物重量（kg）</label>
-                            <input type="number" name="cargo_weight" class="w-full px-4 py-2 border rounded" step="0.1" required>
-                        </div>
+                        <!-- セクション 3: 連絡先 -->
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                                <span class="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold mr-3">3</span>
+                                連絡先
+                            </h3>
 
-                        <div class="mb-4">
-                            <label class="block text-gray-700 mb-2">車種</label>
-                            <select name="vehicle_type" class="w-full px-4 py-2 border rounded" required>
-                                <option value="">選択</option>
-                                <option value="small_truck">小型トラック</option>
-                                <option value="medium_truck">中型トラック</option>
-                                <option value="large_truck">大型トラック</option>
-                                <option value="trailer">トレーラー</option>
-                            </select>
-                        </div>
-
-                        <div class="mb-4">
-                            <label class="block text-gray-700 mb-2">運賃（円）</label>
-                            <input type="number" name="freight_rate" class="w-full px-4 py-2 border rounded" step="100" required>
-                        </div>
-                    </div>
-
-                    <!-- 日時情報 -->
-                    <div class="border-b pb-6">
-                        <h2 class="text-lg font-semibold mb-4">日時情報</h2>
-
-                        <div class="grid grid-cols-2 gap-4">
-                            <div>
-                                <label class="block text-gray-700 mb-2">積地日付</label>
-                                <input type="date" name="pickup_date" class="w-full px-4 py-2 border rounded" required>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">担当者名</label>
+                                    <input type="text" name="contact_name" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="山田太郎">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">電話番号</label>
+                                    <input type="tel" name="contact_phone" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="09012345678">
+                                </div>
                             </div>
-                            <div>
-                                <label class="block text-gray-700 mb-2">積地時間</label>
-                                <input type="time" name="pickup_time" class="w-full px-4 py-2 border rounded">
+
+                            <div class="mt-6">
+                                <label class="block text-sm font-medium text-gray-700 mb-2">メールアドレス</label>
+                                <input type="email" name="contact_email" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="example@domain.com">
                             </div>
                         </div>
+
+                        <!-- セクション 4: 投稿先選択 -->
+                        <div>
+                            <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                                <span class="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center text-sm font-bold mr-3">4</span>
+                                投稿先を選択
+                            </h3>
+
+                            <div class="space-y-3">
+                                <label class="flex items-center p-4 border border-gray-300 rounded-lg cursor-pointer hover:bg-blue-50 transition">
+                                    <input type="checkbox" name="post_to_trabox" class="w-5 h-5 text-blue-600 rounded">
+                                    <div class="ml-3">
+                                        <span class="block font-medium text-gray-900">トラボックス</span>
+                                        <span class="block text-sm text-gray-600">Playwright を使用した自動投稿</span>
+                                    </div>
+                                </label>
+                                <label class="flex items-center p-4 border border-gray-300 rounded-lg cursor-pointer hover:bg-blue-50 transition">
+                                    <input type="checkbox" name="post_to_webkit" class="w-5 h-5 text-blue-600 rounded">
+                                    <div class="ml-3">
+                                        <span class="block font-medium text-gray-900">Webkit</span>
+                                        <span class="block text-sm text-gray-600">XML API を使用した自動投稿</span>
+                                    </div>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- トラボックス認証情報 -->
+                        <div id="trabox-auth" class="hidden bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-lg border border-blue-200">
+                            <h4 class="font-semibold text-gray-900 mb-4">🔐 トラボックスのログイン情報</h4>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">ユーザーID</label>
+                                    <input type="text" name="trabox_username" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="ログインID">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">パスワード</label>
+                                    <input type="password" name="trabox_password" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="パスワード">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 送信ボタン -->
+                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition duration-200 mt-8">
+                            ✓ 案件を登録
+                        </button>
+                    </form>
                     </div>
-
-                    <!-- 連絡先 -->
-                    <div class="border-b pb-6">
-                        <h2 class="text-lg font-semibold mb-4">連絡先</h2>
-
-                        <div class="mb-4">
-                            <label class="block text-gray-700 mb-2">担当者名</label>
-                            <input type="text" name="contact_name" class="w-full px-4 py-2 border rounded">
-                        </div>
-
-                        <div class="mb-4">
-                            <label class="block text-gray-700 mb-2">電話番号</label>
-                            <input type="tel" name="contact_phone" class="w-full px-4 py-2 border rounded">
-                        </div>
-
-                        <div class="mb-4">
-                            <label class="block text-gray-700 mb-2">メールアドレス</label>
-                            <input type="email" name="contact_email" class="w-full px-4 py-2 border rounded">
-                        </div>
-                    </div>
-
-                    <!-- 投稿先選択 -->
-                    <div class="pb-6">
-                        <h2 class="text-lg font-semibold mb-4">投稿先</h2>
-
-                        <div class="flex gap-6">
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" name="post_to_trabox" class="w-4 h-4">
-                                <span class="text-gray-700">トラボックス</span>
-                            </label>
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" name="post_to_webkit" class="w-4 h-4">
-                                <span class="text-gray-700">Webkit</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <!-- 認証情報（トラボックス用） -->
-                    <div id="trabox-auth" class="hidden bg-gray-50 p-4 rounded mb-6">
-                        <h3 class="font-semibold mb-3">トラボックスのログイン情報</h3>
-                        <div class="mb-3">
-                            <label class="block text-gray-700 mb-2">ユーザーID</label>
-                            <input type="text" name="trabox_username" class="w-full px-4 py-2 border rounded">
-                        </div>
-                        <div class="mb-3">
-                            <label class="block text-gray-700 mb-2">パスワード</label>
-                            <input type="password" name="trabox_password" class="w-full px-4 py-2 border rounded">
-                        </div>
-                    </div>
-
-                    <button type="submit" class="w-full bg-blue-500 text-white py-3 rounded font-semibold hover:bg-blue-600">
-                        案件を登録
-                    </button>
-                </form>
+                </div>
+            </div>
+        </div>
             </div>
         </div>
 
