@@ -18,7 +18,9 @@ class Settings:
     TRABOX_URL = "https://www.torabox.com"
     TRABOX_HEADLESS = os.getenv("TRABOX_HEADLESS", "True").lower() == "true"
 
-    WEBKIT_API_URL = "https://api.webkit.jp"
-    WEBKIT_API_KEY = os.getenv("WEBKIT_API_KEY", "")
+    # WebKIT API (XML-based)
+    WEBKIT_API_URL = "https://www.wkit.jp/api/LoadInfo"
+    WEBKIT_API_KEY = os.getenv("WEBKIT_API_KEY", "")  # 20-digit key
+    WEBKIT_PERSON_ID = os.getenv("WEBKIT_PERSON_ID", "")  # 14-digit person ID
 
 settings = Settings()
