@@ -212,18 +212,25 @@ async def register_case(
     contact_name: Optional[str] = Form(None),
     contact_phone: Optional[str] = Form(None),
     contact_email: Optional[str] = Form(None),
-    post_to_trabox: bool = Form(False),
-    post_to_webkit: bool = Form(False),
-    trabox_username: Optional[str] = Form(None),
-    trabox_password: Optional[str] = Form(None),
+    post_to_trabox: Optional[str] = Form(None),
+    post_to_webkit: Optional[str] = Form(None),
     current_user: dict = Depends(get_current_user),
 ):
+    """複数プラットフォームへの同時投稿エンドポイント
+
+    - トラボックス: .env の TRABOX_TEST_USERNAME, TRABOX_TEST_PASSWORD から自動取得
+    - WebKIT: .env の WEBKIT_LOGIN_ID, WEBKIT_LOGIN_PASSWORD から自動取得
+    """
+    from app.config import settings
+    import asyncio
+
     conn = get_db_connection()
     cursor = conn.cursor()
 
     try:
         user_id = current_user["id"]
 
+        # 案件データを保存
         cursor.execute(
             """INSERT INTO cases
             (user_id, pick_location, drop_location, cargo_weight, vehicle_type, freight_rate, pickup_date, pickup_time, contact_name, contact_phone, contact_email)
@@ -233,6 +240,7 @@ async def register_case(
         conn.commit()
         case_id = cursor.lastrowid
 
+        # 投稿用データ
         case_data = {
             "pick_location": pick_location,
             "drop_location": drop_location,
@@ -247,36 +255,69 @@ async def register_case(
         }
 
         results = []
+        posting_tasks = []
 
-        if post_to_trabox and trabox_username and trabox_password:
-            case_data["username"] = trabox_username
-            case_data["password"] = trabox_password
-            trabox = TraboxAutomation()
-            result = await trabox.post_case(case_data)
-            results.append(result)
+        # トラボックスへの投稿（チェックボックスが checked = "yes"）
+        if post_to_trabox == "yes":
+            if settings.TRABOX_TEST_USERNAME and settings.TRABOX_TEST_PASSWORD:
+                case_data_trabox = case_data.copy()
+                case_data_trabox["username"] = settings.TRABOX_TEST_USERNAME
+                case_data_trabox["password"] = settings.TRABOX_TEST_PASSWORD
 
-            cursor.execute(
-                "INSERT INTO posting_history (case_id, platform, status, error_message) VALUES (?, ?, ?, ?)",
-                (case_id, "trabox", result.get("status"), result.get("message") if result.get("status") == "error" else None)
-            )
-            conn.commit()
+                trabox = TraboxAutomation()
+                async def post_trabox():
+                    result = await trabox.post_case(case_data_trabox)
+                    results.append(result)
+                    cursor.execute(
+                        "INSERT INTO posting_history (case_id, platform, status, error_message) VALUES (?, ?, ?, ?)",
+                        (case_id, "trabox", result.get("status"), result.get("message") if result.get("status") == "error" else None)
+                    )
+                    conn.commit()
+                    return result
 
-        if post_to_webkit:
-            webkit = WebkitAutomation()
-            result = await webkit.post_case(case_data)
-            results.append(result)
+                posting_tasks.append(post_trabox())
+            else:
+                results.append({
+                    "status": "error",
+                    "platform": "trabox",
+                    "message": "Trabox credentials not configured in .env"
+                })
 
-            cursor.execute(
-                "INSERT INTO posting_history (case_id, platform, status, error_message) VALUES (?, ?, ?, ?)",
-                (case_id, "webkit", result.get("status"), result.get("message") if result.get("status") == "error" else None)
-            )
-            conn.commit()
+        # WebKIT への投稿（チェックボックスが checked = "yes"）
+        if post_to_webkit == "yes":
+            if settings.WEBKIT_LOGIN_ID and settings.WEBKIT_LOGIN_PASSWORD:
+                webkit = WebkitAutomation()
+                async def post_webkit():
+                    result = await webkit.post_case(case_data)
+                    results.append(result)
+                    cursor.execute(
+                        "INSERT INTO posting_history (case_id, platform, status, error_message) VALUES (?, ?, ?, ?)",
+                        (case_id, "webkit", result.get("status"), result.get("message") if result.get("status") == "error" else None)
+                    )
+                    conn.commit()
+                    return result
+
+                posting_tasks.append(post_webkit())
+            else:
+                results.append({
+                    "status": "error",
+                    "platform": "webkit",
+                    "message": "WebKit credentials not configured in .env"
+                })
+
+        # 複数プラットフォームへ並行投稿
+        if posting_tasks:
+            await asyncio.gather(*posting_tasks)
 
         return {
             "status": "success",
             "case_id": case_id,
             "posting_results": results,
-            "message": "Case registered and posted successfully"
+            "message": "Case registered and posted successfully",
+            "platforms_posted": {
+                "trabox": post_to_trabox == "yes",
+                "webkit": post_to_webkit == "yes"
+            }
         }
 
     except Exception as e:
