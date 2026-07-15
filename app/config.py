@@ -15,7 +15,8 @@ class Settings:
     ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
     # Automation - Trabox
-    TRABOX_URL = "https://www.torabox.com"
+    TRABOX_URL = "https://www.trabox.com"
+    TRABOX_LOGIN_URL = "https://www.trabox.com/login?return_to=/baggage/list/opened"
     TRABOX_HEADLESS = os.getenv("TRABOX_HEADLESS", "True").lower() == "true"
 
     # Trabox Test Account (セキュアな環境変数から読み込み)
