@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
-from app.routers import auth, cases
+from app.routers import auth, cases, dashboard
 from app.db.database import init_db
 import os
 import logging
@@ -21,6 +21,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 app.include_router(auth.router)
 app.include_router(cases.router)
+app.include_router(dashboard.router)
 
 @app.on_event("startup")
 async def startup_event():
