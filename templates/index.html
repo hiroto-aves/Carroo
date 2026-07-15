@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carroo - 案件登録</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Open+Sans:wght@400&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Open Sans', sans-serif; background-color: #f0f2f5; color: #333; margin: 0; padding: 0; }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #ffffff;
+            padding: 15px 40px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .logo-container {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            text-decoration: none;
+        }
+        .logo {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 2.2em;
+            font-weight: 700;
+            color: #2c3e50;
+            text-decoration: none;
+            letter-spacing: 1px;
+            transition: color 0.3s ease;
+        }
+        .logo:hover { color: #3498db; }
+        .tagline {
+            font-family: 'Open Sans', sans-serif;
+            font-size: 0.8em;
+            color: #7f8c8d;
+            margin-top: 2px;
+            white-space: nowrap;
+        }
+        .navbar a {
+            text-decoration: none;
+            color: #5d6d7e;
+            font-weight: 600;
+            padding: 8px 15px;
+            margin-left: 10px;
+            border-radius: 5px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .navbar a:hover { background-color: #e9ecef; color: #34495e; }
+        .navbar .logout { color: #e74c3c; }
+        .navbar .logout:hover { background-color: #e74c3c; color: white; }
+        .container {
+            max-width: 800px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 30px; font-size: 2.5em; }
+        h2 { border-bottom: 2px solid #3498db; padding-bottom: 5px; margin-top: 25px; margin-bottom: 15px; color: #34495e; }
+        label { display: block; margin-top: 15px; font-weight: 600; }
+        input[type="text"], input[type="date"], input[type="time"], input[type="tel"], select, textarea {
+            width: 100%;
+            padding: 10px;
+            margin-top: 5px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-sizing: border-box;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        input:focus, select:focus, textarea:focus { border-color: #3498db; outline: none; }
+        .form-group-inline { display: flex; gap: 10px; }
+        .form-group-inline > div { flex: 1; }
+        button {
+            display: block;
+            width: 100%;
+            padding: 12px;
+            margin-top: 30px;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 18px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        button:hover { background-color: #2980b9; }
+        .checkbox-container { display: flex; align-items: center; gap: 5px; }
+        .fare-input-group { display: flex; align-items: center; gap: 10px; }
+        .fare-input-group input[type="text"] { flex: 1; }
+        .submission-options { margin-top: 30px; }
+        .flex-container {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+        }
+        .checkbox-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 10px;
+        }
+        .checkbox-group label {
+            margin-top: 0;
+            font-weight: normal;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo-container">
+            <a href="{{ url_for('views.register_job') }}" class="logo">Carroo</a>
+            <span class="tagline">空車を効率的にルート化して活用する</span>
+        </div>
+        <nav class="navbar">
+            <a href="{{ url_for('views.register_job') }}">案件登録</a>
+            <a href="{{ url_for('views.history') }}">投稿履歴</a>
+            {% if user_role == 'admin' %}
+            <a href="{{ url_for('views.admin_dashboard') }}">管理画面</a>
+            {% endif %}
+            <a href="{{ url_for('views.logout') }}" class="logout">ログアウト</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <h1>案件登録</h1>
+        <form action="{{ url_for('views.register_job') }}" method="post">
+            <h2>積地情報</h2>
+            <div class="form-group-inline">
+                <div>
+                    <label for="loading_date">積込日:</label>
+                    <input type="date" id="loading_date" name="loading_date" required>
+                </div>
+                <div>
+                    <label for="loading_time">積込時間:</label>
+                    <input type="time" id="loading_time" name="loading_time" required>
+                </div>
+                <div>
+                    <label for="loading_time_option">時間選択:</label>
+                    <select id="loading_time_option" name="loading_time_option">
+                        <option value="以降">以降</option>
+                        <option value="必着">必着</option>
+                        <option value="迄">迄</option>
+                    </select>
+                </div>
+            </div>
+            
+            <label for="loading_prefecture">都道府県:</label>
+            <select id="loading_prefecture" name="loading_prefecture" required>
+                <option value="">都道府県を選択</option>
+            </select>
+            
+            <label for="loading_city">市区郡:</label>
+            <select id="loading_city" name="loading_city" required disabled>
+                <option value="">都道府県を選択してください</option>
+            </select>
+            
+            <label for="loading_address">住所その他:</label>
+            <input type="text" id="loading_address" name="loading_address">
+
+            <h2>卸地情報</h2>
+            <div class="form-group-inline">
+                <div>
+                    <label for="unloading_date">降ろし日:</label>
+                    <input type="date" id="unloading_date" name="unloading_date" required>
+                </div>
+                <div>
+                    <label for="unloading_time">降ろし時間:</label>
+                    <input type="time" id="unloading_time" name="unloading_time" required>
+                </div>
+                <div>
+                    <label for="unloading_time_option">時間選択:</label>
+                    <select id="unloading_time_option" name="unloading_time_option">
+                        <option value="以降">以降</option>
+                        <option value="必着">必着</option>
+                        <option value="迄">迄</option>
+                    </select>
+                </div>
+            </div>
+            
+            <label for="unloading_prefecture">都道府県:</label>
+            <select id="unloading_prefecture" name="unloading_prefecture" required>
+                <option value="">都道府県を選択</option>
+            </select>
+            
+            <label for="unloading_city">市区郡:</label>
+            <select id="unloading_city" name="unloading_city" required disabled>
+                <option value="">都道府県を選択してください</option>
+            </select>
+            
+            <label for="unloading_address">住所その他:</label>
+            <input type="text" id="unloading_address" name="unloading_address">
+
+            <h2>荷物情報</h2>
+            <div class="form-group-inline">
+                <div>
+                    <label for="package_type">荷姿:</label>
+                    <select id="package_type" name="package_type">
+                        <option value="パレット">パレット</option>
+                        <option value="その他">その他</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="consolidation_item">積合:</label>
+                    <select id="consolidation_item" name="consolidation_item">
+                        <option value="不可">不可</option>
+                        <option value="可能">可能</option>
+                    </select>
+                </div>
+            </div>
+            
+            <label for="transport_category">輸送品区分:</label>
+            <select id="transport_category" name="transport_category">
+                <option value="農産物">農産物</option>
+                <option value="畜産物">畜産物</option>
+                <option value="水産物">水産物</option>
+                <option value="食料品">食料品</option>
+                <option value="飲料品">飲料品</option>
+                <option value="木材">木材</option>
+                <option value="砂利・砂等">砂利・砂等</option>
+                <option value="金属製品">金属製品</option>
+                <option value="鋼材">鋼材</option>
+                <option value="建材">建材</option>
+                <option value="電気製品">電気製品</option>
+                <option value="機械装置">機械装置</option>
+                <option value="セメント">セメント</option>
+                <option value="セメント製品">セメント製品</option>
+                <option value="紙・パルプ製品">紙・パルプ製品</option>
+                <option value="石油製品">石油製品</option>
+                <option value="化学製品">化学製品</option>
+                <option value="その他危険物">その他危険物</option>
+                <option value="衣料・雑貨">衣料・雑貨</option>
+                <option value="引越貨物">引越貨物</option>
+                <option value="その他">その他</option>
+            </select>
+            
+            <label for="item_shape">輸送品形状区分:</label>
+            <select id="item_shape" name="item_shape">
+                <option value="ケース">ケース</option>
+                <option value="袋">袋</option>
+                <option value="ハダカ">ハダカ</option>
+                <option value="フレコンバッグ">フレコンバッグ</option>
+                <option value="ドラム類">ドラム類</option>
+                <option value="缶類">缶類</option>
+                <option value="パレット">パレット</option>
+                <option value="ラック">ラック</option>
+                <option value="バラ">バラ</option>
+                <option value="その他">その他</option>
+            </select>
+            
+            <label for="weight">荷物重量:</label>
+            <input type="text" id="weight" name="weight">
+
+            <div class="form-group-inline">
+                <div>
+                    <label for="vehicle_size">サイズ:</label>
+                    <select id="vehicle_size" name="vehicle_size">
+                        <option value="軽">軽</option>
+                        <option value="小(１t、２t、３t）">小(１t、２t、３t）</option>
+                        <option value="中（４t、５t、６t、７t、８t、９t）">中（４t、５t、６t、７t、８t、９t）</option>
+                        <option value="大（１０t、１１っt、１２t、１３t、１４t、１５t）">大（１０t、１１っt、１２t、１３t、１４t、１５t）</option>
+                        <option value="トレーラー">トレーラー</option>
+                        <option value="その他">その他</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="desired_vehicle_type">希望車種:</label>
+                    <select id="desired_vehicle_type" name="desired_vehicle_type">
+                        <option value="平型">平型</option>
+                        <option value="バン型">バン型</option>
+                        <option value="ウイング形">ウイング形</option>
+                        <option value="保冷車">保冷車</option>
+                        <option value="冷蔵車">冷蔵車</option>
+                        <option value="冷凍車">冷凍車</option>
+                        <option value="車載車">車載車</option>
+                        <option value="重機運搬車">重機運搬車</option>
+                        <option value="危険物運搬車">危険物運搬車</option>
+                        <option value="ダンプ">ダンプ</option>
+                        <option value="幌">幌</option>
+                        <option value="ユニック">ユニック</option>
+                        <option value="海上コンテナー用">海上コンテナー用</option>
+                        <option value="その他">その他</option>
+                    </select>
+                </div>
+            </div>
+
+            <label for="vehicle_grade">車格:</label>
+            <select id="vehicle_grade" name="vehicle_grade">
+                <option value="問わず">問わず</option>
+                <option value="平">平</option>
+                <option value="平-低床">平-低床</option>
+                <option value="平-パワーゲート">平-パワーゲート</option>
+                <option value="平-エアサス">平-エアサス</option>
+                <option value="箱">箱</option>
+                <option value="箱-低床">箱-低床</option>
+                <option value="箱-パワーゲート">箱-パワーゲート</option>
+                <option value="箱-エアサス">箱-エアサス</option>
+                <option value="ウイング">ウイング</option>
+                <option value="ウイング-低床">ウイング-低床</option>
+                <option value="ウイング-パワーゲート">ウイング-パワーゲート</option>
+                <option value="ウイング-エアサス">ウイング-エアサス</option>
+                <option value="ユニック">ユニック</option>
+                <option value="冷凍">冷凍</option>
+                <option value="保冷">保冷</option>
+                <option value="他">他</option>
+            </select>
+            
+            <label for="required_equipment">必要装備品等:</label>
+            <input type="text" id="required_equipment" name="required_equipment">
+            
+            <label for="desired_fare">希望運賃:</label>
+            <div class="fare-input-group">
+                <input type="text" id="desired_fare" name="desired_fare">
+                <div class="checkbox-container">
+                    <input type="checkbox" id="fare_consult" name="fare_consult" value="要相談">
+                    <label for="fare_consult">要相談</label>
+                </div>
+            </div>
+            
+            <label for="toll_fee">高速代:</label>
+            <select id="toll_fee" name="toll_fee">
+                <option value="別途支払う">別途支払う</option>
+                <option value="支払わない" selected>支払わない</option>
+            </select>
+            
+            <label for="insurance">上乗せ保険料:</label>
+            <select id="insurance" name="insurance">
+                <option value="あり">あり</option>
+                <option value="なし" selected>なし</option>
+            </select>
+            
+            <label for="cases">件数:</label>
+            <input type="text" id="cases" name="cases">
+            
+            <label for="notes">備考:</label>
+            <textarea id="notes" name="notes" rows="5"></textarea>
+
+            <h2>担当者情報</h2>
+            <label for="contact_person">担当者:</label>
+            <input type="text" id="contact_person" name="contact_person" required>
+            <label for="phone_number">電話番号:</label>
+            <input type="tel" id="phone_number" name="phone_number" required>
+
+            <div class="submission-options">
+                <h2>投稿先</h2>
+                <div class="flex-container">
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="post_to_webkit" name="post_to_webkit" value="yes" checked>
+                        <label for="post_to_webkit">Webkit</label>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="post_to_trabox" name="post_to_trabox" value="yes" checked>
+                        <label for="post_to_trabox">トラボックス</label>
+                    </div>
+                </div>
+            </div>
+            
+            <button type="submit">案件を登録</button>
+        </form>
+    </div>
+    <script>
+        // ------------------------------------------------------------------
+        // WebKIT 地名データ（埋め込み）
+        // ------------------------------------------------------------------
+        
+        // 🚨 暫定処置: Python側でJSONデータを静的に定義し、ここではその構造を再現します。
+        
+        const PREF_MAP_JS = {
+            '道北': '01', '道央': '02', '道東': '03', '道南': '04', '青森県': '05', '岩手県': '06', '宮城県': '07', '秋田県': '08', '山形県': '09', '福島県': '10', 
+            '茨城県': '11', '栃木県': '12', '群馬県': '13', '山梨県': '14', '埼玉県': '15', '千葉県': '16', '東京都': '17', '神奈川県': '18', '新潟県': '19', '長野県': '20', 
+            '富山県': '21', '石川県': '22', '福井県': '23', '岐阜県': '24', '静岡県': '25', '愛知県': '26', '三重県': '27', '滋賀県': '28', '京都府': '29', '大阪府': '30', 
+            '兵庫県': '31', '奈良県': '32', '和歌山県': '33', '鳥取県': '34', '島根県': '35', '岡山県': '36', '広島県': '37', '山口県': '38', '徳島県': '39', '香川県': '40', 
+            '愛媛県': '41', '高知県': '42', '福岡県': '43', '佐賀県': '44', '長崎県': '45', '熊本県': '46', '大分県': '47', '宮崎県': '48', '鹿児島県': '49', '沖縄県': '50'
+        };
+
+        const CITIES_BY_PREF = {
+            "東京都": [
+                {name: "千代田区", code: "13101"},
+                {name: "中央区", code: "13102"},
+                {name: "港区", code: "13103"}
+            ],
+            "大阪府": [
+                {name: "大阪市都島区", code: "27102"},
+                {name: "大阪市福島区", code: "27103"}
+            ],
+            "茨城県": [
+                {name: "水戸市", code: "8201"},
+                {name: "日立市", code: "8202"}
+            ]
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const prefSelects = ['loading_prefecture', 'unloading_prefecture'];
+            
+            // 都道府県プルダウンの初期化
+            prefSelects.forEach(id => {
+                const select = document.getElementById(id);
+                for (const name in PREF_MAP_JS) {
+                    const option = document.createElement('option');
+                    option.value = name; // 都道府県名をvalueに設定
+                    option.textContent = name;
+                    select.appendChild(option);
+                }
+                select.addEventListener('change', (e) => updateCitySelect(e.target.id, e.target.value));
+            });
+            
+            // 希望運賃の連動機能の有効化
+            setupFareControl();
+        });
+
+        function updateCitySelect(prefSelectId, prefName) {
+            const citySelectId = prefSelectId.replace('prefecture', 'city');
+            const citySelect = document.getElementById(citySelectId);
+            
+            citySelect.innerHTML = '<option value="">市区郡を選択</option>';
+            citySelect.disabled = true;
+
+            const cityData = CITIES_BY_PREF[prefName]; // 埋め込みデータから取得
+
+            if (cityData) {
+                cityData.forEach(city => {
+                    const option = document.createElement('option');
+                    // フォーム送信時は、市区町村名(value)を送信します。
+                    option.value = city.name; 
+                    option.textContent = city.name;
+                    citySelect.appendChild(option);
+                });
+                citySelect.disabled = false;
+            } else if (prefName) {
+                citySelect.innerHTML = '<option value="">対応する市区郡がありません</option>';
+            }
+        }
+        
+        function setupFareControl() {
+            const desiredFareInput = document.getElementById('desired_fare');
+            const fareConsultCheckbox = document.getElementById('fare_consult');
+
+            fareConsultCheckbox.addEventListener('change', () => {
+                if (fareConsultCheckbox.checked) {
+                    desiredFareInput.value = '';
+                    desiredFareInput.disabled = true;
+                } else {
+                    desiredFareInput.disabled = false;
+                }
+            });
+        }
+    </script>
+</body>
+</html>

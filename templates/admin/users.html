@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carroo - ユーザー管理</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Open+Sans:wght@400&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Open Sans', sans-serif; background-color: #f0f2f5; color: #333; margin: 0; padding: 0; }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #ffffff;
+            padding: 15px 40px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .logo-container {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            text-decoration: none;
+        }
+        .logo {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 2.2em;
+            font-weight: 700;
+            color: #2c3e50;
+            text-decoration: none;
+            letter-spacing: 1px;
+            transition: color 0.3s ease;
+        }
+        .logo:hover { color: #3498db; }
+        .tagline {
+            font-family: 'Open Sans', sans-serif;
+            font-size: 0.8em;
+            color: #7f8c8d;
+            margin-top: 2px;
+            white-space: nowrap;
+        }
+        .navbar a {
+            text-decoration: none;
+            color: #5d6d7e;
+            font-weight: 600;
+            padding: 8px 15px;
+            margin-left: 10px;
+            border-radius: 5px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .navbar a:hover { background-color: #e9ecef; color: #34495e; }
+        .navbar .logout { color: #e74c3c; }
+        .navbar .logout:hover { background-color: #e74c3c; color: white; }
+        .container {
+            max-width: 900px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 30px; font-size: 2em; }
+        h2 { border-bottom: 2px solid #3498db; padding-bottom: 5px; margin-top: 25px; margin-bottom: 15px; color: #34495e; }
+        .user-form, .user-list { margin-top: 30px; }
+        .user-form h2, .user-list h2 { border-bottom: 2px solid #3498db; padding-bottom: 5px; margin-bottom: 15px; }
+        .user-form label { display: block; margin-top: 10px; }
+        .user-form input, .user-form select, .user-form button {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            box-sizing: border-box;
+        }
+        .user-form button { background-color: #2ecc71; color: white; border: none; cursor: pointer; }
+        .user-list table { width: 100%; border-collapse: collapse; }
+        .user-list th, .user-list td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        .user-list .delete-btn { background-color: #e74c3c; color: white; border: none; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo-container">
+            <a href="{{ url_for('views.register_job') }}" class="logo">Carroo</a>
+            <span class="tagline">空車を効率的にルート化して活用する</span>
+        </div>
+        <nav class="navbar">
+            <a href="{{ url_for('views.register_job') }}">案件登録</a>
+            <a href="{{ url_for('views.history') }}">投稿履歴</a>
+            <a href="{{ url_for('views.admin_dashboard') }}">管理画面</a>
+            <a href="{{ url_for('views.logout') }}" class="logout">ログアウト</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <h1>ユーザー管理</h1>
+        <div class="user-form">
+            <h2>ユーザー作成</h2>
+            <form action="{{ url_for('views.admin_users') }}" method="post">
+                <input type="hidden" name="action" value="create">
+                <label for="username">ユーザー名:</label>
+                <input type="text" id="username" name="username" required>
+                <label for="password">パスワード:</label>
+                <input type="password" id="password" name="password" required>
+                <label for="role">権限:</label>
+                <select id="role" name="role">
+                    <option value="user">ユーザー</option>
+                    <option value="admin">管理者</option>
+                </select>
+                <button type="submit">ユーザー作成</button>
+            </form>
+        </div>
+
+        <div class="user-list">
+            <h2>既存ユーザー</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ユーザー名</th>
+                        <th>権限</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>{{ user.username }}</td>
+                        <td>{{ user.role }}</td>
+                        <td>
+                            {% if user.role != 'admin' %}
+                            <form action="{{ url_for('views.admin_users') }}" method="post" style="display:inline;">
+                                <input type="hidden" name="action" value="delete">
+                                <input type="hidden" name="username" value="{{ user.username }}">
+                                <button type="submit" class="delete-btn" onclick="return confirm('{{ user.username }}を削除しますか？');">削除</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</body>
+</html>

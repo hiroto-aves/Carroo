@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carroo - 自分の投稿履歴</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Open+Sans:wght@400&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Open Sans', sans-serif; background-color: #f0f2f5; color: #333; margin: 0; padding: 0; }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #ffffff;
+            padding: 15px 40px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .logo-container {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            text-decoration: none;
+        }
+        .logo {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 2.2em;
+            font-weight: 700;
+            color: #2c3e50;
+            text-decoration: none;
+            letter-spacing: 1px;
+            transition: color 0.3s ease;
+        }
+        .logo:hover { color: #3498db; }
+        .tagline {
+            font-family: 'Open Sans', sans-serif;
+            font-size: 0.8em;
+            color: #7f8c8d;
+            margin-top: 2px;
+            white-space: nowrap;
+        }
+        .navbar a {
+            text-decoration: none;
+            color: #5d6d7e;
+            font-weight: 600;
+            padding: 8px 15px;
+            margin-left: 10px;
+            border-radius: 5px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .navbar a:hover { background-color: #e9ecef; color: #34495e; }
+        .navbar .logout { color: #e74c3c; }
+        .navbar .logout:hover { background-color: #e74c3c; color: white; }
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 30px; font-size: 2em; }
+        .history-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        .history-table th, .history-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+            vertical-align: top;
+            white-space: nowrap;
+        }
+        .history-table th {
+            background-color: #f2f2f2;
+            font-weight: bold;
+            color: #555;
+        }
+        .history-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        .status-success { color: #27ae60; font-weight: bold; }
+        .status-failed { color: #e74c3c; font-weight: bold; }
+        .status-pending { color: #f39c12; }
+        .history-table td span {
+            display: block;
+            line-height: 1.4;
+        }
+        .pagination {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+        .pagination a {
+            padding: 8px 12px;
+            text-decoration: none;
+            color: #3498db;
+            border: 1px solid #ddd;
+            margin: 0 4px;
+            border-radius: 5px;
+        }
+        .pagination a.active {
+            background-color: #3498db;
+            color: white;
+            pointer-events: none;
+        }
+        .total-count {
+            text-align: right;
+            margin-bottom: 10px;
+            font-weight: bold;
+            font-size: 1.1em;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo-container">
+            <a href="{{ url_for('views.register_job') }}" class="logo">Carroo</a>
+            <span class="tagline">空車を効率的にルート化して活用する</span>
+        </div>
+        <nav class="navbar">
+            <a href="{{ url_for('views.register_job') }}">案件登録</a>
+            <a href="{{ url_for('views.history') }}">投稿履歴</a>
+            {% if user_role == 'admin' %}
+            <a href="{{ url_for('views.admin_dashboard') }}">管理画面</a>
+            {% endif %}
+            <a href="{{ url_for('views.logout') }}" class="logout">ログアウト</a>
+        </nav>
+    </div>
+
+    <div class="container">
+        <h1>自分の投稿履歴</h1>
+        <div class="total-count">総投稿数: {{ total_jobs }} 件</div>
+        
+        <div style="overflow-x:auto;">
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>投稿日時</th>
+                        <th>積地情報</th>
+                        <th>積込日・時間</th>
+                        <th>卸地情報</th>
+                        <th>降ろし日・時間</th>
+                        <th>荷物情報</th>
+                        <th>車両情報</th>
+                        <th>運賃・保険</th>
+                        <th>連絡先</th>
+                        <th>Webkit</th>
+                        <th>トラボックス</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for job in jobs %}
+                    <tr>
+                        <td>{{ job.id }}</td>
+                        <td>{{ job.timestamp }}</td>
+                        <td>
+                            <span>{{ job.loading_prefecture }} {{ job.loading_city }}</span>
+                            <span>{{ job.loading_address }}</span>
+                        </td>
+                        <td>
+                            <span>{{ job.loading_date }}</span>
+                            <span>{{ job.loading_time }} ({{ job.loading_time_option }})</span>
+                        </td>
+                        <td>
+                            <span>{{ job.unloading_prefecture }} {{ job.unloading_city }}</span>
+                            <span>{{ job.unloading_address }}</span>
+                        </td>
+                        <td>
+                            <span>{{ job.unloading_date }}</span>
+                            <span>{{ job.unloading_time }} ({{ job.unloading_time_option }})</span>
+                        </td>
+                        <td>
+                            <span>品目: {{ job.transport_category }}</span>
+                            <span>形状: {{ job.item_shape }} / 重量: {{ job.weight }}</span>
+                        </td>
+                        <td>
+                            <span>車種: {{ job.desired_vehicle_type }} ({{ job.vehicle_size }})</span>
+                            <span>車格: {{ job.vehicle_grade }} / 積合: {{ job.consolidation_item }}</span>
+                        </td>
+                        <td>
+                            <span>{{ job.desired_fare }} ({{ job.fare_option }})</span>
+                            <span>高速代: {{ job.toll_fee }} / 保険: {{ job.insurance }}</span>
+                        </td>
+                        <td>
+                            <span>担当者: {{ job.contact_person }}</span>
+                            <span>電話番号: {{ job.phone_number }}</span>
+                        </td>
+                        <td><span class="status-{{ job.webkit_status }}">{{ job.webkit_status }}</span></td>
+                        <td><span class="status-{{ job.trabox_status }}">{{ job.trabox_status }}</span></td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="12" style="text-align:center;">まだ投稿履歴はありません。</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="pagination">
+            {% for p in range(1, total_pages + 1) %}
+                <a href="{{ url_for('views.history', page=p) }}" class="{{ 'active' if p == page }}">
+                    {{ p }}
+                </a>
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>

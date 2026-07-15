@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carroo - 投稿完了</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&family=Open+Sans:wght@400&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Open Sans', sans-serif; background-color: #f0f2f5; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; padding: 0; }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #ffffff;
+            padding: 15px 40px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+            border-bottom: 1px solid #e0e0e0;
+        }
+        .logo-container {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            text-decoration: none;
+        }
+        .logo {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 2.2em;
+            font-weight: 700;
+            color: #2c3e50;
+            text-decoration: none;
+            letter-spacing: 1px;
+            transition: color 0.3s ease;
+        }
+        .logo:hover { color: #3498db; }
+        .tagline {
+            font-family: 'Open Sans', sans-serif;
+            font-size: 0.8em;
+            color: #7f8c8d;
+            margin-top: 2px;
+            white-space: nowrap;
+        }
+        .message-container { text-align: center; background-color: #fff; padding: 40px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
+        h1 { color: #27ae60; }
+        p { font-size: 1.2em; color: #555; }
+        .back-link { margin-top: 20px; }
+        .back-link a {
+            text-decoration: none;
+            color: #3498db;
+            font-weight: bold;
+            font-size: 1.1em;
+            transition: color 0.3s;
+        }
+        .back-link a:hover {
+            color: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="logo-container">
+            <a href="{{ url_for('views.register_job') }}" class="logo">Carroo</a>
+            <span class="tagline">空車を効率的にルート化して活用する</span>
+        </div>
+        <nav class="navbar">
+            <a href="{{ url_for('views.register_job') }}">案件登録</a>
+            <a href="{{ url_for('views.history') }}">投稿履歴</a>
+            {% if user_role == 'admin' %}
+            <a href="{{ url_for('views.admin_dashboard') }}">管理画面</a>
+            {% endif %}
+            <a href="{{ url_for('views.logout') }}" class="logout">ログアウト</a>
+        </nav>
+    </div>
+
+    <div class="message-container">
+        <h1>投稿が完了しました！</h1>
+        <p>案件の登録が正常に完了しました。</p>
+        <div class="back-link">
+            <a href="{{ url_for('views.register_job') }}">案件登録に戻る</a>
+        </div>
+    </div>
+</body>
+</html>
