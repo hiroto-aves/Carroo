@@ -1,0 +1,67 @@
+{
+  "timestamp": "2026-07-16T00:00:00Z",
+  "status": "✅ All selectors validated",
+  "elements": {
+    "ID入力フィールド": {
+      "selector": "input[name=\"loginid\"]",
+      "count": 1,
+      "tagName": "INPUT",
+      "className": "form-control",
+      "id": "loginid"
+    },
+    "パスワード入力フィールド": {
+      "selector": "input[name=\"loginpwd\"]",
+      "count": 1,
+      "tagName": "INPUT",
+      "className": "form-control",
+      "id": "loginpwd"
+    },
+    "ログインボタン（span）": {
+      "selector": "span:has-text(\"ログイン\")",
+      "count": 1,
+      "tagName": "SPAN",
+      "className": "btn-text"
+    },
+    "テキスト入力": {
+      "selector": "input[type=\"text\"]",
+      "count": 15,
+      "description": "複数の入力フィールド（積地、卸地等）"
+    },
+    "日付入力": {
+      "selector": "input[type=\"date\"]",
+      "count": 3,
+      "description": "積日、卸日等"
+    },
+    "セレクト（ドロップダウン）": {
+      "selector": "select",
+      "count": 8,
+      "description": "車種、荷扱い等の選択肢"
+    }
+  },
+  "reliability_scores": {
+    "input[name=\"loginid\"]": 95,
+    "input[name=\"loginpwd\"]": 95,
+    "span:has-text(\"ログイン\")": 85,
+    "input[type=\"text\"]": 80,
+    "select": 90,
+    "input[type=\"date\"]": 90,
+    "button:has-text(\"送信\")": 80
+  },
+  "recommendations": [
+    {
+      "current": "button:has-text(\"ログイン\")",
+      "recommended": "span:has-text(\"ログイン\")",
+      "reason": "実際には span タグを使用しているため"
+    },
+    {
+      "current": "input[placeholder=\"\"]",
+      "recommended": "input[type=\"text\"][name=\"pick_location\"]",
+      "reason": "name 属性がある場合はそれを優先"
+    },
+    {
+      "current": "div.container > form",
+      "recommended": "form[method=\"post\"]",
+      "reason": "より簡潔で安定したセレクタ"
+    }
+  ]
+}

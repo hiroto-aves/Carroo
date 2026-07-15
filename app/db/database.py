@@ -54,6 +54,33 @@ def init_db():
     )
     ''')
 
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS posting_batches (
+        id INTEGER PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        batch_name TEXT,
+        status TEXT DEFAULT 'pending',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        scheduled_at TIMESTAMP,
+        completed_at TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id)
+    )
+    ''')
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS posting_queue (
+        id INTEGER PRIMARY KEY,
+        batch_id INTEGER NOT NULL,
+        case_id INTEGER NOT NULL,
+        platform TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',
+        scheduled_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(batch_id) REFERENCES posting_batches(id),
+        FOREIGN KEY(case_id) REFERENCES cases(id)
+    )
+    ''')
+
     conn.commit()
     conn.close()
 
