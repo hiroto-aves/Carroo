@@ -27,7 +27,14 @@ class Settings:
     TRABOX_PROD_USERNAME = os.getenv("TRABOX_PROD_USERNAME", "")
     TRABOX_PROD_PASSWORD = os.getenv("TRABOX_PROD_PASSWORD", "")
 
-    # Automation - WebKIT API (XML-based)
+    # Automation - WebKIT (Browser automation + API)
+    WEBKIT_URL = "https://www.wkit.jp"
+
+    # ブラウザ自動化用のログイン情報
+    WEBKIT_LOGIN_ID = os.getenv("WEBKIT_LOGIN_ID", "")
+    WEBKIT_LOGIN_PASSWORD = os.getenv("WEBKIT_LOGIN_PASSWORD", "")
+
+    # API方式の認証情報
     WEBKIT_API_URL = "https://www.wkit.jp/api/LoadInfo"
     WEBKIT_API_KEY = os.getenv("WEBKIT_API_KEY", "")  # 20-digit key
     WEBKIT_PERSON_ID = os.getenv("WEBKIT_PERSON_ID", "")  # 14-digit person ID
