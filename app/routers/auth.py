@@ -1,14 +1,13 @@
-from fastapi import APIRouter, HTTPException, status
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, HTTPException, status, Response, Depends
+from fastapi.responses import HTMLResponse, RedirectResponse
 from app.models.schemas import UserCreate, User
 from app.db.database import get_db_connection
 from app.config import settings
-import hashlib
+from app.utils.security import hash_password, verify_password, create_access_token
+from app.dependencies import get_current_user
+from datetime import timedelta
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode()).hexdigest()
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page():
@@ -99,7 +98,7 @@ async def register(username: str, email: str, password: str):
 
         return {
             "status": "success",
-            "message": "User registered successfully"
+            "message": "User registered successfully. Please login."
         }
     except Exception as e:
         conn.rollback()
@@ -111,29 +110,55 @@ async def register(username: str, email: str, password: str):
         conn.close()
 
 @router.post("/login")
-async def login(username: str, password: str):
+async def login(username: str, password: str, response: Response):
     conn = get_db_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT id, username, email FROM users WHERE username = ? AND hashed_password = ?",
-        (username, hash_password(password))
+        "SELECT id, username, email, hashed_password FROM users WHERE username = ?",
+        (username,)
     )
 
     user = cursor.fetchone()
     conn.close()
 
-    if user:
-        return {
-            "status": "success",
-            "user": {
-                "id": user[0],
-                "username": user[1],
-                "email": user[2]
-            }
-        }
-    else:
+    if not user or not verify_password(password, user[3]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials"
+            detail="Invalid username or password"
         )
+
+    access_token_expires = timedelta(
+        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
+    )
+    access_token = create_access_token(
+        data={"user_id": user[0], "username": user[1]},
+        expires_delta=access_token_expires
+    )
+
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        samesite="lax"
+    )
+
+    return {
+        "status": "success",
+        "user": {
+            "id": user[0],
+            "username": user[1],
+            "email": user[2]
+        },
+        "message": "Login successful"
+    }
+
+@router.post("/logout")
+async def logout(response: Response):
+    response.delete_cookie("access_token")
+    return {"status": "success", "message": "Logged out successfully"}
+
+@router.get("/me")
+async def get_current_user_info(current_user: dict = Depends(get_current_user)):
+    return current_user

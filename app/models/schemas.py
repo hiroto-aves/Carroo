@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 class UserBase(BaseModel):
@@ -53,4 +53,4 @@ class PostingHistory(PostingHistoryBase):
         from_attributes = True
 
 class CaseWithPostingHistory(Case):
-    posting_history: list[PostingHistory] = []
+    posting_history: List[PostingHistory] = []

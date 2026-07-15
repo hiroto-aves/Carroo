@@ -4,6 +4,12 @@ from fastapi.responses import HTMLResponse
 from app.routers import auth, cases
 from app.db.database import init_db
 import os
+import logging
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 
 app = FastAPI(
     title="OneLogi-Post",

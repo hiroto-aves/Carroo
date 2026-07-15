@@ -1,9 +1,10 @@
-from fastapi import APIRouter, HTTPException, status, Form
+from fastapi import APIRouter, HTTPException, status, Form, Depends
 from fastapi.responses import HTMLResponse
 from app.models.schemas import CaseCreate, Case
 from app.db.database import get_db_connection
 from app.automations.trabox import TraboxAutomation
 from app.automations.webkit import WebkitAutomation
+from app.dependencies import get_current_user
 from typing import Optional
 
 router = APIRouter(prefix="/cases", tags=["cases"])
@@ -160,12 +161,13 @@ async def register_case(
     post_to_webkit: bool = Form(False),
     trabox_username: Optional[str] = Form(None),
     trabox_password: Optional[str] = Form(None),
+    current_user: dict = Depends(get_current_user),
 ):
     conn = get_db_connection()
     cursor = conn.cursor()
 
     try:
-        user_id = 1  # TODO: セッションから取得
+        user_id = current_user["id"]
 
         cursor.execute(
             """INSERT INTO cases
