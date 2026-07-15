@@ -1,14 +1,14 @@
 # Progress Tracking
 
 ## ⏳ バックログ (未着手)
-- [ ] Playwright ブラウザの実際のインストール＆テスト
-- [ ] トラボックス自動ログイン＆投稿ロジックの詳細実装（`playwright codegen` を活用）
+- [ ] Playwright codegen を使用したトラボックス要素検査・自動化コード生成
+- [ ] トラボックス実際のログイン・投稿テスト（テスト環境）
 - [ ] Webkit API キー設定とエンドツーエンドテスト
-- [ ] セッション管理・認証トークン実装
 - [ ] エラーハンドリング・スクリーンショット保存機能の改善
-- [ ] ユーザー認証画面の仕上げ（セッション管理、ログアウト）
 - [ ] データベース永続化テスト
 - [ ] フロントエンドの UX 改善（デザイン・レスポンシブ対応）
+- [ ] ユーザー管理画面（ダッシュボード）実装
+- [ ] 投稿履歴表示機能
 
 ## 🔄 進行中 (In Progress)
 - [ ] なし
@@ -23,7 +23,7 @@
   - [x] `requirements.txt` の生成
 - [x] プロジェクト構造の整備
   - [x] `app/`, `static/`, `templates/` ディレクトリの作成
-  - [x] モジュール分離（routers, automations, models, db）
+  - [x] モジュール分離（routers, automations, models, db, utils）
 - [x] FastAPI アプリケーション骨組み実装
   - [x] `app/main.py` でアプリケーションオブジェクト生成
   - [x] `app/config.py` で環境変数・設定管理
@@ -32,12 +32,34 @@
 - [x] ルーター実装
   - [x] `app/routers/auth.py` - ログイン・登録画面＆エンドポイント
   - [x] `app/routers/cases.py` - 案件登録画面＆投稿ロジック
-- [x] 自動投稿モジュール（スケルトン）
-  - [x] `app/automations/trabox.py` - Playwright ベースの自動ログイン・投稿
-  - [x] `app/automations/webkit.py` - Webhook API 投稿モジュール
+- [x] 自動投稿モジュール
+  - [x] `app/automations/trabox.py` - Playwright ベースの自動ログイン・投稿（強化版）
+  - [x] `app/automations/webkit.py` - HTTP 非同期 API 投稿モジュール
 - [x] エントリーポイント
   - [x] `main.py` を作成（`uvicorn` で起動可能）
 - [x] `.env.example` ファイル作成
+- [x] **Step 1: バックエンド起動テスト** ✅
+  - [x] Python 3.7 互換性修正（`List[T]` 型）
+  - [x] 依存パッケージ追加（email-validator, httpx）
+  - [x] FastAPI サーバーの起動確認
+- [x] **Step 2: Playwright ブラウザインストール** ✅
+  - [x] Chromium ブラウザエンジンのインストール
+  - [x] FFMPEG コーデックのインストール
+  - [x] Playwright async API の動作確認
+- [x] **Step 3: トラボックス自動投稿ロジック詳細実装** ✅
+  - [x] エラーハンドリング・ロギング強化
+  - [x] タイムアウト管理（30秒）
+  - [x] 複数セレクタによる要素検出
+  - [x] ログイン・フォーム入力・送信メソッド実装
+  - [x] スクリーンショット保存機能
+- [x] **Step 4: JWT ベースのセッション管理** ✅
+  - [x] `app/utils/security.py` - パスワードハッシュ化・JWT トークン生成
+  - [x] `app/dependencies.py` - 認証依存関係
+  - [x] HTTP-only Cookie によるトークン管理
+  - [x] `/auth/me` エンドポイント実装
+  - [x] `/auth/logout` エンドポイント実装
+  - [x] 認証ユーザー情報をルーターに注入
+  - [x] ロギング設定追加
 
 ## 📝 開発メモ
 - Python 3.7.11 で環境構築（要件は 3.11+ だが、互換性あり）
