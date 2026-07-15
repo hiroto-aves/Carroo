@@ -31,11 +31,49 @@ class TraboxAutomation:
             page.set_default_navigation_timeout(self.navigation_timeout)
 
             try:
-                logger.info(f"[Trabox] Accessing {self.url}")
-                await page.goto(self.url, wait_until="domcontentloaded")
+                # ダッシュボードにアクセス
+                dashboard_url = f"{self.url}/baggage/list/opened"
+                logger.info(f"[Trabox] Accessing dashboard: {dashboard_url}")
+                await page.goto(dashboard_url, wait_until="networkidle")
 
-                logger.info("[Trabox] Logging in...")
-                await self._login(page, case_data)
+                # ログインが必要か確認
+                is_login_page = await page.locator('input[name="loginid"]').count() > 0
+                if is_login_page:
+                    logger.info("[Trabox] Login page detected, logging in...")
+                    await self._login(page, case_data)
+                    # ログイン後、再度ダッシュボードにアクセス
+                    await page.goto(dashboard_url, wait_until="networkidle")
+
+                # ダッシュボード上で「新規投稿」ボタンを探して押す
+                logger.info("[Trabox] Looking for posting button...")
+                posting_button_selectors = [
+                    'a:has-text("新規登録")',
+                    'button:has-text("新規登録")',
+                    'a:has-text("追加")',
+                    'button:has-text("追加")',
+                    'a[href*="register"]',
+                    'button[href*="register"]'
+                ]
+
+                button_clicked = False
+                for selector in posting_button_selectors:
+                    button = page.locator(selector)
+                    if await button.count() > 0:
+                        try:
+                            await button.first.click()
+                            logger.info(f"[Trabox] Clicked posting button with selector: {selector}")
+                            button_clicked = True
+                            await page.wait_for_timeout(2000)  # フォーム読み込み待機
+                            break
+                        except Exception as e:
+                            logger.debug(f"[Trabox] Failed to click button ({selector}): {e}")
+                            continue
+
+                if not button_clicked:
+                    # ボタンが見つからない場合、直接フォームページにアクセス
+                    logger.warning("[Trabox] Posting button not found, navigating directly to form page")
+                    await page.goto(f"{self.url}/baggage/register", wait_until="domcontentloaded")
+                    await page.wait_for_timeout(2000)
 
                 logger.info("[Trabox] Filling form...")
                 await self._fill_and_submit_form(page, case_data)
@@ -120,7 +158,11 @@ class TraboxAutomation:
         logger.info("[Trabox] Login completed")
 
     async def _fill_and_submit_form(self, page: Page, case_data: Dict[str, Any]):
-        """案件フォームを入力して送信"""
+        """案件フォームを入力して送信
+
+        トラボックスのフォーム要素は動的にレンダリングされるため、
+        複数のセレクター戦略を試して対応します
+        """
         pick_location = case_data.get("pick_location", "")
         drop_location = case_data.get("drop_location", "")
         cargo_weight = str(case_data.get("cargo_weight", ""))
@@ -128,74 +170,190 @@ class TraboxAutomation:
         freight_rate = str(case_data.get("freight_rate", ""))
         pickup_date = case_data.get("pickup_date", "")
         pickup_time = case_data.get("pickup_time", "")
+        contact_name = case_data.get("contact_name", "")
+        contact_phone = case_data.get("contact_phone", "")
+        contact_email = case_data.get("contact_email", "")
+
+        # ページが完全に読み込まれるまで待機
+        await page.wait_for_timeout(1500)
+
+        # デバッグ用スクリーンショット
+        try:
+            await page.screenshot(path="trabox_form_before.png")
+        except:
+            pass
 
         # 積地入力
-        logger.debug(f"[Trabox] Filling pick_location: {pick_location}")
-        pick_input = page.locator('input[placeholder*="積地"], input[name*="pick"], input[id*="pick"]')
-        if await pick_input.count() > 0:
-            await pick_input.first.fill(pick_location)
-        else:
-            logger.warning("[Trabox] Could not find pick_location input")
+        if pick_location:
+            logger.debug(f"[Trabox] Filling pick_location: {pick_location}")
+            # セレクター優先度: name → id → placeholder
+            selectors = [
+                'input[name*="pick"]',
+                'input[id*="pick"]',
+                'input[placeholder*="積地"]',
+                'input[placeholder*="出発地"]',
+                'textarea[name*="pick"]'
+            ]
+            filled = await self._fill_field(page, selectors, pick_location, "pick_location")
+            if not filled:
+                logger.warning("[Trabox] Could not find pick_location input")
 
         # 卸地入力
-        logger.debug(f"[Trabox] Filling drop_location: {drop_location}")
-        drop_input = page.locator('input[placeholder*="卸地"], input[name*="drop"], input[id*="drop"]')
-        if await drop_input.count() > 0:
-            await drop_input.first.fill(drop_location)
-        else:
-            logger.warning("[Trabox] Could not find drop_location input")
+        if drop_location:
+            logger.debug(f"[Trabox] Filling drop_location: {drop_location}")
+            selectors = [
+                'input[name*="drop"]',
+                'input[id*="drop"]',
+                'input[placeholder*="卸地"]',
+                'input[placeholder*="到着地"]',
+                'textarea[name*="drop"]'
+            ]
+            filled = await self._fill_field(page, selectors, drop_location, "drop_location")
+            if not filled:
+                logger.warning("[Trabox] Could not find drop_location input")
 
         # 重量入力
         if cargo_weight:
             logger.debug(f"[Trabox] Filling cargo_weight: {cargo_weight}")
-            weight_inputs = page.locator('input[type="number"], input[id*="weight"], input[name*="weight"]')
-            if await weight_inputs.count() > 0:
-                await weight_inputs.first.fill(cargo_weight)
+            selectors = [
+                'input[name*="weight"]',
+                'input[id*="weight"]',
+                'input[type="number"]',
+                'input[placeholder*="重量"]'
+            ]
+            await self._fill_field(page, selectors, cargo_weight, "cargo_weight")
 
         # 日付入力
         if pickup_date:
             logger.debug(f"[Trabox] Filling pickup_date: {pickup_date}")
-            date_inputs = page.locator('input[type="date"], input[id*="date"], input[name*="date"]')
-            if await date_inputs.count() > 0:
-                await date_inputs.first.fill(pickup_date)
+            selectors = [
+                'input[name*="date"]',
+                'input[id*="date"]',
+                'input[type="date"]',
+                'input[placeholder*="日付"]'
+            ]
+            await self._fill_field(page, selectors, pickup_date, "pickup_date")
 
         # 時間入力
         if pickup_time:
             logger.debug(f"[Trabox] Filling pickup_time: {pickup_time}")
-            time_inputs = page.locator('input[type="time"], input[id*="time"]')
-            if await time_inputs.count() > 0:
-                await time_inputs.first.fill(pickup_time)
+            selectors = [
+                'input[name*="time"]',
+                'input[id*="time"]',
+                'input[type="time"]',
+                'input[placeholder*="時間"]'
+            ]
+            await self._fill_field(page, selectors, pickup_time, "pickup_time")
 
         # 車種選択
         if vehicle_type:
             logger.debug(f"[Trabox] Selecting vehicle_type: {vehicle_type}")
             selects = page.locator('select')
-            if await selects.count() > 0:
+            select_count = await selects.count()
+            if select_count > 0:
                 try:
                     await selects.first.select_option(vehicle_type)
-                except:
-                    logger.warning(f"[Trabox] Could not select vehicle_type: {vehicle_type}")
+                except Exception as e:
+                    logger.warning(f"[Trabox] Could not select vehicle_type: {e}")
 
         # 運賃入力
         if freight_rate:
             logger.debug(f"[Trabox] Filling freight_rate: {freight_rate}")
-            rate_inputs = page.locator('input[id*="rate"], input[id*="price"], input[id*="fare"]')
-            if await rate_inputs.count() > 0:
-                await rate_inputs.first.fill(freight_rate)
+            selectors = [
+                'input[name*="rate"]',
+                'input[name*="price"]',
+                'input[name*="fare"]',
+                'input[id*="rate"]',
+                'input[id*="price"]',
+                'input[placeholder*="運賃"]'
+            ]
+            await self._fill_field(page, selectors, freight_rate, "freight_rate")
 
-        # 送信
+        # 連絡先名入力
+        if contact_name:
+            logger.debug(f"[Trabox] Filling contact_name: {contact_name}")
+            selectors = [
+                'input[name*="name"]',
+                'input[id*="name"]',
+                'input[placeholder*="名前"]',
+                'input[placeholder*="担当者"]'
+            ]
+            await self._fill_field(page, selectors, contact_name, "contact_name")
+
+        # 電話番号入力
+        if contact_phone:
+            logger.debug(f"[Trabox] Filling contact_phone: {contact_phone}")
+            selectors = [
+                'input[name*="phone"]',
+                'input[type="tel"]',
+                'input[id*="phone"]',
+                'input[placeholder*="電話"]'
+            ]
+            await self._fill_field(page, selectors, contact_phone, "contact_phone")
+
+        # メールアドレス入力
+        if contact_email:
+            logger.debug(f"[Trabox] Filling contact_email: {contact_email}")
+            selectors = [
+                'input[name*="email"]',
+                'input[type="email"]',
+                'input[id*="email"]',
+                'input[placeholder*="メール"]'
+            ]
+            await self._fill_field(page, selectors, contact_email, "contact_email")
+
+        # デバッグ用スクリーンショット
+        try:
+            await page.screenshot(path="trabox_form_filled.png")
+        except:
+            pass
+
+        # 送信ボタン探索
         logger.debug(f"[Trabox] Clicking submit button")
-        submit_button = page.locator('button:has-text("送信"), button:has-text("登録"), button:has-text("投稿")')
-        if await submit_button.count() > 0:
-            await submit_button.click()
-        else:
-            logger.error("[Trabox] Could not find submit button")
+        submit_selectors = [
+            'button:has-text("登録")',
+            'button:has-text("送信")',
+            'button:has-text("投稿")',
+            'input[type="submit"]',
+            'button[type="submit"]'
+        ]
+
+        submitted = False
+        for selector in submit_selectors:
+            button = page.locator(selector)
+            if await button.count() > 0:
+                try:
+                    await button.first.click()
+                    logger.info(f"[Trabox] Submitted with selector: {selector}")
+                    submitted = True
+                    break
+                except Exception as e:
+                    logger.warning(f"[Trabox] Could not click submit button ({selector}): {e}")
+                    continue
+
+        if not submitted:
+            logger.error("[Trabox] Could not find or click submit button")
             raise Exception("Submit button not found")
 
         # 送信完了待機
         try:
-            await page.wait_for_navigation(wait_until="domcontentloaded")
+            await page.wait_for_navigation(wait_until="domcontentloaded", timeout=10000)
         except:
-            await page.wait_for_selector('body', timeout=5000)
+            await page.wait_for_timeout(3000)
 
         logger.info("[Trabox] Form submitted successfully")
+
+    async def _fill_field(self, page: Page, selectors: list, value: str, field_name: str) -> bool:
+        """複数のセレクターを試して、フィールドに値を入力する"""
+        for selector in selectors:
+            try:
+                locator = page.locator(selector)
+                count = await locator.count()
+                if count > 0:
+                    await locator.first.fill(value)
+                    logger.debug(f"[Trabox] Filled {field_name} with selector: {selector}")
+                    return True
+            except Exception as e:
+                logger.debug(f"[Trabox] Failed to fill {field_name} with selector {selector}: {e}")
+                continue
+        return False
