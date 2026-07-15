@@ -415,7 +415,7 @@ async def case_detail(case_id: int, current_user: dict = Depends(get_current_use
                             </div>
                             <div>
                                 <p class="text-sm text-gray-600">積地日付</p>
-                                <p class="text-lg font-semibold text-gray-900">{date}" + (f" {time}" if time else "") + f"""</p>
+                                <p class="text-lg font-semibold text-gray-900">{date}{f" {time}" if time else ""}</p>
                             </div>
                         </div>
 
