@@ -1,11 +1,15 @@
 from fastapi import APIRouter, HTTPException, status, Form, Depends
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from app.models.schemas import CaseCreate, Case
 from app.db.database import get_db_connection
 from app.automations.trabox import TraboxAutomation
 from app.automations.webkit import WebkitAutomation
 from app.dependencies import get_current_user
+from app.services.cloud_tasks import get_task_client
 from typing import Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/cases", tags=["cases"])
 
@@ -216,13 +220,18 @@ async def register_case(
     post_to_webkit: Optional[str] = Form(None),
     current_user: dict = Depends(get_current_user),
 ):
-    """複数プラットフォームへの同時投稿エンドポイント
-
-    - トラボックス: .env の TRABOX_TEST_USERNAME, TRABOX_TEST_PASSWORD から自動取得
-    - WebKIT: .env の WEBKIT_LOGIN_ID, WEBKIT_LOGIN_PASSWORD から自動取得
     """
-    from app.config import settings
-    import asyncio
+    案件登録 + 非同期投稿キュー追加エンドポイント
+
+    フロー（GCP Cloud Tasks）:
+    1. DB に案件データを保存（同期）
+    2. Cloud Tasks にタスク追加（0.1秒で即座に返す）
+    3. 背景で Cloud Run が投稿処理を実行
+
+    投稿先:
+    - トラボックス: .env の TRABOX_TEST_USERNAME, TRABOX_TEST_PASSWORD
+    - WebKIT: .env の WEBKIT_LOGIN_ID, WEBKIT_LOGIN_PASSWORD
+    """
 
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -230,7 +239,7 @@ async def register_case(
     try:
         user_id = current_user["id"]
 
-        # 案件データを保存
+        # Step 1: 案件データを DB に保存
         cursor.execute(
             """INSERT INTO cases
             (user_id, pick_location, drop_location, cargo_weight, vehicle_type, freight_rate, pickup_date, pickup_time, contact_name, contact_phone, contact_email)
@@ -240,8 +249,10 @@ async def register_case(
         conn.commit()
         case_id = cursor.lastrowid
 
-        # 投稿用データ
+        # Step 2: 投稿用データを構築
         case_data = {
+            "case_id": case_id,
+            "user_id": user_id,
             "pick_location": pick_location,
             "drop_location": drop_location,
             "cargo_weight": cargo_weight,
@@ -252,76 +263,46 @@ async def register_case(
             "contact_name": contact_name,
             "contact_phone": contact_phone,
             "contact_email": contact_email,
+            "post_to_trabox": post_to_trabox == "yes",
+            "post_to_webkit": post_to_webkit == "yes",
         }
 
-        results = []
-        posting_tasks = []
+        # Step 3: Cloud Tasks にタスク追加（0.1秒で返す）
+        task_client = get_task_client()
+        task_name = task_client.add_posting_task(case_data, user_id)
+        logger.info(f"✅ タスク追加: Case ID {case_id} → {task_name}")
 
-        # トラボックスへの投稿（チェックボックスが checked = "yes"）
+        # Step 4: posting_history に「pending」状態で記録
         if post_to_trabox == "yes":
-            if settings.TRABOX_TEST_USERNAME and settings.TRABOX_TEST_PASSWORD:
-                case_data_trabox = case_data.copy()
-                case_data_trabox["username"] = settings.TRABOX_TEST_USERNAME
-                case_data_trabox["password"] = settings.TRABOX_TEST_PASSWORD
-
-                trabox = TraboxAutomation()
-                async def post_trabox():
-                    result = await trabox.post_case(case_data_trabox)
-                    results.append(result)
-                    cursor.execute(
-                        "INSERT INTO posting_history (case_id, platform, status, error_message) VALUES (?, ?, ?, ?)",
-                        (case_id, "trabox", result.get("status"), result.get("message") if result.get("status") == "error" else None)
-                    )
-                    conn.commit()
-                    return result
-
-                posting_tasks.append(post_trabox())
-            else:
-                results.append({
-                    "status": "error",
-                    "platform": "trabox",
-                    "message": "Trabox credentials not configured in .env"
-                })
-
-        # WebKIT への投稿（チェックボックスが checked = "yes"）
+            cursor.execute(
+                "INSERT INTO posting_history (case_id, platform, status) VALUES (?, ?, ?)",
+                (case_id, "trabox", "pending")
+            )
         if post_to_webkit == "yes":
-            if settings.WEBKIT_LOGIN_ID and settings.WEBKIT_LOGIN_PASSWORD:
-                webkit = WebkitAutomation()
-                async def post_webkit():
-                    result = await webkit.post_case(case_data)
-                    results.append(result)
-                    cursor.execute(
-                        "INSERT INTO posting_history (case_id, platform, status, error_message) VALUES (?, ?, ?, ?)",
-                        (case_id, "webkit", result.get("status"), result.get("message") if result.get("status") == "error" else None)
-                    )
-                    conn.commit()
-                    return result
+            cursor.execute(
+                "INSERT INTO posting_history (case_id, platform, status) VALUES (?, ?, ?)",
+                (case_id, "webkit", "pending")
+            )
+        conn.commit()
 
-                posting_tasks.append(post_webkit())
-            else:
-                results.append({
-                    "status": "error",
-                    "platform": "webkit",
-                    "message": "WebKit credentials not configured in .env"
-                })
-
-        # 複数プラットフォームへ並行投稿
-        if posting_tasks:
-            await asyncio.gather(*posting_tasks)
-
-        return {
-            "status": "success",
-            "case_id": case_id,
-            "posting_results": results,
-            "message": "Case registered and posted successfully",
-            "platforms_posted": {
-                "trabox": post_to_trabox == "yes",
-                "webkit": post_to_webkit == "yes"
+        # Step 5: 即座に返す（投稿処理は背景で実行）
+        return JSONResponse(
+            status_code=202,
+            content={
+                "status": "success",
+                "message": "✅ 投稿をキューに追加しました",
+                "case_id": case_id,
+                "task_name": task_name,
+                "platforms_queued": {
+                    "trabox": post_to_trabox == "yes",
+                    "webkit": post_to_webkit == "yes"
+                }
             }
-        }
+        )
 
     except Exception as e:
         conn.rollback()
+        logger.error(f"❌ エラー: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
