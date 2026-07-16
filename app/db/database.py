@@ -49,6 +49,7 @@ def init_db():
         platform TEXT NOT NULL,
         status TEXT DEFAULT 'pending',
         posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP,
         error_message TEXT,
         FOREIGN KEY(case_id) REFERENCES cases(id)
     )

@@ -5,7 +5,7 @@ Google Cloud Tasks クライアント
 
 import json
 import logging
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from google.cloud import tasks_v2
 from google.protobuf import timestamp_pb2
 from datetime import datetime, timedelta
@@ -165,7 +165,7 @@ class LocalTaskQueue:
         }
 
 
-def get_task_client() -> GoogleCloudTasksClient | LocalTaskQueue:
+def get_task_client() -> Union[GoogleCloudTasksClient, LocalTaskQueue]:
     """
     タスククライアントを取得
     環境に応じて Cloud Tasks または ローカルキューを返す
