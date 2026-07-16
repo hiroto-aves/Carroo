@@ -1,13 +1,31 @@
 # Progress Tracking - OneLogi-Post
 
+## 🚀 デプロイメント構成（確定）
+
+**決定事項: GCP サーバーレスアーキテクチャ + Cloud Tasks 順序実行**
+
+- ✅ Cloud Functions: Web UI・リクエスト処理（200万無料リクエスト/月）
+- ✅ Cloud Tasks: 非同期キュー（1件ずつ順序実行、100万無料タスク/月）
+  - `maxConcurrentDispatches: 1` - 同時実行数を 1 に制限（セッション競合防止）
+  - `maxDispatchesPerSecond: 1` - 1秒に1件ずつ処理
+  - リトライ: 最大 3 回、指数バックオフ
+- ✅ Cloud Run: Playwright 投稿エンジン（180万無料 vCPU・秒/月）
+  - メモリ: 2GB、CPU: 1、タイムアウト: 3600秒
+  - `--max-instances 1` - インスタンス数制限
+
+**月額コスト**: ¥0（5ユーザー × 1日5投稿）
+
+**詳細**: CLAUDE.md 「デプロイメント環境（GCP サーバーレス構成）」セクション参照
+
 ## ⏳ バックログ (未着手・今後の改善)
+- [ ] GCP Cloud Tasks キュー設定・デプロイメント実装
+- [ ] Cloud Functions・Cloud Run コード調整
+- [ ] 本番環境テスト・デバッグ
+- [ ] エラーモニタリング・アラート設定（Cloud Logging）
+- [ ] Dead Letter Queue 実装（リトライ上限超過時）
 - [ ] Playwright codegen によるトラボックス要素自動検査
-- [ ] 実際の環境でのトラボックス・Webkit テスト
-- [ ] 複数プラットフォームへの同時投稿最適化
 - [ ] ユーザー管理画面（権限管理）
 - [ ] 案件検索・フィルター機能
-- [ ] バッチ投稿機能
-- [ ] プッシュ通知機能
 - [ ] モバイルアプリ対応
 
 ## 🔄 進行中 (In Progress)

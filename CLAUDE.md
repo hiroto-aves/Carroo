@@ -15,6 +15,135 @@
 4. **拡張性の確保**: 将来的にWebkit（API）やその他のサービスが増えることを見越し、投稿処理はインターフェース化、または関数をプラグイン形式で追加できるようにモジュールを分離（`automations/trabox.py`, `automations/webkit.py`）してください。
 5. **デザイン**: UIにはTailwind CSSを使用し、チェックボックスとそのラベル、および各グループ（Webkitとトラボックス）が綺麗に横並び（`flex row`）になるよう実装してください。
 
+---
+
+## デプロイメント環境（GCP サーバーレス構成）
+
+このプロジェクトは **Google Cloud Platform（GCP）のサーバーレスアーキテクチャ** で運用します。月額 ¥0 の低コスト実現を前提としています。
+
+### 環境構成：Cloud Tasks による順序実行
+
+```
+【リクエストフロー】
+ユーザー投稿リクエスト
+    ↓ 0.1秒で即座に返却
+Google Cloud Functions（Web UI）
+├─ リクエスト受信
+├─ 投稿データを Cloud Tasks キューに追加
+└─ 「投稿をキューに追加しました ✅」 と即座に返却
+
+    ↓【キュー管理：順序実行】
+Cloud Tasks
+├─ maxConcurrentDispatches: 1（重要！同時実行数は 1 件）
+├─ maxDispatchesPerSecond: 1（1秒に1件）
+└─ リトライ設定: 最大 3 回、指数バックオフ
+
+    ↓【順序実行されるため競合なし】
+Cloud Run（投稿エンジン）
+├─ リクエスト 1 の投稿を実行（75秒）
+├─ 完了してから次へ
+└─ リクエスト 2 の投稿を実行（75秒）
+```
+
+### 各サービスの役割と無料枠
+
+| サービス | 役割 | 無料枠 |
+|---------|------|--------|
+| **Cloud Functions** | Web UI・リクエスト処理 | 200万リクエスト/月 |
+| **Cloud Tasks** | 非同期タスクキュー（順序実行） | 100万タスク/月 |
+| **Cloud Run** | Playwright 投稿エンジン実行 | 180万 vCPU・秒/月 |
+
+### Cloud Tasks キュー設定（重要）
+
+```yaml
+# cloud-tasks-queue-config.yaml
+name: projects/YOUR-PROJECT-ID/locations/us-central1/queues/posting-queue
+
+# 【重要】ブラウザセッション競合を防ぐため：順序実行 1 件ずつ
+dispatcherConfig:
+  maxConcurrentDispatches: 1        # 同時実行数: 1 件のみ
+  maxDispatchesPerSecond: 1         # 1秒に1件ずつ処理
+
+# リトライ設定（ネットワーク遅延・タイムアウト対策）
+retryConfig:
+  maxAttempts: 3                    # 最大 3 回まで自動リトライ
+  maxBackoff: 3600s                 # 待機時間: 最大 1 時間
+  minBackoff: 2s                    # 初回待機: 2 秒
+```
+
+**設定の効果:**
+- ✅ ブラウザセッションの競合なし（1つずつ独立した Playwright インスタンス）
+- ✅ メモリ不足なし（同時実行が 1 件なので 2GB で十分）
+- ✅ トラボックス側のレート制限に引っかからない（時間差で実行）
+- ✅ ネットワーク遅延・タイムアウトは自動リトライで対応
+
+### Cloud Run リソース設定
+
+```bash
+gcloud run deploy poster \
+  --source . \
+  --platform managed \
+  --region us-central1 \
+  --memory 2Gi \              # メモリ: 2GB
+  --cpu 1 \                   # CPU: 1 個
+  --timeout 3600 \            # タイムアウト: 1 時間（リトライ考慮）
+  --max-instances 1 \         # 最大インスタンス数: 1
+  --no-allow-unauthenticated  # 認証必須（Cloud Tasks のみアクセス可）
+```
+
+### 非同期投稿時のエラーハンドリング
+
+Cloud Run では以下のパターンに対応すること：
+
+1. **Playwright エラー**
+   - セレクタ見つからない → スクリーンショット保存 +詳細ログ
+   - ブラウザプロセスクラッシュ → Cloud Tasks が自動リトライ
+   - ログイン失敗（認証情報変更） → error_screenshot.png 保存
+
+2. **ネットワーク・タイムアウトエラー**
+   - HTTP タイムアウト → Cloud Tasks が自動リトライ（最大 3 回）
+   - トラボックス側のレート制限（IP ブロック） → Logging に記録
+   - 接続タイムアウト → リトライで回避
+
+3. **リトライ上限到達時（3回失敗）**
+   - Cloud Logging に詳細エラー記録
+   - 将来実装: Dead Letter Queue へ移動 + 管理者への Slack 通知
+
+4. **スクリーンショット・ログの永続化**
+   - エラー時のスクリーンショット → Cloud Storage に保存
+   - 詳細ログ → Cloud Logging に出力
+   - 投稿失敗結果 → Cloud SQL/Firestore に記録
+
+### 月額コスト シミュレーション
+
+**社内 5 ユーザー、1日 5 投稿の場合：**
+
+```
+【計算】
+1日: 5投稿
+1ヶ月（30日）: 150投稿
+
+【各サービスの使用量】
+- Cloud Functions: 150リクエスト << 200万無料枠 ✅
+- Cloud Tasks: 150タスク << 100万無料枠 ✅
+- Cloud Run: 150投稿 × 75秒 = 11,250 vCPU・秒 << 180万無料枠 ✅
+
+【合計月額】¥0
+```
+
+### 留意事項（設計ハンドリング）
+
+⚠️ **もしうまくいかなかった場合：**
+- Cloud Tasks の `maxConcurrentDispatches: 1` 設定が機能しない → Pub/Sub + Pull Subscription に変更検討
+- ブラウザセッション分離が不十分 → 各リクエストで新規ブラウザプロセスを確認
+- メモリ不足が発生 → Cloud Run のメモリを 4GB に増加
+- リトライ上限に頻繁に到達 → リトライロジックの見直しと原因追跡
+
+⚠️ **実装検証時の確認ポイント：**
+- Cloud Tasks キューが正しく 1 件ずつ処理されているか（ログで確認）
+- Playwright ブラウザプロセスが毎回新規起動・クローズされているか
+- 投稿エラーが自動リトライで回避できているか（エラーログ確認）
+
 ## セッション開始時の必須手順
 
 新しいセッション（VSCode等での立ち上げ）を開始する際は、必ず以下の3ファイルを最初に読み込んでから作業を開始すること。
