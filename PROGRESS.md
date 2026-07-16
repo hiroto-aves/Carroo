@@ -1,26 +1,62 @@
 # Progress Tracking - OneLogi-Post
 
-## 🚀 デプロイメント構成（確定）
+## 🚀 デプロイメント実装完了 ✅
 
-**決定事項: GCP サーバーレスアーキテクチャ + Cloud Tasks 順序実行**
+**Step 17: GCP Cloud Tasks 非同期投稿アーキテクチャ実装** ✅
 
-- ✅ Cloud Functions: Web UI・リクエスト処理（200万無料リクエスト/月）
-- ✅ Cloud Tasks: 非同期キュー（1件ずつ順序実行、100万無料タスク/月）
-  - `maxConcurrentDispatches: 1` - 同時実行数を 1 に制限（セッション競合防止）
-  - `maxDispatchesPerSecond: 1` - 1秒に1件ずつ処理
-  - リトライ: 最大 3 回、指数バックオフ
-- ✅ Cloud Run: Playwright 投稿エンジン（180万無料 vCPU・秒/月）
-  - メモリ: 2GB、CPU: 1、タイムアウト: 3600秒
-  - `--max-instances 1` - インスタンス数制限
+### 実装内容
 
-**月額コスト**: ¥0（5ユーザー × 1日5投稿）
+1. **Cloud Tasks クライアント** ✅
+   - `app/services/cloud_tasks.py` - GoogleCloudTasksClient クラス
+   - ローカル開発用 LocalTaskQueue（Cloud Tasks なしで動作確認可能）
+   - タスク作成・キュー統計取得メソッド
 
-**詳細**: CLAUDE.md 「デプロイメント環境（GCP サーバーレス構成）」セクション参照
+2. **Web UI 修正（Cloud Functions 相当）** ✅
+   - `app/routers/cases.py` POST /cases/register を非同期対応
+   - 案件データを DB に保存
+   - Cloud Tasks キューにタスク追加（0.1秒で即座に返す）
+   - posting_history に「pending」ステータスで記録
+
+3. **ポスター関数（Cloud Run）** ✅
+   - `functions/poster.py` - Cloud Run 実行関数
+   - Cloud Tasks からのリクエストを受け取る
+   - Playwright で Trabox + WebKIT に並行投稿
+   - 結果を posting_history に記録
+   - エラー時は自動リトライ（Cloud Tasks 管理）
+
+4. **デプロイメント設定** ✅
+   - Dockerfile（Python 3.11 + Playwright Chromium）
+   - requirements.txt 更新（functions-framework, google-cloud-tasks）
+   - scripts/deploy_to_gcp.sh（自動デプロイスクリプト）
+
+### アーキテクチャフロー
+
+```
+ユーザー投稿フォーム送信
+    ↓ 0.1秒（即座に返却）
+POST /cases/register
+├─ DB に案件データ保存
+├─ Cloud Tasks にタスク追加
+└─ 「投稿をキューに追加しました」HTTP 202 返す
+
+    ↓ 背景処理
+
+Cloud Tasks（maxConcurrentDispatches: 1）
+├─ 1 件ずつ順序実行
+└─ リトライ：最大 3 回、指数バックオフ
+
+    ↓
+
+Cloud Run（Playwright）
+├─ Trabox 投稿（75秒）
+├─ WebKIT 投稿（5秒）
+└─ 結果を posting_history に記録
+```
+
+**月額コスト**: ¥0（無料枠で充分）
 
 ## ⏳ バックログ (未着手・今後の改善)
-- [ ] GCP Cloud Tasks キュー設定・デプロイメント実装
-- [ ] Cloud Functions・Cloud Run コード調整
-- [ ] 本番環境テスト・デバッグ
+- [ ] GCP Cloud Tasks 本番環境テスト・デバッグ
 - [ ] エラーモニタリング・アラート設定（Cloud Logging）
 - [ ] Dead Letter Queue 実装（リトライ上限超過時）
 - [ ] Playwright codegen によるトラボックス要素自動検査
@@ -28,8 +64,9 @@
 - [ ] 案件検索・フィルター機能
 - [ ] モバイルアプリ対応
 
-## 🔄 進行中 (In Progress)
-- [ ] なし（全ステップ完了）
+## 🔄 現在のステータス
+- 🎯 **Step 17 完成**: GCP Cloud Tasks デプロイメント実装完了
+- 📝 **次フェーズ**: 本番環境テスト・デバッグ（デプロイスクリプト実行）
 
 ## 📈 実装進捗
 - **Step 1-4**: ✅ バックエンド基本環境構築（FastAPI、Playwright、JWT認証）
@@ -44,8 +81,9 @@
 - **Step 14**: ✅ WebKIT API 実環境テスト・自動ログイン実装
 - **Step 15**: ✅ 複数プラットフォーム同時投稿実装
 - **Step 16**: ✅ プッシュ通知機能実装（SSE・リアルタイム配信）
+- **Step 17**: ✅ GCP Cloud Tasks 非同期投稿アーキテクチャ実装
 
-**全ステップ完了率: 100% ✅ (Step 1-16)**
+**全ステップ完了率: 100% ✅ (Step 1-17)**
 
 ## ✅ 完了 (Completed)
 - [x] 新要件の定義と技術選定の刷新 (FastAPI + Playwright + Tailwind CSS)
@@ -211,15 +249,57 @@
     - [x] バッチ完了通知: ✅ 成功
     - [x] エラー通知: ✅ 成功
     - [x] SSE切断: ✅ 成功
+- [x] **Step 17: GCP Cloud Tasks 非同期投稿アーキテクチャ実装** ✅
+  - [x] `app/services/cloud_tasks.py` - GoogleCloudTasksClient クラス
+    - [x] Cloud Tasks クライアント実装
+    - [x] ローカル開発用 LocalTaskQueue
+    - [x] タスク作成・キュー統計メソッド
+  - [x] `app/routers/cases.py` Web UI 修正
+    - [x] POST /cases/register を非同期対応
+    - [x] 案件 DB 保存（同期）
+    - [x] Cloud Tasks にタスク追加（0.1秒で返す）
+    - [x] posting_history に「pending」ステータス記録
+  - [x] `functions/poster.py` - Cloud Run ポスター関数
+    - [x] Google Cloud Tasks から HTTP リクエスト受け取り
+    - [x] Playwright で Trabox + WebKIT 並行投稿
+    - [x] 投稿結果を posting_history に記録
+    - [x] エラーハンドリング・リトライ対応
+  - [x] Dockerfile（Cloud Run デプロイ）
+    - [x] Python 3.11 slim ベース
+    - [x] Playwright Chromium 事前インストール
+    - [x] Functions Framework で HTTP トリガー
+  - [x] `requirements.txt` パッケージ追加
+    - [x] functions-framework==3.7.0
+    - [x] google-cloud-tasks==2.16.1
+    - [x] google-cloud-logging==3.8.1
+  - [x] `scripts/deploy_to_gcp.sh` - デプロイスクリプト
+    - [x] Cloud Run 自動デプロイ
+    - [x] Cloud Tasks キュー自動作成
+    - [x] デプロイ後の設定ガイド表示
+  - [x] 月額コスト: ¥0（無料枠で充分）
 
 ## 📝 開発メモ・実装詳細
 
 ### 環境＆技術スタック
-- Python 3.7.11 で環境構築（互換性：3.11+ 推奨）
+
+#### ローカル・開発環境
+- Python 3.7.11（互換性：3.11+ 推奨）
 - FastAPI + Uvicorn (非同期Webフレームワーク)
 - SQLite (軽量データベース)
 - Playwright v1.35 (ブラウザ自動化)
 - Tailwind CSS CDN (フロントエンドスタイリング)
+
+#### GCP クラウド環境（本番）
+- **Google Cloud Functions** - Web UI・リクエスト処理
+- **Google Cloud Tasks** - 非同期タスクキュー（maxConcurrentDispatches: 1）
+- **Google Cloud Run** - Playwright ポスター実行エンジン
+- **Google Cloud Logging** - ログ記録・モニタリング
+- **Google Cloud Storage** - エラースクリーンショット保存（オプション）
+
+#### デプロイメント
+- Docker（Cloud Run コンテナ）
+- Functions Framework（HTTP トリガー）
+- gcloud CLI（デプロイ自動化）
 
 ### トラボックス（Trabox）自動投稿
 - **要素特定**: `input[name="loginid"]`, `input[name="loginpwd"]`, `span:has-text("ログイン")`
