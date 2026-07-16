@@ -43,18 +43,32 @@ class CloudTasksE2ETest:
         print("=" * 80)
 
         # テスト用ログインユーザー情報
-        login_data = {
-            "username": "testuser",
-            "password": "testpass123"
-        }
+        # 注: 既存ユーザーがない場合はスキップ
+        login_username = "testuser"
+        login_password = "testpass123"
 
         # Step 1: ユーザーログイン
         print("\n[Step 1] ユーザーログイン")
         print("-" * 80)
 
+        # まずユーザー登録を試みる
+        register_response = self.session.post(
+            f"{self.base_url}/auth/register",
+            data={
+                "username": login_username,
+                "email": f"{login_username}@example.com",
+                "password": login_password,
+                "password_confirm": login_password
+            }
+        )
+
+        # ユーザー登録後、ログイン
         login_response = self.session.post(
             f"{self.base_url}/auth/login",
-            data=login_data
+            params={
+                "username": login_username,
+                "password": login_password
+            }
         )
 
         if login_response.status_code == 200:
@@ -63,7 +77,7 @@ class CloudTasksE2ETest:
         else:
             print(f"❌ ログイン失敗 (HTTP {login_response.status_code})")
             print(f"   レスポンス: {login_response.text[:200]}")
-            return False
+            return False, None
 
         # Step 2: 案件登録フォーム送信
         print("\n[Step 2] 案件登録フォーム送信")
