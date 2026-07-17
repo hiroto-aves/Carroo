@@ -21,7 +21,7 @@ async def case_register_page():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>OneLogi-Post - 案件登録</title>
+        <title>Carroo - 案件登録</title>
         <script src="https://cdn.tailwindcss.com"></script>
     </head>
     <body class="bg-gray-50">
@@ -30,7 +30,7 @@ async def case_register_page():
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex justify-between h-16 items-center">
                     <div class="flex items-center">
-                        <span class="text-2xl font-bold text-blue-600">📦 OneLogi-Post</span>
+                        <span class="text-2xl font-bold text-blue-600">📦 Carroo</span>
                     </div>
                     <div class="flex items-center gap-4">
                         <a href="/auth/me" class="text-gray-600 hover:text-gray-900">プロフィール</a>

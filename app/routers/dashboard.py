@@ -53,7 +53,7 @@ async def dashboard(current_user: dict = Depends(get_current_user)):
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>OneLogi-Post - ダッシュボード</title>
+            <title>Carroo - ダッシュボード</title>
             <script src="https://cdn.tailwindcss.com"></script>
         </head>
         <body class="bg-gray-50">
@@ -62,7 +62,7 @@ async def dashboard(current_user: dict = Depends(get_current_user)):
                 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div class="flex justify-between h-16 items-center">
                         <div class="flex items-center">
-                            <a href="/dashboard" class="text-2xl font-bold text-blue-600">📦 OneLogi-Post</a>
+                            <a href="/dashboard" class="text-2xl font-bold text-blue-600">📦 Carroo</a>
                         </div>
                         <div class="flex items-center gap-6">
                             <div class="text-right">
@@ -230,7 +230,7 @@ async def cases_list(current_user: dict = Depends(get_current_user)):
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>OneLogi-Post - 案件一覧</title>
+            <title>Carroo - 案件一覧</title>
             <script src="https://cdn.tailwindcss.com"></script>
         </head>
         <body class="bg-gray-50">
@@ -239,7 +239,7 @@ async def cases_list(current_user: dict = Depends(get_current_user)):
                 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div class="flex justify-between h-16 items-center">
                         <div class="flex items-center">
-                            <a href="/dashboard" class="text-2xl font-bold text-blue-600">📦 OneLogi-Post</a>
+                            <a href="/dashboard" class="text-2xl font-bold text-blue-600">📦 Carroo</a>
                         </div>
                         <div class="flex items-center gap-6">
                             <a href="/cases/register" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
@@ -365,7 +365,7 @@ async def case_detail(case_id: int, current_user: dict = Depends(get_current_use
         <head>
             <meta charset="UTF-8">
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>OneLogi-Post - 案件詳細</title>
+            <title>Carroo - 案件詳細</title>
             <script src="https://cdn.tailwindcss.com"></script>
         </head>
         <body class="bg-gray-50">
@@ -374,7 +374,7 @@ async def case_detail(case_id: int, current_user: dict = Depends(get_current_use
                 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div class="flex justify-between h-16 items-center">
                         <div class="flex items-center">
-                            <a href="/dashboard" class="text-2xl font-bold text-blue-600">📦 OneLogi-Post</a>
+                            <a href="/dashboard" class="text-2xl font-bold text-blue-600">📦 Carroo</a>
                         </div>
                         <a href="/auth/logout" class="text-gray-600 hover:text-red-600 transition">ログアウト</a>
                     </div>

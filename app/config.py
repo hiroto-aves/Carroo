@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Settings:
-    APP_NAME = "OneLogi-Post"
+    APP_NAME = "Carroo"
     DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 
     # Database

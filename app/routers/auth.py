@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Response, Depends
+from fastapi import APIRouter, HTTPException, status, Response, Depends, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from app.models.schemas import UserCreate, User
 from app.db.database import get_db_connection
@@ -17,7 +17,7 @@ async def login_page():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>OneLogi-Post - ログイン</title>
+        <title>Carroo - ログイン</title>
         <script src="https://cdn.tailwindcss.com"></script>
     </head>
     <body class="bg-gradient-to-br from-blue-50 via-white to-blue-50 min-h-screen">
@@ -28,7 +28,7 @@ async def login_page():
                     <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-600 mb-4">
                         <span class="text-white text-xl font-bold">📦</span>
                     </div>
-                    <h1 class="text-3xl font-bold text-gray-900">OneLogi-Post</h1>
+                    <h1 class="text-3xl font-bold text-gray-900">Carroo</h1>
                     <p class="text-gray-600 text-sm mt-2">物流案件一括投稿アプリ</p>
                 </div>
 
@@ -36,7 +36,9 @@ async def login_page():
                 <div class="bg-white rounded-2xl shadow-lg p-8 border border-gray-100">
                     <h2 class="text-xl font-semibold text-gray-900 mb-6">ログイン</h2>
 
-                    <form method="post" action="/auth/login" class="space-y-5">
+                    <div id="error-message" class="hidden mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700"></div>
+
+                    <form id="login-form" class="space-y-5">
                         <!-- ユーザー名 -->
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">
@@ -85,10 +87,40 @@ async def login_page():
 
                 <!-- フッター -->
                 <p class="text-center text-xs text-gray-500 mt-8">
-                    © 2026 OneLogi-Post. All rights reserved.
+                    © 2026 Carroo. All rights reserved.
                 </p>
             </div>
         </div>
+
+        <script>
+            document.getElementById('login-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const formData = new FormData(e.target);
+                const errorDiv = document.getElementById('error-message');
+
+                try {
+                    const response = await fetch('/auth/login', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        // ログイン成功 → ダッシュボードにリダイレクト
+                        window.location.href = '/';
+                    } else {
+                        // エラー表示
+                        errorDiv.textContent = data.detail || 'ログインに失敗しました';
+                        errorDiv.classList.remove('hidden');
+                    }
+                } catch (error) {
+                    errorDiv.textContent = 'エラーが発生しました: ' + error.message;
+                    errorDiv.classList.remove('hidden');
+                }
+            });
+        </script>
     </body>
     </html>
     """
@@ -101,7 +133,7 @@ async def register_page():
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>OneLogi-Post - 新規登録</title>
+        <title>Carroo - 新規登録</title>
         <script src="https://cdn.tailwindcss.com"></script>
     </head>
     <body class="bg-gradient-to-br from-blue-50 via-white to-blue-50 min-h-screen">
@@ -112,7 +144,7 @@ async def register_page():
                     <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-600 mb-4">
                         <span class="text-white text-xl font-bold">📦</span>
                     </div>
-                    <h1 class="text-3xl font-bold text-gray-900">OneLogi-Post</h1>
+                    <h1 class="text-3xl font-bold text-gray-900">Carroo</h1>
                     <p class="text-gray-600 text-sm mt-2">物流案件一括投稿アプリ</p>
                 </div>
 
@@ -120,7 +152,10 @@ async def register_page():
                 <div class="bg-white rounded-2xl shadow-lg p-8 border border-gray-100">
                     <h2 class="text-xl font-semibold text-gray-900 mb-6">新規登録</h2>
 
-                    <form method="post" action="/auth/register" class="space-y-5">
+                    <div id="error-message" class="hidden mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700"></div>
+                    <div id="success-message" class="hidden mb-4 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700"></div>
+
+                    <form id="register-form" class="space-y-5">
                         <!-- ユーザー名 -->
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">
@@ -185,16 +220,56 @@ async def register_page():
 
                 <!-- フッター -->
                 <p class="text-center text-xs text-gray-500 mt-8">
-                    © 2026 OneLogi-Post. All rights reserved.
+                    © 2026 Carroo. All rights reserved.
                 </p>
             </div>
         </div>
+
+        <script>
+            document.getElementById('register-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const formData = new FormData(e.target);
+                const errorDiv = document.getElementById('error-message');
+                const successDiv = document.getElementById('success-message');
+
+                // エラーと成功メッセージをリセット
+                errorDiv.classList.add('hidden');
+                successDiv.classList.add('hidden');
+
+                try {
+                    const response = await fetch('/auth/register', {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        // 登録成功
+                        successDiv.textContent = '登録成功！ ログイン画面にリダイレクトしています...';
+                        successDiv.classList.remove('hidden');
+
+                        setTimeout(() => {
+                            window.location.href = '/auth/login';
+                        }, 2000);
+                    } else {
+                        // エラー表示
+                        errorDiv.textContent = data.detail || '登録に失敗しました';
+                        errorDiv.classList.remove('hidden');
+                    }
+                } catch (error) {
+                    errorDiv.textContent = 'エラーが発生しました: ' + error.message;
+                    errorDiv.classList.remove('hidden');
+                }
+            });
+        </script>
     </body>
     </html>
     """
 
 @router.post("/register")
-async def register(username: str, email: str, password: str):
+async def register(username: str = Form(...), email: str = Form(...), password: str = Form(...)):
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -220,7 +295,10 @@ async def register(username: str, email: str, password: str):
         conn.close()
 
 @router.post("/login")
-async def login(username: str, password: str, response: Response):
+async def login(username: str = Form(...), password: str = Form(...), response: Response = None):
+    if response is None:
+        response = Response()
+
     conn = get_db_connection()
     cursor = conn.cursor()
 

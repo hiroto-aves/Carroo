@@ -12,7 +12,7 @@ logging.basicConfig(
 )
 
 app = FastAPI(
-    title="OneLogi-Post",
+    title="Carroo",
     description="物流案件一括一元投稿アプリ",
     version="0.1.0"
 )
@@ -34,13 +34,13 @@ async def read_root():
     <!DOCTYPE html>
     <html>
     <head>
-        <title>OneLogi-Post</title>
+        <title>Carroo</title>
         <script src="https://cdn.tailwindcss.com"></script>
     </head>
     <body class="bg-gray-50">
         <div class="min-h-screen flex items-center justify-center">
             <div class="bg-white p-8 rounded-lg shadow-md">
-                <h1 class="text-3xl font-bold text-center mb-4">OneLogi-Post</h1>
+                <h1 class="text-3xl font-bold text-center mb-4">Carroo</h1>
                 <p class="text-gray-600 text-center mb-6">物流案件一括一元投稿アプリ</p>
                 <a href="/auth/login" class="block bg-blue-500 text-white py-2 px-4 rounded text-center hover:bg-blue-600">ログイン</a>
             </div>
@@ -51,4 +51,4 @@ async def read_root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "message": "OneLogi-Post backend is running"}
+    return {"status": "ok", "message": "Carroo backend is running"}
