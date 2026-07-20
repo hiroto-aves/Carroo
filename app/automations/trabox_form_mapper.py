@@ -1,5 +1,7 @@
 """Trabox フォームマッピング
 case_data → Trabox フォームフィールドの対応関係
+
+🔴 【重要】Traboxはname属性を使わず、placeholder属性でフィールドを特定
 """
 from typing import Dict, Any, Optional
 from datetime import datetime
@@ -11,71 +13,83 @@ logger = logging.getLogger(__name__)
 class TraboxFormMapper:
     """case_data を Trabox フォームフィールドにマップ
 
-    TODO: 実際のフォーム構造を確認後、セレクター・フィールド名を更新
+    ⭐ 2026-07-20 修正：
+    - Trabox フォームはname属性がない
+    - placeholder属性またはクラス+プレースホルダーで特定する
     """
 
     # フィールドマッピング定義
     # {case_data_key: (selector, field_type, value_transformer)}
     FIELD_MAPPING = {
-        # 出発地・目的地
+        # 出発地・目的地 - select 要素で管理（rc_select_0, rc_select_1 等）
         "pick_location": {
-            "selector": "select[name='from_prefecture']",  # TODO: 実際のセレクターを確認
+            "selector": "input[id='rc_select_0'], .ant-select:nth-of-type(1) input",
             "type": "select",
             "description": "出発地（都道府県）",
+            "placeholder": None,
         },
         "drop_location": {
-            "selector": "select[name='to_prefecture']",  # TODO: 実際のセレクターを確認
+            "selector": "input[id='rc_select_1'], .ant-select:nth-of-type(2) input",
             "type": "select",
             "description": "目的地（都道府県）",
+            "placeholder": None,
         },
-        # 荷物情報
+        # 荷物情報 - placeholder で特定
         "cargo_weight": {
-            "selector": "input[name='weight']",  # TODO: 実際のセレクターを確認
+            "selector": "input.ant-input.tbx-text-input",
             "type": "number",
             "description": "荷物の重量（kg）",
+            "placeholder": None,  # 複数要素があるので手動マッピングが必要
         },
         "vehicle_type": {
-            "selector": "select[name='vehicle_type']",  # TODO: 実際のセレクターを確認
+            "selector": "input[id='rc_select_2'], .ant-select:nth-of-type(3) input",
             "type": "select",
             "description": "車種",
+            "placeholder": None,
         },
         # 料金
         "freight_rate": {
-            "selector": "input[name='freight_rate']",  # TODO: 実際のセレクターを確認
+            "selector": "input[id='rc_select_5'], .ant-select:nth-of-type(6) input",
             "type": "number",
             "description": "運送料金（円）",
+            "placeholder": None,
         },
-        # 日時
+        # 日時 - 積み時間・卸し時間が別途ある
         "pickup_date": {
-            "selector": "input[name='pickup_date']",  # TODO: 実際のセレクターを確認
+            "selector": "input[placeholder='日時を選択']",
             "type": "date",
             "description": "ピックアップ日",
+            "placeholder": "日時を選択",
         },
         "pickup_time": {
-            "selector": "input[name='pickup_time']",  # TODO: 実際のセレクターを確認
+            "selector": "input[placeholder='積み時間を入力してください']",
             "type": "time",
             "description": "ピックアップ時間",
+            "placeholder": "積み時間を入力してください",
         },
-        # 連絡先
+        # 連絡先 - 未実装（要確認）
         "contact_name": {
-            "selector": "input[name='contact_name']",  # TODO: 実際のセレクターを確認
+            "selector": "input[placeholder*='名前'], input[placeholder*='担当']",
             "type": "text",
             "description": "連絡先名",
+            "placeholder": None,
         },
         "contact_phone": {
-            "selector": "input[name='contact_phone']",  # TODO: 実際のセレクターを確認
+            "selector": "input[placeholder*='電話'], input[placeholder*='携帯']",
             "type": "tel",
             "description": "連絡先電話番号",
+            "placeholder": None,
         },
         "contact_email": {
-            "selector": "input[name='contact_email']",  # TODO: 実際のセレクターを確認
+            "selector": "input[placeholder*='メール'], input[type='email']",
             "type": "email",
             "description": "連絡先メール",
+            "placeholder": None,
         },
     }
 
     # 送信ボタンセレクター
-    SUBMIT_BUTTON_SELECTOR = "button:has-text('登録'), button[type='submit']"  # TODO: 実際のセレクターを確認
+    SUBMIT_BUTTON_SELECTOR = "button:has-text('登録'), button[type='submit']"
 
     @classmethod
     def get_fields_to_fill(cls) -> Dict[str, Dict[str, Any]]:

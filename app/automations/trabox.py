@@ -205,14 +205,14 @@ class TraboxAutomation:
     async def _step_navigate_to_register(self, page: Page) -> None:
         """ステップ 3: 荷物登録ページにナビゲート
 
-        🔴 【重要】このURLのみが正しい登録ページ
-        他の似たようなフォームは全部違う！
+        🔴 【重要】このURLのみが正しい登録ページ：
+        https://www.trabox.com/baggage/register
         """
         try:
             logger.info("[Trabox] 荷物登録ページにナビゲート中...")
             await self.debug_capture.capture_screenshot("step_3_before_register")
 
-            # 直接登録URLにアクセス
+            # 直接URLアクセス（ログイン後のセッション保持）
             await page.goto(
                 TRABOX_BAGGAGE_REGISTER_URL,
                 wait_until="networkidle",
@@ -388,8 +388,10 @@ class TraboxAutomation:
                 logger.info("[Trabox] フォーム送信成功を確認しました")
                 await self.debug_capture.capture_screenshot("step_5_success_confirmed")
             else:
-                logger.warning("[Trabox] 送信成功が確認できませんでした")
+                logger.error("[Trabox] フォーム送信に失敗したか、成功を確認できませんでした")
                 await self.debug_capture.capture_screenshot("step_5_success_uncertain")
+                # 失敗した場合はエラーを投げる
+                raise Exception("Trabox フォーム送信に失敗しました：成功メッセージが表示されず、URLも遷移していません")
 
             structured_logger.log_event(
                 "trabox_submit",
@@ -446,9 +448,11 @@ class TraboxAutomation:
                     logger.error(f"[Trabox] エラーメッセージ検出: {pattern}")
                     return False
 
-            # 判定できない場合は不確実
+            # 判定できない場合は失敗
             logger.warning("[Trabox] 成功判定が不確実です（詳細はスクリーンショット参照）")
-            return True  # 保留的に成功と判定
+            logger.warning(f"[Trabox] URL: {current_url}")
+            logger.warning(f"[Trabox] ページコンテンツから成功メッセージが見つかりません")
+            return False  # 判定できない場合は失敗と判定
 
         except Exception as e:
             logger.warning(f"[Trabox] 成功判定エラー: {e}")

@@ -1,0 +1,35 @@
+[
+  {
+    "index": 1,
+    "tag": "INPUT",
+    "type": "text",
+    "placeholder": "番地・建物（任意）",
+    "label": "市区町村",
+    "visible": true,
+    "enabled": true,
+    "class": "ant-input tbx-text-input",
+    "data_attr": null
+  },
+  {
+    "index": 2,
+    "tag": "INPUT",
+    "type": "text",
+    "placeholder": "積み時間を入力してください",
+    "label": "積み時間",
+    "visible": true,
+    "enabled": true,
+    "class": "ant-input tbx-text-input",
+    "data_attr": null
+  },
+  {
+    "index": 3,
+    "tag": "INPUT",
+    "type": "text",
+    "placeholder": "日時を選択",
+    "label": null,
+    "visible": true,
+    "enabled": false,
+    "class": "ant-input",
+    "data_attr": null
+  }
+]

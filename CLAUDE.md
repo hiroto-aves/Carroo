@@ -207,6 +207,39 @@ Cloud Run では以下のパターンに対応すること：
 
 ---
 
+## 🚚 Trabox（トラボックス）投稿ページ【重要】
+
+### 投稿ページURL（絶対に変わらない）
+```
+https://www.trabox.com/baggage/register
+```
+
+⭐ **このURL以外は投稿ページではありません**
+- このURLのみが正しい荷物登録ページ
+- ログイン後にこのURLに直接アクセスすること
+- メニュー経由のナビゲーションは不安定
+
+### Trabox 自動投稿フロー
+1. **ログイン**: `https://www.trabox.com/baggage/list/opened`
+   - `input[name="loginid"]` にメールを入力
+   - `input[name="loginpwd"]` にパスワードを入力
+   - `span:has-text("ログイン")` をクリック
+   
+2. **登録ページアクセス**: `https://www.trabox.com/baggage/register`
+   - ログイン後のセッションを保持したまま直接アクセス
+   
+3. **フォーム入力**: 実際のセレクターはTODO（確認中）
+   - 投稿データをフォームに入力
+   
+4. **送信**: `button:has-text('登録')` をクリック
+
+### 技術的な注意点
+- Trabox は SPA（Vue.js等）で動的フォーム生成
+- name属性による入力ではなく、クラス名やプレースホルダーで識別
+- 各フィールドのセレクターは trabox_form_mapper.py で定義
+
+---
+
 ## 開発ログの管理ルール
 
 - `development_log/` フォルダに日付ファイル（例: `2026-06-01.md`）で会話ログを残す。
