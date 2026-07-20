@@ -240,17 +240,59 @@ class TraboxAutomation:
             )
 
     async def _step_fill_form(self, page: Page, case_data: Dict[str, Any]) -> None:
-        """ステップ 4: フォーム入力
+        """ステップ 4: フォーム入力"""
+        from app.automations.trabox_form_mapper import TraboxFormMapper
 
-        TODO: 実際のフィールド名・セレクターを確認してから実装
-        """
         try:
             logger.info("[Trabox] フォーム入力中...")
             await self.debug_capture.capture_screenshot("step_4_form_before_fill")
 
-            # ここにフォーム入力ロジックを実装
-            # TODO: 実際のセレクター・フィールド名を確認
-            logger.info(f"[Trabox] 投稿データ: {case_data}")
+            # case_data を検証
+            validation = TraboxFormMapper.validate_case_data(case_data)
+            logger.info(f"[Trabox] フィールド検証: {validation}")
+
+            if validation["unknown_fields"]:
+                logger.warning(
+                    f"[Trabox] 未定義フィールド: {validation['unknown_fields']}"
+                )
+
+            # 各フィールドに入力
+            field_mapping = TraboxFormMapper.get_fields_to_fill()
+
+            for key, value in case_data.items():
+                if key not in field_mapping:
+                    logger.debug(f"[Trabox] スキップ（未定義）: {key}")
+                    continue
+
+                field_info = field_mapping[key]
+                selector = field_info["selector"]
+                field_type = field_info["type"]
+                description = field_info["description"]
+
+                try:
+                    # 値を変換
+                    transformed_value = TraboxFormMapper.transform_value(key, value)
+                    if transformed_value is None:
+                        logger.debug(f"[Trabox] スキップ（値なし）: {key}")
+                        continue
+
+                    logger.info(
+                        f"[Trabox] 入力: {description} ({key}) = {transformed_value}"
+                    )
+
+                    # フィールド入力
+                    await self._fill_field(
+                        page, selector, field_type, transformed_value, key
+                    )
+
+                    await self.debug_capture.capture_screenshot(f"step_4_filled_{key}")
+
+                except Exception as field_error:
+                    logger.error(
+                        f"[Trabox] フィールド入力エラー ({key}): {field_error}"
+                    )
+                    # フィールド入力失敗は続行（任意フィールドの可能性）
+                    continue
 
             await self.debug_capture.capture_screenshot("step_4_form_after_fill")
 
@@ -259,7 +301,10 @@ class TraboxAutomation:
                 self.user_id,
                 self.case_id,
                 "trabox",
-                details={"fields": list(case_data.keys())},
+                details={
+                    "valid_fields": validation["valid_fields"],
+                    "missing_fields": validation["missing_fields"],
+                },
             )
 
         except Exception as e:
@@ -272,23 +317,86 @@ class TraboxAutomation:
                 screenshots=self._get_screenshot_paths(),
             )
 
+    async def _fill_field(
+        self,
+        page: Page,
+        selector: str,
+        field_type: str,
+        value: str,
+        field_name: str,
+    ) -> None:
+        """単一フィールドに入力"""
+        try:
+            if field_type == "select":
+                # select タグの場合
+                await page.select_option(selector, value, timeout=TRABOX_TIMEOUTS["action"])
+                logger.debug(f"[Trabox] セレクト: {field_name} = {value}")
+
+            elif field_type in ["text", "number", "tel", "email", "date", "time"]:
+                # テキスト入力タイプ
+                await page.fill(selector, value, timeout=TRABOX_TIMEOUTS["action"])
+                logger.debug(f"[Trabox] 入力: {field_name} = {value}")
+
+            elif field_type == "checkbox":
+                # チェックボックス
+                if value in ["true", "True", "1", True]:
+                    await page.check(selector, timeout=TRABOX_TIMEOUTS["action"])
+                    logger.debug(f"[Trabox] チェック: {field_name}")
+                else:
+                    await page.uncheck(selector, timeout=TRABOX_TIMEOUTS["action"])
+                    logger.debug(f"[Trabox] アンチェック: {field_name}")
+
+            else:
+                # 未知の型
+                await page.fill(selector, value, timeout=TRABOX_TIMEOUTS["action"])
+                logger.debug(f"[Trabox] 入力（型不明）: {field_name} = {value}")
+
+        except Exception as e:
+            logger.error(f"[Trabox] フィールド入力失敗: {field_name} - {e}")
+            raise
+
     async def _step_submit_form(self, page: Page) -> None:
         """ステップ 5: フォーム送信"""
+        from app.automations.trabox_form_mapper import TraboxFormMapper
+
         try:
             logger.info("[Trabox] フォーム送信中...")
             await self.debug_capture.capture_screenshot("step_5_before_submit")
 
-            # TODO: 送信ボタンのセレクターを確認してから実装
-            # await page.click(submit_button_selector)
+            # 送信ボタンをクリック
+            submit_selector = TraboxFormMapper.get_submit_button_selector()
+            logger.info(f"[Trabox] 送信ボタンをクリック: {submit_selector}")
 
-            await self.debug_capture.capture_screenshot("step_5_after_submit")
+            await page.click(submit_selector, timeout=TRABOX_TIMEOUTS["action"])
+            await self.debug_capture.capture_screenshot("step_5_button_clicked")
+
+            # 送信後のページ遷移を待機
+            logger.info("[Trabox] ページ遷移を待機中...")
+            try:
+                await page.wait_for_navigation(timeout=TRABOX_TIMEOUTS["navigation"])
+                await self.debug_capture.capture_screenshot("step_5_after_navigation")
+            except Exception as nav_error:
+                logger.warning(f"[Trabox] ページ遷移タイムアウト: {nav_error}")
+                # ナビゲーションが無い可能性もあるため、少し待機
+                await page.wait_for_timeout(2000)
+                await self.debug_capture.capture_screenshot("step_5_after_wait")
+
+            # 成功判定
+            success = await self._check_submission_success(page)
+
+            if success:
+                logger.info("[Trabox] フォーム送信成功を確認しました")
+                await self.debug_capture.capture_screenshot("step_5_success_confirmed")
+            else:
+                logger.warning("[Trabox] 送信成功が確認できませんでした")
+                await self.debug_capture.capture_screenshot("step_5_success_uncertain")
 
             structured_logger.log_event(
                 "trabox_submit",
                 self.user_id,
                 self.case_id,
                 "trabox",
-                details={"message": "フォーム送信完了"},
+                details={"success": success, "message": "フォーム送信完了"},
             )
 
         except Exception as e:
@@ -300,6 +408,51 @@ class TraboxAutomation:
                 step="submit_form",
                 screenshots=self._get_screenshot_paths(),
             )
+
+    async def _check_submission_success(self, page: Page) -> bool:
+        """送信成功判定
+
+        成功の判定基準:
+        1. 成功メッセージが表示されている
+        2. URL が変更された（登録一覧へのリダイレクト等）
+        3. エラーメッセージが表示されていない
+        """
+        try:
+            # 成功メッセージをチェック（日本語含む）
+            success_patterns = [
+                "登録完了",
+                "成功",
+                "完了しました",
+                "荷物情報を登録",
+            ]
+
+            for pattern in success_patterns:
+                count = await page.locator(f"text='{pattern}'").count()
+                if count > 0:
+                    logger.info(f"[Trabox] 成功メッセージ確認: {pattern}")
+                    return True
+
+            # URL 変更をチェック（登録ページから別ページに遷移）
+            current_url = page.url
+            if not current_url.endswith("/baggage/register"):
+                logger.info(f"[Trabox] URL 変更確認: {current_url}")
+                return True
+
+            # エラーメッセージをチェック
+            error_patterns = ["エラー", "失敗", "入力してください", "必須項目"]
+            for pattern in error_patterns:
+                count = await page.locator(f"text='{pattern}'").count()
+                if count > 0:
+                    logger.error(f"[Trabox] エラーメッセージ検出: {pattern}")
+                    return False
+
+            # 判定できない場合は不確実
+            logger.warning("[Trabox] 成功判定が不確実です（詳細はスクリーンショット参照）")
+            return True  # 保留的に成功と判定
+
+        except Exception as e:
+            logger.warning(f"[Trabox] 成功判定エラー: {e}")
+            return False  # 判定失敗は失敗と判定
 
     async def _is_login_page(self, page: Page) -> bool:
         """ログインページか判定"""
