@@ -181,7 +181,7 @@ class TraboxAutomation:
             await self.debug_capture.capture_screenshot("step_2_login_button_clicked")
 
             # ログイン完了待機
-            await page.wait_for_navigation(timeout=TRABOX_TIMEOUTS["navigation"])
+            await page.wait_for_load_state("networkidle", timeout=TRABOX_TIMEOUTS["navigation"])
             await self.debug_capture.capture_screenshot("step_2_login_completed")
 
             structured_logger.log_event(
@@ -373,7 +373,7 @@ class TraboxAutomation:
             # 送信後のページ遷移を待機
             logger.info("[Trabox] ページ遷移を待機中...")
             try:
-                await page.wait_for_navigation(timeout=TRABOX_TIMEOUTS["navigation"])
+                await page.wait_for_load_state("networkidle", timeout=TRABOX_TIMEOUTS["navigation"])
                 await self.debug_capture.capture_screenshot("step_5_after_navigation")
             except Exception as nav_error:
                 logger.warning(f"[Trabox] ページ遷移タイムアウト: {nav_error}")
@@ -476,14 +476,17 @@ class TraboxAutomation:
             dom_snapshot = await self.debug_capture.capture_dom_snapshot()
 
         # エラーログを出力
+        debug_info = (
+            ErrorDebugInfo(self.debug_capture).get_debug_info()
+            if self.debug_capture
+            else {}
+        )
         ErrorHandler.log_error_details(
             error,
             structured_logger,
             extra_context={
                 "platform": "trabox",
-                "debug_info": self.debug_capture.get_debug_info()
-                if self.debug_capture
-                else {},
+                "debug_info": debug_info,
             },
         )
 
