@@ -123,7 +123,7 @@ def get_settings_html(username: str, trabox_username: str, webkit_person_id: str
             }};
 
             try {{
-                const response = await fetch('/api/settings/credentials', {{
+                const response = await fetch('/api/settings/credentials/', {{
                     method: 'POST',
                     headers: {{'Content-Type': 'application/json'}},
                     body: JSON.stringify(data)
