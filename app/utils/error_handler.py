@@ -1,6 +1,6 @@
 """エラーハンドリング統一ロジック"""
 import traceback
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from enum import Enum
 import logging
 
@@ -70,7 +70,7 @@ class ErrorHandler:
     """エラー処理の統一ロジック"""
 
     @staticmethod
-    def categorize_error(exception: Exception) -> tuple[ErrorCategory, ErrorCode, str]:
+    def categorize_error(exception: Exception) -> Tuple[ErrorCategory, ErrorCode, str]:
         """例外をカテゴリー・コード・メッセージに分類"""
         error_message = str(exception)
         exception_type = type(exception).__name__

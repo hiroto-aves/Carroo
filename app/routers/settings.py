@@ -7,7 +7,7 @@ from app.utils.encryption import encrypt_password, decrypt_password
 from pydantic import BaseModel
 from datetime import datetime
 
-router = APIRouter(prefix="/settings", tags=["settings"])
+router = APIRouter(tags=["settings"])
 
 
 class CredentialsInput(BaseModel):
@@ -150,7 +150,7 @@ def get_settings_html(username: str, trabox_username: str, webkit_person_id: str
 </html>"""
 
 
-@router.get("/", response_class=HTMLResponse)
+@router.get("/settings/", response_class=HTMLResponse)
 async def settings_page(current_user: dict = Depends(get_current_user)):
     """設定ページ"""
     conn = get_db_connection()
@@ -171,7 +171,7 @@ async def settings_page(current_user: dict = Depends(get_current_user)):
     return get_settings_html(username, trabox_username, webkit_person_id)
 
 
-@router.post("/api/settings/credentials")
+@router.post("/api/settings/credentials/")
 async def save_credentials(
     credentials: CredentialsInput,
     current_user: dict = Depends(get_current_user)
@@ -239,7 +239,7 @@ async def save_credentials(
         conn.close()
 
 
-@router.get("/api/settings/credentials")
+@router.get("/api/settings/credentials/")
 async def get_credentials(current_user: dict = Depends(get_current_user)):
     """認証情報を取得（パスワードはマスク）"""
     conn = get_db_connection()
