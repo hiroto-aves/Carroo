@@ -109,7 +109,7 @@ async def login_page():
 
                     if (response.ok) {
                         // ログイン成功 → ダッシュボードにリダイレクト
-                        window.location.href = '/';
+                        window.location.href = '/dashboard/';
                     } else {
                         // エラー表示
                         errorDiv.textContent = data.detail || 'ログインに失敗しました';
