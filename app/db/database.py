@@ -88,7 +88,6 @@ def init_db():
         user_id INTEGER NOT NULL,
         trabox_username TEXT,
         trabox_password_encrypted TEXT,
-        webkit_api_key_encrypted TEXT,
         webkit_person_id TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP,

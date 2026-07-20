@@ -13,7 +13,6 @@ router = APIRouter(prefix="/settings", tags=["settings"])
 class CredentialsInput(BaseModel):
     trabox_username: str = None
     trabox_password: str = None
-    webkit_api_key: str = None
     webkit_person_id: str = None
 
 
@@ -75,17 +74,17 @@ def get_settings_html(username: str, trabox_username: str, webkit_person_id: str
                 </div>
 
                 <div class="border-b pb-8">
-                    <h2 class="text-xl font-semibold text-gray-900 mb-6">🌐 WebKit API 認証情報</h2>
+                    <h2 class="text-xl font-semibold text-gray-900 mb-6">🌐 WebKit API 設定</h2>
                     <div class="space-y-5">
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">API キー（20桁）</label>
-                            <input type="password" name="webkit_api_key" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition font-mono" placeholder="20桁のAPIキー" maxlength="20">
-                            <p class="text-xs text-gray-500 mt-1">※ サーバーに暗号化して保存されます</p>
-                        </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">担当者 ID（14桁）</label>
                             <input type="text" name="webkit_person_id" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition font-mono" placeholder="14桁の担当者ID" value="{webkit_person_id}" maxlength="14">
                             <p class="text-xs text-gray-500 mt-1">例: 12345678901234</p>
+                        </div>
+                        <div class="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                            <p class="text-sm text-blue-800">
+                                <strong>📌 API キー:</strong> WebKit API キーは管理者により環境変数で一括管理されています。
+                            </p>
                         </div>
                     </div>
                 </div>
@@ -120,7 +119,6 @@ def get_settings_html(username: str, trabox_username: str, webkit_person_id: str
             const data = {{
                 trabox_username: formData.get('trabox_username') || null,
                 trabox_password: formData.get('trabox_password') || null,
-                webkit_api_key: formData.get('webkit_api_key') || null,
                 webkit_person_id: formData.get('webkit_person_id') || null,
             }};
 
@@ -189,11 +187,6 @@ async def save_credentials(
             if credentials.trabox_password
             else None
         )
-        webkit_api_key_encrypted = (
-            encrypt_password(credentials.webkit_api_key)
-            if credentials.webkit_api_key
-            else None
-        )
 
         cursor.execute(
             "SELECT id FROM user_credentials WHERE user_id = ?",
@@ -206,14 +199,12 @@ async def save_credentials(
                 UPDATE user_credentials
                 SET trabox_username = COALESCE(?, trabox_username),
                     trabox_password_encrypted = COALESCE(?, trabox_password_encrypted),
-                    webkit_api_key_encrypted = COALESCE(?, webkit_api_key_encrypted),
                     webkit_person_id = COALESCE(?, webkit_person_id),
                     updated_at = ?
                 WHERE user_id = ?
             """, (
                 credentials.trabox_username,
                 trabox_password_encrypted,
-                webkit_api_key_encrypted,
                 credentials.webkit_person_id,
                 datetime.utcnow().isoformat(),
                 user_id
@@ -221,13 +212,12 @@ async def save_credentials(
         else:
             cursor.execute("""
                 INSERT INTO user_credentials
-                (user_id, trabox_username, trabox_password_encrypted, webkit_api_key_encrypted, webkit_person_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (user_id, trabox_username, trabox_password_encrypted, webkit_person_id, created_at)
+                VALUES (?, ?, ?, ?, ?)
             """, (
                 user_id,
                 credentials.trabox_username,
                 trabox_password_encrypted,
-                webkit_api_key_encrypted,
                 credentials.webkit_person_id,
                 datetime.utcnow().isoformat()
             ))
