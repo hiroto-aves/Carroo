@@ -82,6 +82,21 @@ def init_db():
     )
     ''')
 
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS user_credentials (
+        id INTEGER PRIMARY KEY,
+        user_id INTEGER NOT NULL,
+        trabox_username TEXT,
+        trabox_password_encrypted TEXT,
+        webkit_api_key_encrypted TEXT,
+        webkit_person_id TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP,
+        FOREIGN KEY(user_id) REFERENCES users(id),
+        UNIQUE(user_id)
+    )
+    ''')
+
     conn.commit()
     conn.close()
 

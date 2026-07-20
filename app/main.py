@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
-from app.routers import auth, cases, dashboard, notifications
+from app.routers import auth, cases, dashboard, notifications, settings
 from app.db.database import init_db, get_db_connection
 from app.utils.security import hash_password
 import os
@@ -24,6 +24,7 @@ app.include_router(auth.router)
 app.include_router(cases.router)
 app.include_router(dashboard.router)
 app.include_router(notifications.router)
+app.include_router(settings.router)
 
 @app.on_event("startup")
 async def startup_event():

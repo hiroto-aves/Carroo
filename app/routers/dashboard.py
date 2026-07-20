@@ -73,6 +73,7 @@ async def dashboard(current_user: dict = Depends(get_current_user)):
                             <a href="/cases/register" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
                                 + 新規案件
                             </a>
+                            <a href="/settings/" class="text-gray-600 hover:text-blue-600 transition">⚙️ 初期設定</a>
                             <a href="/auth/logout" class="text-gray-600 hover:text-red-600 transition">ログアウト</a>
                         </div>
                     </div>
