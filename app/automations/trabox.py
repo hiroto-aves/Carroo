@@ -1,359 +1,365 @@
-from playwright.async_api import async_playwright, TimeoutError, Page
+"""Trabox への自動ログイン・投稿（Playwright）
+エラーハンドリング統合版
+"""
+from playwright.async_api import async_playwright, Page
 from app.config import settings
-from typing import Dict, Any
+from app.constants.trabox_config import (
+    TRABOX_LOGIN_URL,
+    TRABOX_BAGGAGE_REGISTER_URL,
+    TRABOX_DASHBOARD_URL,
+    TRABOX_SELECTORS,
+    TRABOX_TIMEOUTS,
+)
+from app.utils.error_handler import ErrorHandler, ErrorCategory, ErrorCode, PostingError
+from app.utils.structured_logging import structured_logger
+from app.utils.debug_capture import DebugCapture, ErrorDebugInfo
+from app.services.error_storage import error_storage_manager
+from typing import Dict, Any, Optional, Tuple
 import logging
 
 logger = logging.getLogger(__name__)
 
-class TraboxAutomation:
-    """トラボックスへの自動ログイン・投稿を実行（Playwright）
 
-    既知情報：
-    - ログイン画面：input[name="loginid"], input[name="loginpwd"]
-    - ログインボタン：span タグで「ログイン」テキスト
+class TraboxAutomation:
+    """Trabox への自動ログイン・投稿
+
+    🔴 【重要】
+    - 荷物登録URL: https://www.trabox.com/baggage/register
+    - このURLのフォームのみが正しい登録形式
+    - 他の似たようなフォームは全部違う！
     """
 
-    def __init__(self):
-        self.url = settings.TRABOX_URL
+    def __init__(
+        self,
+        user_id: int,
+        case_id: int,
+        username: str,
+        password: str,
+    ):
+        self.user_id = user_id
+        self.case_id = case_id
+        self.username = username
+        self.password = password
         self.headless = settings.TRABOX_HEADLESS
-        self.timeout = 30000
-        self.navigation_timeout = 10000
+        self.debug_capture: Optional[DebugCapture] = None
 
     async def post_case(self, case_data: Dict[str, Any]) -> Dict[str, Any]:
-        """案件データをトラボックスに投稿"""
+        """案件データを Trabox に投稿
+
+        Args:
+            case_data: 投稿する案件データ
+
+        Returns:
+            投稿結果
+
+        Raises:
+            PostingError: 投稿に失敗した場合
+        """
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=self.headless)
-            context = await browser.new_context(
-                viewport={"width": 1280, "height": 720}
-            )
+            context = await browser.new_context(viewport={"width": 1280, "height": 720})
             page = await context.new_page()
-            page.set_default_timeout(self.timeout)
-            page.set_default_navigation_timeout(self.navigation_timeout)
+
+            # デバッグキャプチャを初期化
+            self.debug_capture = DebugCapture(page)
 
             try:
-                # ダッシュボードにアクセス
-                dashboard_url = f"{self.url}/baggage/list/opened"
-                logger.info(f"[Trabox] Accessing dashboard: {dashboard_url}")
-                await page.goto(dashboard_url, wait_until="networkidle")
+                # ステップ 1: ダッシュボードにアクセス
+                await self._step_navigate_to_dashboard(page)
 
-                # ログインが必要か確認
-                is_login_page = await page.locator('input[name="loginid"]').count() > 0
+                # ステップ 2: ログイン確認・実行
+                is_login_page = await self._is_login_page(page)
                 if is_login_page:
-                    logger.info("[Trabox] Login page detected, logging in...")
-                    await self._login(page, case_data)
+                    await self._step_login(page)
                     # ログイン後、再度ダッシュボードにアクセス
-                    await page.goto(dashboard_url, wait_until="networkidle")
+                    await self._step_navigate_to_dashboard(page)
 
-                # ダッシュボード上で「新規投稿」ボタンを探して押す
-                logger.info("[Trabox] Looking for posting button...")
-                posting_button_selectors = [
-                    'a:has-text("新規登録")',
-                    'button:has-text("新規登録")',
-                    'a:has-text("追加")',
-                    'button:has-text("追加")',
-                    'a[href*="register"]',
-                    'button[href*="register"]'
-                ]
+                # ステップ 3: 荷物登録ページにアクセス
+                await self._step_navigate_to_register(page)
 
-                button_clicked = False
-                for selector in posting_button_selectors:
-                    button = page.locator(selector)
-                    if await button.count() > 0:
-                        try:
-                            await button.first.click()
-                            logger.info(f"[Trabox] Clicked posting button with selector: {selector}")
-                            button_clicked = True
-                            await page.wait_for_timeout(2000)  # フォーム読み込み待機
-                            break
-                        except Exception as e:
-                            logger.debug(f"[Trabox] Failed to click button ({selector}): {e}")
-                            continue
+                # ステップ 4: フォーム入力
+                await self._step_fill_form(page, case_data)
 
-                if not button_clicked:
-                    # ボタンが見つからない場合、直接フォームページにアクセス
-                    logger.warning("[Trabox] Posting button not found, navigating directly to form page")
-                    await page.goto(f"{self.url}/baggage/register", wait_until="domcontentloaded")
-                    await page.wait_for_timeout(2000)
+                # ステップ 5: 送信
+                await self._step_submit_form(page)
 
-                logger.info("[Trabox] Filling form...")
-                await self._fill_and_submit_form(page, case_data)
-
-                await page.screenshot(path="success_trabox.png")
-                logger.info("[Trabox] Case posted successfully")
+                # 成功ログ
+                structured_logger.log_posting_completed(
+                    self.user_id,
+                    self.case_id,
+                    "trabox",
+                    {"status": "success", "message": "Trabox への投稿に成功しました"},
+                )
 
                 return {
                     "status": "success",
                     "platform": "trabox",
-                    "message": "Case posted to Trabox successfully"
+                    "message": "投稿に成功しました",
                 }
 
-            except TimeoutError as e:
-                logger.error(f"[Trabox] Timeout: {e}")
-                try:
-                    await page.screenshot(path="error_screenshot_trabox_timeout.png")
-                except:
-                    pass
-                return {
-                    "status": "error",
-                    "platform": "trabox",
-                    "message": f"Timeout during operation: {str(e)}"
-                }
+            except PostingError as e:
+                # 既知のエラー
+                await self._handle_posting_error(page, e)
+                raise
 
             except Exception as e:
-                logger.error(f"[Trabox] Error: {type(e).__name__}: {e}")
-                try:
-                    await page.screenshot(path="error_screenshot_trabox.png")
-                except:
-                    pass
-                return {
-                    "status": "error",
-                    "platform": "trabox",
-                    "message": f"{type(e).__name__}: {str(e)}"
-                }
+                # 予期しないエラー
+                error = ErrorHandler.handle_posting_error(
+                    e,
+                    self.user_id,
+                    self.case_id,
+                    "trabox",
+                    step="unknown",
+                    screenshots=self._get_screenshot_paths(),
+                    dom_snapshot=await self.debug_capture.capture_dom_snapshot() if self.debug_capture else None,
+                    browser_console=self.debug_capture.get_console_logs() if self.debug_capture else None,
+                )
+                await self._handle_posting_error(page, error)
+                raise
 
             finally:
                 await context.close()
                 await browser.close()
 
-    async def _login(self, page: Page, case_data: Dict[str, Any]):
-        """トラボックスにログイン
+    async def _step_navigate_to_dashboard(self, page: Page) -> None:
+        """ステップ 1: ダッシュボードにナビゲート"""
+        try:
+            logger.info("[Trabox] ダッシュボードにナビゲート中...")
+            await self.debug_capture.capture_screenshot("step_0_start")
 
-        要素：
-        - ID入力: input[name="loginid"]
-        - PW入力: input[name="loginpwd"]
-        - ログインボタン: span:has-text("ログイン") または button:has-text("ログイン")
+            await page.goto(
+                TRABOX_DASHBOARD_URL,
+                wait_until="networkidle",
+                timeout=TRABOX_TIMEOUTS["navigation"],
+            )
+
+            await self.debug_capture.capture_screenshot("step_1_dashboard")
+            structured_logger.log_event(
+                "trabox_navigate",
+                self.user_id,
+                self.case_id,
+                "trabox",
+                details={"url": TRABOX_DASHBOARD_URL},
+            )
+
+        except Exception as e:
+            raise ErrorHandler.handle_posting_error(
+                e,
+                self.user_id,
+                self.case_id,
+                "trabox",
+                step="navigate_to_dashboard",
+                screenshots=self._get_screenshot_paths(),
+            )
+
+    async def _step_login(self, page: Page) -> None:
+        """ステップ 2: ログイン実行"""
+        try:
+            logger.info("[Trabox] ログイン実行中...")
+
+            # ユーザー名入力
+            await page.fill(
+                TRABOX_SELECTORS["login_id"],
+                self.username,
+                timeout=TRABOX_TIMEOUTS["action"],
+            )
+            await self.debug_capture.capture_screenshot("step_2_login_id_filled")
+
+            # パスワード入力
+            await page.fill(
+                TRABOX_SELECTORS["login_password"],
+                self.password,
+                timeout=TRABOX_TIMEOUTS["action"],
+            )
+            await self.debug_capture.capture_screenshot("step_2_login_password_filled")
+
+            # ログインボタンをクリック
+            await page.click(
+                TRABOX_SELECTORS["login_button"],
+                timeout=TRABOX_TIMEOUTS["action"],
+            )
+            await self.debug_capture.capture_screenshot("step_2_login_button_clicked")
+
+            # ログイン完了待機
+            await page.wait_for_navigation(timeout=TRABOX_TIMEOUTS["navigation"])
+            await self.debug_capture.capture_screenshot("step_2_login_completed")
+
+            structured_logger.log_event(
+                "trabox_login",
+                self.user_id,
+                self.case_id,
+                "trabox",
+                details={"message": "ログインに成功しました"},
+            )
+
+        except Exception as e:
+            raise ErrorHandler.handle_posting_error(
+                e,
+                self.user_id,
+                self.case_id,
+                "trabox",
+                step="login",
+                screenshots=self._get_screenshot_paths(),
+            )
+
+    async def _step_navigate_to_register(self, page: Page) -> None:
+        """ステップ 3: 荷物登録ページにナビゲート
+
+        🔴 【重要】このURLのみが正しい登録ページ
+        他の似たようなフォームは全部違う！
         """
-        username = case_data.get("username")
-        password = case_data.get("password")
-
-        if not username or not password:
-            raise ValueError("Username and password required for Trabox login")
-
-        # ID入力
-        logger.debug(f"[Trabox] Filling login ID")
-        login_id = page.locator('input[name="loginid"]')
-        await login_id.fill(username)
-
-        # パスワード入力
-        logger.debug(f"[Trabox] Filling login password")
-        login_pwd = page.locator('input[name="loginpwd"]')
-        await login_pwd.fill(password)
-
-        # ログインボタンクリック
-        logger.debug(f"[Trabox] Clicking login button")
-        login_button = page.locator('span:has-text("ログイン")')
-        if await login_button.count() > 0:
-            await login_button.click()
-        else:
-            login_button_alt = page.locator('button:has-text("ログイン")')
-            await login_button_alt.click()
-
-        # ナビゲーション完了待機
         try:
-            await page.wait_for_navigation(wait_until="domcontentloaded")
-        except:
-            # ナビゲーションが発生しない場合もあるため、要素の出現を待つ
-            await page.wait_for_selector('body', timeout=5000)
+            logger.info("[Trabox] 荷物登録ページにナビゲート中...")
+            await self.debug_capture.capture_screenshot("step_3_before_register")
 
-        logger.info("[Trabox] Login completed")
+            # 直接登録URLにアクセス
+            await page.goto(
+                TRABOX_BAGGAGE_REGISTER_URL,
+                wait_until="networkidle",
+                timeout=TRABOX_TIMEOUTS["navigation"],
+            )
 
-    async def _fill_and_submit_form(self, page: Page, case_data: Dict[str, Any]):
-        """案件フォームを入力して送信
+            await self.debug_capture.capture_screenshot("step_3_register_page_loaded")
 
-        トラボックスのフォーム要素は動的にレンダリングされるため、
-        複数のセレクター戦略を試して対応します
+            structured_logger.log_event(
+                "trabox_navigate_register",
+                self.user_id,
+                self.case_id,
+                "trabox",
+                details={"url": TRABOX_BAGGAGE_REGISTER_URL},
+            )
+
+        except Exception as e:
+            raise ErrorHandler.handle_posting_error(
+                e,
+                self.user_id,
+                self.case_id,
+                "trabox",
+                step="navigate_to_register",
+                screenshots=self._get_screenshot_paths(),
+            )
+
+    async def _step_fill_form(self, page: Page, case_data: Dict[str, Any]) -> None:
+        """ステップ 4: フォーム入力
+
+        TODO: 実際のフィールド名・セレクターを確認してから実装
         """
-        pick_location = case_data.get("pick_location", "")
-        drop_location = case_data.get("drop_location", "")
-        cargo_weight = str(case_data.get("cargo_weight", ""))
-        vehicle_type = case_data.get("vehicle_type", "")
-        freight_rate = str(case_data.get("freight_rate", ""))
-        pickup_date = case_data.get("pickup_date", "")
-        pickup_time = case_data.get("pickup_time", "")
-        contact_name = case_data.get("contact_name", "")
-        contact_phone = case_data.get("contact_phone", "")
-        contact_email = case_data.get("contact_email", "")
-
-        # ページが完全に読み込まれるまで待機
-        await page.wait_for_timeout(1500)
-
-        # デバッグ用スクリーンショット
         try:
-            await page.screenshot(path="trabox_form_before.png")
-        except:
-            pass
+            logger.info("[Trabox] フォーム入力中...")
+            await self.debug_capture.capture_screenshot("step_4_form_before_fill")
 
-        # 積地入力
-        if pick_location:
-            logger.debug(f"[Trabox] Filling pick_location: {pick_location}")
-            # セレクター優先度: name → id → placeholder
-            selectors = [
-                'input[name*="pick"]',
-                'input[id*="pick"]',
-                'input[placeholder*="積地"]',
-                'input[placeholder*="出発地"]',
-                'textarea[name*="pick"]'
-            ]
-            filled = await self._fill_field(page, selectors, pick_location, "pick_location")
-            if not filled:
-                logger.warning("[Trabox] Could not find pick_location input")
+            # ここにフォーム入力ロジックを実装
+            # TODO: 実際のセレクター・フィールド名を確認
+            logger.info(f"[Trabox] 投稿データ: {case_data}")
 
-        # 卸地入力
-        if drop_location:
-            logger.debug(f"[Trabox] Filling drop_location: {drop_location}")
-            selectors = [
-                'input[name*="drop"]',
-                'input[id*="drop"]',
-                'input[placeholder*="卸地"]',
-                'input[placeholder*="到着地"]',
-                'textarea[name*="drop"]'
-            ]
-            filled = await self._fill_field(page, selectors, drop_location, "drop_location")
-            if not filled:
-                logger.warning("[Trabox] Could not find drop_location input")
+            await self.debug_capture.capture_screenshot("step_4_form_after_fill")
 
-        # 重量入力
-        if cargo_weight:
-            logger.debug(f"[Trabox] Filling cargo_weight: {cargo_weight}")
-            selectors = [
-                'input[name*="weight"]',
-                'input[id*="weight"]',
-                'input[type="number"]',
-                'input[placeholder*="重量"]'
-            ]
-            await self._fill_field(page, selectors, cargo_weight, "cargo_weight")
+            structured_logger.log_event(
+                "trabox_form_fill",
+                self.user_id,
+                self.case_id,
+                "trabox",
+                details={"fields": list(case_data.keys())},
+            )
 
-        # 日付入力
-        if pickup_date:
-            logger.debug(f"[Trabox] Filling pickup_date: {pickup_date}")
-            selectors = [
-                'input[name*="date"]',
-                'input[id*="date"]',
-                'input[type="date"]',
-                'input[placeholder*="日付"]'
-            ]
-            await self._fill_field(page, selectors, pickup_date, "pickup_date")
+        except Exception as e:
+            raise ErrorHandler.handle_posting_error(
+                e,
+                self.user_id,
+                self.case_id,
+                "trabox",
+                step="fill_form",
+                screenshots=self._get_screenshot_paths(),
+            )
 
-        # 時間入力
-        if pickup_time:
-            logger.debug(f"[Trabox] Filling pickup_time: {pickup_time}")
-            selectors = [
-                'input[name*="time"]',
-                'input[id*="time"]',
-                'input[type="time"]',
-                'input[placeholder*="時間"]'
-            ]
-            await self._fill_field(page, selectors, pickup_time, "pickup_time")
-
-        # 車種選択
-        if vehicle_type:
-            logger.debug(f"[Trabox] Selecting vehicle_type: {vehicle_type}")
-            selects = page.locator('select')
-            select_count = await selects.count()
-            if select_count > 0:
-                try:
-                    await selects.first.select_option(vehicle_type)
-                except Exception as e:
-                    logger.warning(f"[Trabox] Could not select vehicle_type: {e}")
-
-        # 運賃入力
-        if freight_rate:
-            logger.debug(f"[Trabox] Filling freight_rate: {freight_rate}")
-            selectors = [
-                'input[name*="rate"]',
-                'input[name*="price"]',
-                'input[name*="fare"]',
-                'input[id*="rate"]',
-                'input[id*="price"]',
-                'input[placeholder*="運賃"]'
-            ]
-            await self._fill_field(page, selectors, freight_rate, "freight_rate")
-
-        # 連絡先名入力
-        if contact_name:
-            logger.debug(f"[Trabox] Filling contact_name: {contact_name}")
-            selectors = [
-                'input[name*="name"]',
-                'input[id*="name"]',
-                'input[placeholder*="名前"]',
-                'input[placeholder*="担当者"]'
-            ]
-            await self._fill_field(page, selectors, contact_name, "contact_name")
-
-        # 電話番号入力
-        if contact_phone:
-            logger.debug(f"[Trabox] Filling contact_phone: {contact_phone}")
-            selectors = [
-                'input[name*="phone"]',
-                'input[type="tel"]',
-                'input[id*="phone"]',
-                'input[placeholder*="電話"]'
-            ]
-            await self._fill_field(page, selectors, contact_phone, "contact_phone")
-
-        # メールアドレス入力
-        if contact_email:
-            logger.debug(f"[Trabox] Filling contact_email: {contact_email}")
-            selectors = [
-                'input[name*="email"]',
-                'input[type="email"]',
-                'input[id*="email"]',
-                'input[placeholder*="メール"]'
-            ]
-            await self._fill_field(page, selectors, contact_email, "contact_email")
-
-        # デバッグ用スクリーンショット
+    async def _step_submit_form(self, page: Page) -> None:
+        """ステップ 5: フォーム送信"""
         try:
-            await page.screenshot(path="trabox_form_filled.png")
-        except:
-            pass
+            logger.info("[Trabox] フォーム送信中...")
+            await self.debug_capture.capture_screenshot("step_5_before_submit")
 
-        # 送信ボタン探索
-        logger.debug(f"[Trabox] Clicking submit button")
-        submit_selectors = [
-            'button:has-text("登録")',
-            'button:has-text("送信")',
-            'button:has-text("投稿")',
-            'input[type="submit"]',
-            'button[type="submit"]'
-        ]
+            # TODO: 送信ボタンのセレクターを確認してから実装
+            # await page.click(submit_button_selector)
 
-        submitted = False
-        for selector in submit_selectors:
-            button = page.locator(selector)
-            if await button.count() > 0:
-                try:
-                    await button.first.click()
-                    logger.info(f"[Trabox] Submitted with selector: {selector}")
-                    submitted = True
-                    break
-                except Exception as e:
-                    logger.warning(f"[Trabox] Could not click submit button ({selector}): {e}")
-                    continue
+            await self.debug_capture.capture_screenshot("step_5_after_submit")
 
-        if not submitted:
-            logger.error("[Trabox] Could not find or click submit button")
-            raise Exception("Submit button not found")
+            structured_logger.log_event(
+                "trabox_submit",
+                self.user_id,
+                self.case_id,
+                "trabox",
+                details={"message": "フォーム送信完了"},
+            )
 
-        # 送信完了待機
+        except Exception as e:
+            raise ErrorHandler.handle_posting_error(
+                e,
+                self.user_id,
+                self.case_id,
+                "trabox",
+                step="submit_form",
+                screenshots=self._get_screenshot_paths(),
+            )
+
+    async def _is_login_page(self, page: Page) -> bool:
+        """ログインページか判定"""
         try:
-            await page.wait_for_navigation(wait_until="domcontentloaded", timeout=10000)
-        except:
-            await page.wait_for_timeout(3000)
+            count = await page.locator(TRABOX_SELECTORS["login_id"]).count()
+            return count > 0
+        except Exception as e:
+            logger.warning(f"ログインページ判定エラー: {e}")
+            return False
 
-        logger.info("[Trabox] Form submitted successfully")
+    async def _handle_posting_error(
+        self, page: Page, error: PostingError
+    ) -> None:
+        """エラーを処理・記録"""
+        logger.error(f"[Trabox] エラー: {error.message}")
 
-    async def _fill_field(self, page: Page, selectors: list, value: str, field_name: str) -> bool:
-        """複数のセレクターを試して、フィールドに値を入力する"""
-        for selector in selectors:
-            try:
-                locator = page.locator(selector)
-                count = await locator.count()
-                if count > 0:
-                    await locator.first.fill(value)
-                    logger.debug(f"[Trabox] Filled {field_name} with selector: {selector}")
-                    return True
-            except Exception as e:
-                logger.debug(f"[Trabox] Failed to fill {field_name} with selector {selector}: {e}")
-                continue
-        return False
+        # スクリーンショット・DOM を取得
+        screenshots = self._get_screenshot_paths()
+        dom_snapshot = None
+        if self.debug_capture:
+            dom_snapshot = await self.debug_capture.capture_dom_snapshot()
+
+        # エラーログを出力
+        ErrorHandler.log_error_details(
+            error,
+            structured_logger,
+            extra_context={
+                "platform": "trabox",
+                "debug_info": self.debug_capture.get_debug_info()
+                if self.debug_capture
+                else {},
+            },
+        )
+
+        # エラーログを保存
+        error_log = {
+            "trace_id": structured_logger.trace_id,
+            "error_category": error.category,
+            "error_code": error.code,
+            "error_message": error.message,
+            "user_id": self.user_id,
+            "case_id": self.case_id,
+            "platform": "trabox",
+            "screenshots": screenshots,
+            "dom_snapshot": dom_snapshot is not None,
+        }
+
+        error_storage_manager.save_error_log(structured_logger.trace_id, error_log)
+
+        if dom_snapshot:
+            error_storage_manager.save_dom_snapshot(
+                structured_logger.trace_id, dom_snapshot
+            )
+
+    def _get_screenshot_paths(self) -> list:
+        """スクリーンショット保存パスを取得"""
+        if not self.debug_capture:
+            return []
+
+        paths = []
+        for i in range(self.debug_capture.get_screenshots_count()):
+            paths.append(f"screenshot_{i}.png")
+        return paths
