@@ -2,7 +2,8 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from app.routers import auth, cases, dashboard, notifications
-from app.db.database import init_db
+from app.db.database import init_db, get_db_connection
+from app.utils.security import hash_password
 import os
 import logging
 
@@ -27,6 +28,30 @@ app.include_router(notifications.router)
 @app.on_event("startup")
 async def startup_event():
     init_db()
+
+    # デフォルトユーザーを作成（存在しない場合）
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute("SELECT id FROM users WHERE username = ?", ("管理者",))
+        existing_user = cursor.fetchone()
+
+        if not existing_user:
+            hashed_pw = hash_password("12341234@")
+            cursor.execute(
+                "INSERT INTO users (username, email, hashed_password) VALUES (?, ?, ?)",
+                ("管理者", "hrt_takeuchi@takeuchiunso.com", hashed_pw)
+            )
+            conn.commit()
+            logging.info("✅ デフォルトユーザー（管理者）を作成しました")
+        else:
+            logging.info("✅ デフォルトユーザー（管理者）は既に存在します")
+    except Exception as e:
+        logging.error(f"❌ デフォルトユーザー作成エラー: {e}")
+        conn.rollback()
+    finally:
+        conn.close()
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
