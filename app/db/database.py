@@ -81,6 +81,9 @@ def init_db():
     for col in ("contact_name", "contact_phone", "contact_email"):
         if col not in cred_columns:
             cursor.execute(f"ALTER TABLE user_credentials ADD COLUMN {col} TEXT")
+    # 案件一覧の表示カラム設定（ユーザーごと・JSON配列）
+    if "case_columns" not in cred_columns:
+        cursor.execute("ALTER TABLE user_credentials ADD COLUMN case_columns TEXT")
 
     # 既存DBへのマイグレーション: users に is_admin カラムを追加
     # 管理者は全ユーザーの案件閲覧・ユーザー新規登録が可能
