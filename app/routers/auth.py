@@ -67,6 +67,12 @@ async def login_page():
                             >
                         </div>
 
+                        <!-- ログイン状態を保持する -->
+                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                            <input type="checkbox" name="remember_me" value="yes" class="w-4 h-4 text-blue-600 rounded">
+                            ログイン状態を保持する（30日間）
+                        </label>
+
                         <!-- ログインボタン -->
                         <button
                             type="submit"
@@ -279,7 +285,8 @@ async def register_disabled():
     )
 
 @router.post("/login")
-async def login(username: str = Form(...), password: str = Form(...), response: Response = None):
+async def login(username: str = Form(...), password: str = Form(...),
+                remember_me: str = Form(None), response: Response = None):
     if response is None:
         response = Response()
 
@@ -300,21 +307,11 @@ async def login(username: str = Form(...), password: str = Form(...), response: 
             detail="Invalid username or password"
         )
 
-    access_token_expires = timedelta(
-        minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
-    )
-    access_token = create_access_token(
-        data={"user_id": user[0], "username": user[1]},
-        expires_delta=access_token_expires
-    )
-
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        samesite="lax"
-    )
+    # ログイン状態を保持する（チェック時は長期、未チェックは通常＋アクティブ中はスライド更新）
+    from app.utils.security import issue_access_token, set_auth_cookie, clear_auth_cookie
+    remember = remember_me in ("yes", "on", "true", "1")
+    access_token, max_age = issue_access_token(user[0], remember)
+    set_auth_cookie(response, access_token, max_age)
 
     return {
         "status": "success",
@@ -328,14 +325,16 @@ async def login(username: str = Form(...), password: str = Form(...), response: 
 
 @router.post("/logout")
 async def logout(response: Response):
-    response.delete_cookie("access_token")
+    from app.utils.security import clear_auth_cookie
+    clear_auth_cookie(response)
     return {"status": "success", "message": "Logged out successfully"}
 
 @router.get("/logout")
 async def logout_link():
     """ナビの「ログアウト」リンク（GET）用: Cookie を消してログイン画面へ"""
+    from app.utils.security import clear_auth_cookie
     response = RedirectResponse(url="/auth/login", status_code=302)
-    response.delete_cookie("access_token")
+    clear_auth_cookie(response)
     return response
 
 @router.get("/me", response_class=HTMLResponse)

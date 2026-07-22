@@ -20,6 +20,33 @@ app = FastAPI(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+
+@app.middleware("http")
+async def sliding_session_middleware(request, call_next):
+    """スライディングセッション: 有効なトークンでアクセスがあるたびに
+    Cookie の有効期限を延長し直す。これにより「操作している限りログアウトされない」。
+    token 内の remember フラグに応じて延長幅（通常8時間 / 保持30日）を切り替える。
+    """
+    response = await call_next(request)
+    try:
+        from app.utils.security import (
+            decode_access_token, issue_access_token, set_auth_cookie,
+        )
+        token = request.cookies.get("access_token")
+        if token:
+            payload = decode_access_token(token)
+            if payload and payload.get("user_id"):
+                # ログアウト直後（Cookie削除レスポンス）は延長しない
+                if "access_token=" not in response.headers.get("set-cookie", ""):
+                    new_token, max_age = issue_access_token(
+                        payload["user_id"], bool(payload.get("remember"))
+                    )
+                    set_auth_cookie(response, new_token, max_age)
+    except Exception:
+        pass  # セッション延長の失敗はリクエスト自体に影響させない
+    return response
+
+
 app.include_router(auth.router)
 app.include_router(cases.router)
 app.include_router(dashboard.router)
