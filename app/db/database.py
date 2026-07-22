@@ -74,6 +74,14 @@ def init_db():
     if "extras" not in case_columns:
         cursor.execute("ALTER TABLE cases ADD COLUMN extras TEXT")
 
+    # 既存DBへのマイグレーション: ユーザーごとの連絡先初期設定
+    # （初期設定画面で登録し、案件登録フォームの連絡先に自動入力される）
+    cursor.execute("PRAGMA table_info(user_credentials)")
+    cred_columns = [row[1] for row in cursor.fetchall()]
+    for col in ("contact_name", "contact_phone", "contact_email"):
+        if col not in cred_columns:
+            cursor.execute(f"ALTER TABLE user_credentials ADD COLUMN {col} TEXT")
+
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS posting_batches (
         id INTEGER PRIMARY KEY,

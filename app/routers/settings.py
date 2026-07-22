@@ -14,9 +14,19 @@ class CredentialsInput(BaseModel):
     trabox_username: str = None
     trabox_password: str = None
     webkit_person_id: str = None
+    contact_name: str = None
+    contact_phone: str = None
+    contact_email: str = None
 
 
-def get_settings_html(username: str, trabox_username: str, webkit_person_id: str) -> str:
+def get_settings_html(
+    username: str,
+    trabox_username: str,
+    webkit_person_id: str,
+    contact_name: str = "",
+    contact_phone: str = "",
+    contact_email: str = "",
+) -> str:
     """設定ページHTMLを生成"""
     return f"""<!DOCTYPE html>
 <html lang="ja">
@@ -89,6 +99,25 @@ def get_settings_html(username: str, trabox_username: str, webkit_person_id: str
                     </div>
                 </div>
 
+                <div class="border-b pb-8">
+                    <h2 class="text-xl font-semibold text-gray-900 mb-6">📞 案件登録の連絡先情報（初期値）</h2>
+                    <p class="text-sm text-gray-500 mb-4">ここに登録した内容が、案件登録フォームの連絡先に自動で入力されます</p>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">担当者名</label>
+                            <input type="text" name="contact_name" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="山田太郎" value="{contact_name}">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">電話番号</label>
+                            <input type="tel" name="contact_phone" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="09012345678" value="{contact_phone}">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">メールアドレス</label>
+                            <input type="email" name="contact_email" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="example@domain.com" value="{contact_email}">
+                        </div>
+                    </div>
+                </div>
+
                 <div class="flex gap-4">
                     <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-lg transition duration-200">保存する</button>
                     <a href="/dashboard/" class="bg-gray-300 hover:bg-gray-400 text-gray-900 font-semibold py-2.5 px-6 rounded-lg transition duration-200">キャンセル</a>
@@ -120,6 +149,9 @@ def get_settings_html(username: str, trabox_username: str, webkit_person_id: str
                 trabox_username: formData.get('trabox_username') || null,
                 trabox_password: formData.get('trabox_password') || null,
                 webkit_person_id: formData.get('webkit_person_id') || null,
+                contact_name: formData.get('contact_name') || null,
+                contact_phone: formData.get('contact_phone') || null,
+                contact_email: formData.get('contact_email') || null,
             }};
 
             try {{
@@ -159,16 +191,24 @@ async def settings_page(current_user: dict = Depends(get_current_user)):
     username = current_user["username"]
 
     cursor.execute(
-        "SELECT trabox_username, webkit_person_id FROM user_credentials WHERE user_id = ?",
+        """SELECT trabox_username, webkit_person_id,
+                  contact_name, contact_phone, contact_email
+           FROM user_credentials WHERE user_id = ?""",
         (user_id,)
     )
     creds = cursor.fetchone()
     trabox_username = creds[0] if creds and creds[0] else ""
     webkit_person_id = creds[1] if creds and creds[1] else ""
+    contact_name = creds[2] if creds and creds[2] else ""
+    contact_phone = creds[3] if creds and creds[3] else ""
+    contact_email = creds[4] if creds and creds[4] else ""
 
     conn.close()
 
-    return get_settings_html(username, trabox_username, webkit_person_id)
+    return get_settings_html(
+        username, trabox_username, webkit_person_id,
+        contact_name, contact_phone, contact_email,
+    )
 
 
 @router.post("/api/settings/credentials/")
@@ -200,25 +240,35 @@ async def save_credentials(
                 SET trabox_username = COALESCE(?, trabox_username),
                     trabox_password_encrypted = COALESCE(?, trabox_password_encrypted),
                     webkit_person_id = COALESCE(?, webkit_person_id),
+                    contact_name = COALESCE(?, contact_name),
+                    contact_phone = COALESCE(?, contact_phone),
+                    contact_email = COALESCE(?, contact_email),
                     updated_at = ?
                 WHERE user_id = ?
             """, (
                 credentials.trabox_username,
                 trabox_password_encrypted,
                 credentials.webkit_person_id,
+                credentials.contact_name,
+                credentials.contact_phone,
+                credentials.contact_email,
                 datetime.utcnow().isoformat(),
                 user_id
             ))
         else:
             cursor.execute("""
                 INSERT INTO user_credentials
-                (user_id, trabox_username, trabox_password_encrypted, webkit_person_id, created_at)
-                VALUES (?, ?, ?, ?, ?)
+                (user_id, trabox_username, trabox_password_encrypted, webkit_person_id,
+                 contact_name, contact_phone, contact_email, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 user_id,
                 credentials.trabox_username,
                 trabox_password_encrypted,
                 credentials.webkit_person_id,
+                credentials.contact_name,
+                credentials.contact_phone,
+                credentials.contact_email,
                 datetime.utcnow().isoformat()
             ))
 
