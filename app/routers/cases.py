@@ -14,6 +14,58 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/cases", tags=["cases"])
 
+# 都道府県一覧（Trabox の地図ボタンに対応する正式名称）
+PREFECTURES = [
+    "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
+    "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
+    "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県",
+    "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県",
+    "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県",
+    "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県",
+    "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県",
+]
+
+# 市区町村一覧のキャッシュ（都道府県ごと・プロセス内）
+_CITY_CACHE: dict = {}
+
+
+@router.get("/api/cities")
+async def get_cities(pref: str):
+    """都道府県 → 市区町村一覧（HeartRails Geo API のプロキシ＋キャッシュ）
+
+    オープンAPI（キー不要）: https://geoapi.heartrails.com/
+    返却形式は Trabox の市区町村選択肢と同じ（政令指定都市は「大阪市北区」形式）
+    """
+    if pref not in PREFECTURES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不正な都道府県名です: {pref}",
+        )
+    if pref in _CITY_CACHE:
+        return {"pref": pref, "cities": _CITY_CACHE[pref]}
+
+    import urllib.request
+    import urllib.parse
+
+    url = (
+        "https://geoapi.heartrails.com/api/json?method=getCities&prefecture="
+        + urllib.parse.quote(pref)
+    )
+    try:
+        with urllib.request.urlopen(url, timeout=8) as res:
+            data = json.loads(res.read())
+        cities = [c["city"] for c in data["response"]["location"]]
+        if not cities:
+            raise ValueError("空の市区町村リスト")
+        _CITY_CACHE[pref] = cities
+        return {"pref": pref, "cities": cities}
+    except Exception as e:
+        logger.warning(f"市区町村一覧の取得失敗 ({pref}): {e}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="市区町村一覧の取得に失敗しました（手入力してください）",
+        )
+
 def _get_contact_defaults(access_token: Optional[str]) -> dict:
     """ログイン中ユーザーの連絡先初期設定を取得（未ログイン・未設定なら空欄）
 
@@ -49,18 +101,8 @@ def _get_contact_defaults(access_token: Optional[str]) -> dict:
 @router.get("/register", response_class=HTMLResponse)
 async def case_register_page(access_token: Optional[str] = Cookie(None)):
     contact = _get_contact_defaults(access_token)
-    # 都道府県セレクトの選択肢（Trabox の地図ボタンに対応する正式名称）
-    prefs = [
-        "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
-        "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
-        "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県",
-        "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県",
-        "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県",
-        "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県",
-        "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県",
-    ]
     pref_options = "".join(
-        f'<option value="{p}">{p}</option>' for p in prefs
+        f'<option value="{p}">{p}</option>' for p in PREFECTURES
     )
     # 希望車両の選択肢は Trabox の実ドロップダウンに準拠（TraboxFormMapper が唯一の情報源）
     from app.automations.trabox_form_mapper import TraboxFormMapper
@@ -135,11 +177,13 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
                                     <div>
                                         <label class="block text-sm font-medium text-gray-700 mb-2">積地<span class="ml-1 px-1.5 py-0.5 text-xs font-semibold text-red-600 bg-red-50 rounded">必須</span></label>
                                         <div class="space-y-2">
-                                            <select name="pick_pref" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required>
+                                            <select name="pick_pref" id="pick_pref" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required>
                                                 <option value="">都道府県を選択</option>
                                                 PREF_OPTIONS
                                             </select>
-                                            <input type="text" name="pick_city" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required placeholder="市区町村（必須）例: 港区">
+                                            <select name="pick_city" id="pick_city" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition bg-white disabled:bg-gray-100 disabled:text-gray-400" required disabled>
+                                                <option value="">都道府県を先に選択してください</option>
+                                            </select>
                                             <input type="text" name="pick_address" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" placeholder="番地・建物（任意）">
                                         </div>
                                     </div>
@@ -162,11 +206,13 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
                                     <div>
                                         <label class="block text-sm font-medium text-gray-700 mb-2">卸地<span class="ml-1 px-1.5 py-0.5 text-xs font-semibold text-red-600 bg-red-50 rounded">必須</span></label>
                                         <div class="space-y-2">
-                                            <select name="drop_pref" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required>
+                                            <select name="drop_pref" id="drop_pref" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required>
                                                 <option value="">都道府県を選択</option>
                                                 PREF_OPTIONS
                                             </select>
-                                            <input type="text" name="drop_city" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required placeholder="市区町村（必須）例: 大阪市北区">
+                                            <select name="drop_city" id="drop_city" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition bg-white disabled:bg-gray-100 disabled:text-gray-400" required disabled>
+                                                <option value="">都道府県を先に選択してください</option>
+                                            </select>
                                             <input type="text" name="drop_address" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" placeholder="番地・建物（任意）">
                                         </div>
                                     </div>
@@ -349,6 +395,44 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
         </div>
 
         <script>
+            // 都道府県 → 市区町村の連動セレクト（積地/卸地それぞれ独立に動作）
+            function setupCityLoader(prefId, cityId) {
+                const prefSel = document.getElementById(prefId);
+                const citySel = () => document.getElementById(cityId);
+
+                prefSel.addEventListener('change', async () => {
+                    const sel = citySel();
+                    const pref = prefSel.value;
+                    if (!pref) {
+                        sel.innerHTML = '<option value="">都道府県を先に選択してください</option>';
+                        sel.disabled = true;
+                        return;
+                    }
+                    sel.innerHTML = '<option value="">読み込み中...</option>';
+                    sel.disabled = true;
+                    try {
+                        const res = await fetch('/cases/api/cities?pref=' + encodeURIComponent(pref));
+                        if (!res.ok) throw new Error('API error');
+                        const data = await res.json();
+                        sel.innerHTML = '<option value="">市区町村を選択</option>' +
+                            data.cities.map(c => '<option value="' + c + '">' + c + '</option>').join('');
+                        sel.disabled = false;
+                    } catch (e) {
+                        // API失敗時は手入力にフォールバック
+                        const input = document.createElement('input');
+                        input.type = 'text';
+                        input.name = sel.name;
+                        input.id = cityId;
+                        input.required = true;
+                        input.placeholder = '市区町村を入力（例: 港区）';
+                        input.className = 'w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition';
+                        sel.replaceWith(input);
+                    }
+                });
+            }
+            setupCityLoader('pick_pref', 'pick_city');
+            setupCityLoader('drop_pref', 'drop_city');
+
             const traboxCheckbox = document.querySelector('input[name="post_to_trabox"]');
             const traboxAuth = document.getElementById('trabox-auth');
 
