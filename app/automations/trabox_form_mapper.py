@@ -185,6 +185,18 @@ class TraboxFormMapper:
         "other": "問わず",
     }
 
+    # Trabox 希望車両の全選択肢（2026-07-22 実ドロップダウンから全件取得済み）
+    TRUCK_WEIGHT_OPTIONS = [
+        "問わず", "軽", "1t", "2t", "3t", "4t", "5t", "6t", "7t", "8t",
+        "9t", "10t", "11t", "12t", "13t", "14t", "15t", "トレーラー", "他",
+    ]
+    VEHICLE_SHAPE_OPTIONS = [
+        "問わず", "平", "平-低床", "平-パワーゲート", "平-エアサス",
+        "箱", "箱-低床", "箱-パワーゲート", "箱-エアサス",
+        "ウイング", "ウイング-低床", "ウイング-パワーゲート", "ウイング-エアサス",
+        "ユニック", "冷凍", "保冷", "他", "ウイング又は平", "ウイング又は箱",
+    ]
+
     @classmethod
     def vehicle_to_option(cls, vehicle_type: str) -> str:
         """車種コード → Trabox ドロップダウンの選択肢テキスト
@@ -197,11 +209,8 @@ class TraboxFormMapper:
         mapped = cls.VEHICLE_TYPE_MAPPING.get(vehicle_type)
         if mapped:
             return mapped
-        # 日本語表記のパススルー（実在確認済みの選択肢のみ）
-        known = {"問わず", "平", "平-低床", "平-パワーゲート", "平-エアサス",
-                 "箱", "箱-低床", "箱-パワーゲート", "箱-エアサス", "ウイング",
-                 "保冷", "冷凍"}
-        if vehicle_type in known:
+        # 日本語表記のパススルー（Trabox の実選択肢と完全一致する場合のみ）
+        if vehicle_type in cls.VEHICLE_SHAPE_OPTIONS:
             return vehicle_type
         logger.warning(f"[TraboxMapper] 未知の車種: {vehicle_type} → 問わず")
         return "問わず"

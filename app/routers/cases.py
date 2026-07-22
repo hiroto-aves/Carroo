@@ -62,6 +62,16 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
     pref_options = "".join(
         f'<option value="{p}">{p}</option>' for p in prefs
     )
+    # 希望車両の選択肢は Trabox の実ドロップダウンに準拠（TraboxFormMapper が唯一の情報源）
+    from app.automations.trabox_form_mapper import TraboxFormMapper
+    weight_options = "".join(
+        f'<option value="{w}">{w}</option>'
+        for w in TraboxFormMapper.TRUCK_WEIGHT_OPTIONS
+    )
+    shape_options = "".join(
+        f'<option value="{s}">{s}</option>'
+        for s in TraboxFormMapper.VEHICLE_SHAPE_OPTIONS
+    )
     html = """
     <!DOCTYPE html>
     <html lang="ja">
@@ -112,6 +122,16 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
                             <div class="mb-6">
                                 <h4 class="text-base font-semibold text-gray-800 mb-3">📍 積地・積み日時</h4>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 border border-gray-200 rounded-lg">
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">積み日<span class="ml-1 px-1.5 py-0.5 text-xs font-semibold text-red-600 bg-red-50 rounded">必須</span></label>
+                                            <input type="date" name="pickup_date" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required>
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">積み時間</label>
+                                            <input type="time" name="pickup_time" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition">
+                                        </div>
+                                    </div>
                                     <div>
                                         <label class="block text-sm font-medium text-gray-700 mb-2">積地<span class="ml-1 px-1.5 py-0.5 text-xs font-semibold text-red-600 bg-red-50 rounded">必須</span></label>
                                         <div class="space-y-2">
@@ -123,22 +143,22 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
                                             <input type="text" name="pick_address" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" placeholder="番地・建物（任意）">
                                         </div>
                                     </div>
-                                    <div class="space-y-4">
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700 mb-2">積み日<span class="ml-1 px-1.5 py-0.5 text-xs font-semibold text-red-600 bg-red-50 rounded">必須</span></label>
-                                            <input type="date" name="pickup_date" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required>
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700 mb-2">積み時間</label>
-                                            <input type="time" name="pickup_time" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition">
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
                             <!-- 卸地と着日時を横並びに配置 -->
                             <div class="mb-6">
                                 <h4 class="text-base font-semibold text-gray-800 mb-3">🏁 卸地・着日時</h4>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 border border-gray-200 rounded-lg">
+                                    <div class="space-y-4">
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">着日 <span class="text-gray-400 text-xs">（未指定なら翌日・午前着）</span></label>
+                                            <input type="date" name="drop_date" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition">
+                                        </div>
+                                        <div>
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">卸し時間</label>
+                                            <input type="time" name="drop_time" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition">
+                                        </div>
+                                    </div>
                                     <div>
                                         <label class="block text-sm font-medium text-gray-700 mb-2">卸地<span class="ml-1 px-1.5 py-0.5 text-xs font-semibold text-red-600 bg-red-50 rounded">必須</span></label>
                                         <div class="space-y-2">
@@ -150,16 +170,6 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
                                             <input type="text" name="drop_address" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" placeholder="番地・建物（任意）">
                                         </div>
                                     </div>
-                                    <div class="space-y-4">
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700 mb-2">着日 <span class="text-gray-400 text-xs">（未指定なら翌日・午前着）</span></label>
-                                            <input type="date" name="drop_date" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition">
-                                        </div>
-                                        <div>
-                                            <label class="block text-sm font-medium text-gray-700 mb-2">卸し時間</label>
-                                            <input type="time" name="drop_time" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition">
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
 
@@ -169,13 +179,15 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
                                     <input type="number" name="cargo_weight" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" step="0.1" required>
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">車種<span class="ml-1 px-1.5 py-0.5 text-xs font-semibold text-red-600 bg-red-50 rounded">必須</span></label>
-                                    <select name="vehicle_type" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" required>
-                                        <option value="">選択してください</option>
-                                        <option value="small_truck">小型トラック</option>
-                                        <option value="medium_truck">中型トラック</option>
-                                        <option value="large_truck">大型トラック</option>
-                                        <option value="trailer">トレーラー</option>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">希望車両（トン数）</label>
+                                    <select name="truck_weight" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                                        WEIGHT_OPTIONS
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">希望車両（形状）</label>
+                                    <select name="vehicle_type" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                                        SHAPE_OPTIONS
                                     </select>
                                 </div>
                             </div>
@@ -244,6 +256,12 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
                                             <option value="すべて" selected>すべて</option>
                                             <option value="限定">限定</option>
                                         </select>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <label class="flex items-center gap-2 cursor-pointer">
+                                            <input type="checkbox" name="moving_case" value="yes" class="w-5 h-5 text-blue-600 rounded">
+                                            <span class="text-sm font-medium text-gray-700">引越し案件</span>
+                                        </label>
                                     </div>
                                     <div class="md:col-span-2">
                                         <label class="block text-sm font-medium text-gray-700 mb-2">備考</label>
@@ -343,6 +361,8 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
     """
     return (
         html.replace("PREF_OPTIONS", pref_options)
+        .replace("WEIGHT_OPTIONS", weight_options)
+        .replace("SHAPE_OPTIONS", shape_options)
         .replace("CONTACT_NAME_VALUE", contact["name"])
         .replace("CONTACT_PHONE_VALUE", contact["phone"])
         .replace("CONTACT_EMAIL_VALUE", contact["email"])
@@ -354,7 +374,9 @@ async def register_case(
     pick_location: Optional[str] = Form(None),
     drop_location: Optional[str] = Form(None),
     cargo_weight: float = Form(...),
-    vehicle_type: str = Form(...),
+    vehicle_type: str = Form("問わず"),
+    truck_weight: Optional[str] = Form(None),
+    moving_case: Optional[str] = Form(None),
     freight_rate: float = Form(...),
     pickup_date: str = Form(...),
     pickup_time: Optional[str] = Form(None),
@@ -418,6 +440,8 @@ async def register_case(
         # 未指定は投稿時に TraboxFormMapper.TRABOX_DEFAULTS が適用される）
         extras = {
             k: v for k, v in {
+                "truck_weight": truck_weight,
+                "moving_case": True if moving_case == "yes" else None,
                 "drop_date": drop_date,
                 "drop_time": drop_time,
                 "cargo_type": cargo_type,

@@ -601,7 +601,12 @@ class TraboxAutomation:
             drop_city = case_data.get("drop_city") or M.extract_city(
                 case_data.get("drop_location", "")
             )
-            weight_class = M.weight_to_class(case_data.get("cargo_weight"))
+            # トン数: UI で直接指定された場合はそれを優先、無ければ荷物重量から切上げ算出
+            weight_class = (
+                case_data.get("truck_weight")
+                if case_data.get("truck_weight") in M.TRUCK_WEIGHT_OPTIONS
+                else M.weight_to_class(case_data.get("cargo_weight"))
+            )
             vehicle_option = M.vehicle_to_option(case_data.get("vehicle_type", ""))
             freight = M.format_freight(case_data.get("freight_rate"))
             # --- 拡張キー（未指定なら Trabox 既定値。詳細は TraboxFormMapper 参照） ---
@@ -757,6 +762,14 @@ class TraboxAutomation:
                     f"{M.row_selector('備考')} textarea"
                 ).first
                 await remarks_input.fill(str(remarks), timeout=TRABOX_TIMEOUTS["action"])
+
+            # --- 16b. オプション: 引越し案件（任意チェックボックス） ---
+            if case_data.get("moving_case") in (True, "true", "yes", "1", 1):
+                moving_checkbox = page.locator(
+                    f"{M.row_selector('オプション')} .ant-checkbox-wrapper:has-text('引越し案件')"
+                ).first
+                await moving_checkbox.click(timeout=TRABOX_TIMEOUTS["action"])
+                logger.info("[Trabox] 引越し案件にチェック")
 
             # --- 17. 担当者（contact_name 指定時のみ変更。未指定はアカウント既定のまま） ---
             if contact_name:
