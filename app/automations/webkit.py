@@ -55,22 +55,42 @@ class WebkitAutomation:
 
                 logger.info(f"[WebKit] Response status: {response.status_code}")
 
-                if response.status_code == 200:
-                    logger.info("[WebKit] Case posted successfully")
-                    return {
-                        "status": "success",
-                        "platform": "webkit",
-                        "message": "Case posted to WebKit successfully",
-                        "response_text": response.text[:200]
-                    }
-                else:
-                    error_msg = response.text
-                    logger.error(f"[WebKit] API error: {response.status_code} - {error_msg}")
+                # 🔴 HTTP 200 でも本文の <status> を必ず確認すること。
+                # WebKit API は認証失敗・バリデーションエラーでも 200 を返し、
+                # 本文の <status>（0=正常 / 非0=エラー）と <memo> で成否を示す。
+                # HTTP ステータスだけで成功判定すると誤って「成功」と報告してしまう。
+                if response.status_code != 200:
+                    logger.error(
+                        f"[WebKit] HTTP error: {response.status_code} - {response.text[:300]}"
+                    )
                     return {
                         "status": "error",
                         "platform": "webkit",
-                        "message": f"API error: {response.status_code}",
-                        "details": error_msg[:500]
+                        "message": f"HTTP エラー: {response.status_code}",
+                        "details": response.text[:500],
+                    }
+
+                result_status, memo = self._parse_response(response.text)
+
+                if result_status == "0":
+                    logger.info(f"[WebKit] 登録成功: {memo}")
+                    return {
+                        "status": "success",
+                        "platform": "webkit",
+                        "message": memo or "WebKit への登録に成功しました",
+                        "response_text": response.text[:200],
+                    }
+                else:
+                    # status が 0 以外、または status が読めない = 登録失敗
+                    reason = memo or "WebKit が想定外の応答を返しました"
+                    logger.error(
+                        f"[WebKit] 登録失敗 (status={result_status}): {reason}"
+                    )
+                    return {
+                        "status": "error",
+                        "platform": "webkit",
+                        "message": f"WebKit 登録失敗: {reason}",
+                        "details": response.text[:500],
                     }
 
         except httpx.TimeoutException as e:
@@ -87,6 +107,29 @@ class WebkitAutomation:
                 "platform": "webkit",
                 "message": f"{type(e).__name__}: {str(e)}"
             }
+
+    def _parse_response(self, response_text: str) -> tuple:
+        """WebKit API のレスポンスXMLから (status, memo) を取り出す
+
+        期待するレスポンス形式:
+            <webkit><load_data_result>
+                <status>0</status>       … 0=正常, 非0=エラー
+                <memo>...</memo>          … 結果メッセージ（エラー理由等）
+            </load_data_result></webkit>
+
+        パースできない場合は (None, 生テキスト) を返す（= 成功扱いにしない）。
+        """
+        from xml.etree.ElementTree import fromstring, ParseError
+        try:
+            root = fromstring(response_text)
+            status_el = root.find(".//status")
+            memo_el = root.find(".//memo")
+            status = status_el.text.strip() if status_el is not None and status_el.text else None
+            memo = memo_el.text.strip() if memo_el is not None and memo_el.text else ""
+            return status, memo
+        except (ParseError, AttributeError) as e:
+            logger.error(f"[WebKit] レスポンス解析失敗: {e} / 本文: {response_text[:200]}")
+            return None, response_text[:200]
 
     def _build_load_registration_xml(self, case_data: Dict[str, Any]) -> bytes:
         """荷物登録用XMLを構築"""
