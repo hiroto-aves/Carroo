@@ -77,19 +77,28 @@ class WebkitAutomation:
                         "details": response.text[:500],
                     }
 
-                result_status, memo = self._parse_response(response.text)
+                result_status, memo, slipno, error_fields = self._parse_response(
+                    response.text
+                )
 
                 if result_status == "0":
-                    logger.info(f"[WebKit] 登録成功: {memo}")
+                    logger.info(f"[WebKit] 登録成功: 伝票番号={slipno}")
                     return {
                         "status": "success",
                         "platform": "webkit",
                         "message": memo or "WebKit への登録に成功しました",
+                        "baggage_no": slipno,  # 伝票番号（更新・削除に使う）
                         "response_text": response.text[:200],
                     }
                 else:
                     # status が 0 以外、または status が読めない = 登録失敗
-                    reason = memo or "WebKit が想定外の応答を返しました"
+                    # memo が空でもエラー項目名から理由を組み立てる
+                    if memo:
+                        reason = memo
+                    elif error_fields:
+                        reason = f"入力エラー: {', '.join(error_fields)}"
+                    else:
+                        reason = "WebKit が想定外の応答を返しました"
                     logger.error(
                         f"[WebKit] 登録失敗 (status={result_status}): {reason}"
                     )
@@ -116,27 +125,81 @@ class WebkitAutomation:
             }
 
     def _parse_response(self, response_text: str) -> tuple:
-        """WebKit API のレスポンスXMLから (status, memo) を取り出す
+        """WebKit API のレスポンスXMLから (status, memo, slipno, error_fields) を取り出す
 
         期待するレスポンス形式:
             <webkit><load_data_result>
                 <status>0</status>       … 0=正常, 非0=エラー
+                <slipno>...</slipno>      … 伝票番号（登録成功時に採番。CRUDに使う）
                 <memo>...</memo>          … 結果メッセージ（エラー理由等）
+                <エラー項目/>              … エラー時、要素名がエラー対象フィールド名
             </load_data_result></webkit>
 
-        パースできない場合は (None, 生テキスト) を返す（= 成功扱いにしない）。
+        パースできない場合は (None, 生テキスト, "", []) を返す（= 成功扱いにしない）。
         """
         from xml.etree.ElementTree import fromstring, ParseError
         try:
             root = fromstring(response_text)
-            status_el = root.find(".//status")
-            memo_el = root.find(".//memo")
+            result = root.find(".//load_data_result")
+            scope = result if result is not None else root
+            status_el = scope.find("status")
+            memo_el = scope.find("memo")
+            slipno_el = scope.find("slipno")
             status = status_el.text.strip() if status_el is not None and status_el.text else None
             memo = memo_el.text.strip() if memo_el is not None and memo_el.text else ""
-            return status, memo
+            slipno = slipno_el.text.strip() if slipno_el is not None and slipno_el.text else ""
+            # status/slipno/memo 以外の子要素 = エラー項目（フィールド名）
+            error_fields = [
+                el.tag for el in scope
+                if el.tag not in ("status", "slipno", "memo")
+            ]
+            return status, memo, slipno, error_fields
         except (ParseError, AttributeError) as e:
             logger.error(f"[WebKit] レスポンス解析失敗: {e} / 本文: {response_text[:200]}")
-            return None, response_text[:200]
+            return None, response_text[:200], "", []
+
+    async def delete_case(self, slipno: str) -> Dict[str, Any]:
+        """登録済み荷物を削除（CRUD の Delete。operation=D。実環境検証済み）
+
+        Args:
+            slipno: 登録時に採番された伝票番号（post_case の baggage_no）
+        """
+        if not self.api_key or not self.person_id:
+            return {"status": "error", "platform": "webkit",
+                    "message": "WebKit API key or Person ID not configured"}
+
+        webkit = Element('webkit')
+        SubElement(webkit, 'apikey').text = self.api_key
+        SubElement(webkit, 'personid').text = self.person_id
+        ld = SubElement(webkit, 'load_data')
+        SubElement(ld, 'operation').text = 'D'
+        SubElement(ld, 'slipno').text = slipno
+        xml_data = tostring(webkit, encoding='utf-8')
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    self.api_url, content=xml_data,
+                    headers={"Content-Type": "application/xml; charset=UTF-8"},
+                )
+            if response.status_code != 200:
+                return {"status": "error", "platform": "webkit",
+                        "message": f"HTTP エラー: {response.status_code}"}
+            status, memo, _, error_fields = self._parse_response(response.text)
+            if status == "0":
+                logger.info(f"[WebKit] 削除成功: 伝票番号={slipno}")
+                return {"status": "success", "platform": "webkit",
+                        "message": f"WebKit 荷物 {slipno} を削除しました",
+                        "baggage_no": slipno}
+            reason = memo or (f"エラー項目: {', '.join(error_fields)}"
+                              if error_fields else "削除失敗")
+            logger.error(f"[WebKit] 削除失敗 (status={status}): {reason}")
+            return {"status": "error", "platform": "webkit",
+                    "message": f"WebKit 削除失敗: {reason}"}
+        except Exception as e:
+            logger.error(f"[WebKit] 削除エラー: {e}")
+            return {"status": "error", "platform": "webkit",
+                    "message": f"{type(e).__name__}: {str(e)}"}
 
     def _build_load_registration_xml(self, case_data: Dict[str, Any]) -> bytes:
         """荷物登録用XMLを構築（WebKIT API仕様書「2 荷物登録」準拠）
@@ -208,10 +271,19 @@ class WebkitAutomation:
 
         # --- 荷物 ---
         cargo_type = case_data.get("cargo_type") or "その他"
-        add('loadkind', get_cargo_type_code(cargo_type) or '21')  # 輸送品区分【必須】
+        loadkind_code = get_cargo_type_code(cargo_type) or '21'
+        add('loadkind', loadkind_code)                          # 輸送品区分【必須】
+        # loadkind=21(その他) の場合は輸送品区分その他の記述が必須
+        if loadkind_code == '21':
+            add('loadkind_other', cargo_type[:32])
         # 輸送形状: Trabox 荷姿(パレット/その他) or package_type。既定 その他(10)
-        add('packagetype',
-            get_cargo_shape_code(case_data.get("package_type", "その他")))  # 【必須】
+        package_name = case_data.get("package_type", "その他")
+        packagetype_code = get_cargo_shape_code(package_name)
+        add('packagetype', packagetype_code)                    # 輸送形状区分【必須】
+        # packagetype=10(その他) の場合は輸送形状その他の記述が必須
+        if packagetype_code == '10':
+            add('packagetype_other', (package_name if package_name != "その他"
+                                      else cargo_type)[:32])
         add('weight', self._weight_to_ton(case_data.get("cargo_weight")))   # 重量(t)【必須】
         add('carkindtype',
             get_webkit_car_code(case_data.get("vehicle_type", "")))  # 希望車種【必須】
@@ -241,6 +313,13 @@ class WebkitAutomation:
             add('portablephone', case_data["contact_phone"])
         if case_data.get("remarks"):
             add('note1', case_data["remarks"])
+
+        # --- 件数・物流階層 ---
+        # reg_number: 登録件数（既定1）
+        # logistics_tiers: 実運送体制の階層数（2024年物流法改正対応の必須項目）。
+        #   1 = 自社運送（元請が実運送、下請けなし）
+        add('reg_number', str(case_data.get("truck_count") or 1))
+        add('logistics_tiers', str(case_data.get("logistics_tiers") or 1))
 
         return tostring(webkit, encoding='utf-8')
 

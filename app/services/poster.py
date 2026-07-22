@@ -108,6 +108,7 @@ async def execute_posting_task(payload: Dict[str, Any]) -> Dict[str, Any]:
             update_posting_result(
                 case_id, "webkit",
                 "success" if status == "success" else "error",
+                baggage_no=result.get("baggage_no"),  # WebKit の伝票番号
                 error_message=None if status == "success" else result.get("message"),
             )
             results["webkit"] = result
