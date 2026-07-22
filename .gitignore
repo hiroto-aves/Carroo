@@ -60,3 +60,4 @@ development_log/*.md
 .DS_Store
 Thumbs.db
 trabox_fill_test/
+docs/conversation_logs/

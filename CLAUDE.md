@@ -240,16 +240,17 @@ https://www.trabox.com/baggage/register
 
 ---
 
-## 開発ログの管理ルール
+## 開発ログ（会話ログ）の管理ルール【2026-07-22 稼働開始】
 
-- `development_log/` フォルダに日付ファイル（例: `2026-06-01.md`）で会話ログを残す。
-- `.gitignore` に登録済みのため**コミット対象外**。
+- `docs/conversation_logs/` フォルダに**日付ごとのテキストファイル**（例: `2026-07-22.txt`）で会話ログを残す。
 - **記録は自動**（手動操作不要）
-  - `.claude/settings.json` の `Stop` hookで、Claudeが返答するたびに自動上書き保存される
+  - `.claude/settings.json` の `Stop` hook で、**Claude が返答するたび**に `docs/save_conversation_log.py` が自動実行される
+  - 実行のたびに当日までの全会話が日付ファイルに反映される（追記と同じ効果・重複なし）
   - セッション中にどんどん追記されていくので、終了時には完全なログが揃っている
-- **記録内容: 完全な会話ログ（1字1句）**
-  - ユーザー発言・Claude返答テキスト・全ツール呼び出しと結果をすべて含む
-  - 抽出スクリプト: `development_log/extract_log.py`
-  - hookが動かない場合は手動で `python3 development_log/extract_log.py` を実行
+- **記録内容: まとめない生の会話ログ**
+  - ユーザー発言・Claude 返答テキスト・全ツール呼び出しと結果をすべてそのまま含む
+  - 例外: base64 等の巨大バイナリと 4000 文字超のツール結果のみ省略マーク付きで短縮
+- hook が動かない場合は手動で `python3 docs/save_conversation_log.py` を実行
+- ログには認証情報等が混入しうるため `.gitignore` に登録済み（**コミット対象外**）
 
 ---
