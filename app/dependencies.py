@@ -30,7 +30,10 @@ async def get_current_user(access_token: Optional[str] = Cookie(None)):
 
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, username, email FROM users WHERE id = ?", (user_id,))
+    cursor.execute(
+        "SELECT id, username, email, COALESCE(is_admin, 0) FROM users WHERE id = ?",
+        (user_id,),
+    )
     user = cursor.fetchone()
     conn.close()
 
@@ -44,4 +47,5 @@ async def get_current_user(access_token: Optional[str] = Cookie(None)):
         "id": user[0],
         "username": user[1],
         "email": user[2],
+        "is_admin": bool(user[3]),
     }

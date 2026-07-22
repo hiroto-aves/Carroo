@@ -76,12 +76,9 @@ async def login_page():
                         </button>
                     </form>
 
-                    <!-- リンク -->
-                    <p class="text-center text-sm text-gray-600 mt-6">
-                        アカウントがありません？
-                        <a href="/auth/register" class="text-blue-600 hover:text-blue-700 font-semibold">
-                            登録する
-                        </a>
+                    <!-- アカウント発行は管理者が行う方針のため、公開の新規登録リンクは無し -->
+                    <p class="text-center text-sm text-gray-500 mt-6">
+                        アカウントが必要な場合は管理者にお問い合わせください
                     </p>
                 </div>
 
@@ -125,8 +122,13 @@ async def login_page():
     </html>
     """
 
-@router.get("/register", response_class=HTMLResponse)
+@router.get("/register")
 async def register_page():
+    """公開の新規登録画面は廃止。ログイン画面へ誘導。"""
+    return RedirectResponse(url="/auth/login", status_code=302)
+
+
+async def _register_page_unused():
     return """
     <!DOCTYPE html>
     <html lang="ja">
@@ -269,30 +271,12 @@ async def register_page():
     """
 
 @router.post("/register")
-async def register(username: str = Form(...), email: str = Form(...), password: str = Form(...)):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    try:
-        hashed_pw = hash_password(password)
-        cursor.execute(
-            "INSERT INTO users (username, email, hashed_password) VALUES (?, ?, ?)",
-            (username, email, hashed_pw)
-        )
-        conn.commit()
-
-        return {
-            "status": "success",
-            "message": "User registered successfully. Please login."
-        }
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    finally:
-        conn.close()
+async def register_disabled():
+    """公開の新規登録は無効。アカウント発行は管理者のユーザー管理画面から行う。"""
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="新規登録は停止しています。アカウントは管理者が発行します。",
+    )
 
 @router.post("/login")
 async def login(username: str = Form(...), password: str = Form(...), response: Response = None):

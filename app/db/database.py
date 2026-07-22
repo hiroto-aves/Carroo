@@ -82,6 +82,15 @@ def init_db():
         if col not in cred_columns:
             cursor.execute(f"ALTER TABLE user_credentials ADD COLUMN {col} TEXT")
 
+    # 既存DBへのマイグレーション: users に is_admin カラムを追加
+    # 管理者は全ユーザーの案件閲覧・ユーザー新規登録が可能
+    cursor.execute("PRAGMA table_info(users)")
+    user_columns = [row[1] for row in cursor.fetchall()]
+    if "is_admin" not in user_columns:
+        cursor.execute("ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0")
+        # 既定ユーザー「管理者」を管理者に昇格
+        cursor.execute("UPDATE users SET is_admin = 1 WHERE username = '管理者'")
+
     # 既存DBへのマイグレーション: posting_history に action カラムを追加
     # 追記式イベントログ化: register(登録) / update(変更) / delete(削除) を
     # 操作のたびに1行ずつ追加する。削除しても登録行は残るため「登録した事実」が保持される。

@@ -206,24 +206,73 @@ async def dashboard(current_user: dict = Depends(get_current_user)):
 
 
 @router.get("/cases", response_class=HTMLResponse)
-async def cases_list(current_user: dict = Depends(get_current_user)):
-    """案件一覧"""
+async def cases_list(
+    current_user: dict = Depends(get_current_user),
+    q_user: str = "",        # 管理者用: ユーザーID絞り込み
+    date_from: str = "",     # 積み日 開始
+    date_to: str = "",       # 積み日 終了
+    pick: str = "",          # 積地（部分一致）
+    drop: str = "",          # 卸地（部分一致）
+    vehicle: str = "",       # 車種（部分一致）
+):
+    """案件一覧（検索フィルター付き）
+
+    一般ユーザー: 自分の案件のみ。管理者: 全ユーザーの案件＋ユーザー絞り込み。
+    絞り込み: ユーザー(管理者のみ)・積み日期間・積地・卸地・車種。
+    """
     conn = get_db_connection()
     cursor = conn.cursor()
 
     try:
         user_id = current_user["id"]
         username = current_user["username"]
+        is_admin = current_user.get("is_admin", False)
 
-        # すべての案件を取得
-        cursor.execute("""
-            SELECT id, pick_location, drop_location, cargo_weight, vehicle_type,
-                   freight_rate, pickup_date, created_at
-            FROM cases
-            WHERE user_id = ?
-            ORDER BY created_at DESC
-        """, (user_id,))
+        # 検索条件を動的に組み立て（プレースホルダでSQLインジェクション対策）
+        where = []
+        params = []
+        if is_admin:
+            if q_user:
+                where.append("c.user_id = ?")
+                params.append(q_user)
+        else:
+            # 一般ユーザーは自分の案件に限定
+            where.append("c.user_id = ?")
+            params.append(user_id)
+        if date_from:
+            where.append("c.pickup_date >= ?")
+            params.append(date_from)
+        if date_to:
+            where.append("c.pickup_date <= ?")
+            params.append(date_to)
+        if pick:
+            where.append("c.pick_location LIKE ?")
+            params.append(f"%{pick}%")
+        if drop:
+            where.append("c.drop_location LIKE ?")
+            params.append(f"%{drop}%")
+        if vehicle:
+            where.append("c.vehicle_type LIKE ?")
+            params.append(f"%{vehicle}%")
+        where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+        cursor.execute(f"""
+            SELECT c.id, c.pick_location, c.drop_location, c.cargo_weight, c.vehicle_type,
+                   c.freight_rate, c.pickup_date, c.created_at, u.username
+            FROM cases c JOIN users u ON u.id = c.user_id
+            {where_sql}
+            ORDER BY c.created_at DESC
+        """, params)
         cases = cursor.fetchall()
+
+        # 管理者向け: ユーザー絞り込みプルダウンの選択肢
+        user_options = ""
+        if is_admin:
+            for uid, uname in cursor.execute(
+                "SELECT id, username FROM users ORDER BY id"
+            ).fetchall():
+                sel = " selected" if str(uid) == str(q_user) else ""
+                user_options += f'<option value="{uid}"{sel}>{uname}</option>'
 
         html = f"""
         <!DOCTYPE html>
@@ -243,6 +292,7 @@ async def cases_list(current_user: dict = Depends(get_current_user)):
                             <a href="/dashboard" class="text-2xl font-bold text-blue-600">📦 Carroo</a>
                         </div>
                         <div class="flex items-center gap-6">
+                            {'<a href="/admin/users" class="text-gray-600 hover:text-blue-600 transition">ユーザー管理</a>' if is_admin else ''}
                             <a href="/cases/register" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
                                 + 新規案件
                             </a>
@@ -253,13 +303,34 @@ async def cases_list(current_user: dict = Depends(get_current_user)):
             </nav>
 
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                <div class="flex items-center justify-between mb-8">
+                <div class="flex items-center justify-between mb-6">
                     <div>
                         <a href="/dashboard" class="text-blue-600 hover:text-blue-700 text-sm">← ダッシュボードに戻る</a>
                         <h1 class="text-4xl font-bold text-gray-900 mt-2">案件一覧</h1>
-                        <p class="text-gray-600 mt-2">全 {len(cases)} 件の案件</p>
+                        <p class="text-gray-600 mt-2">{'全ユーザー' if is_admin else '自分'}の案件 {len(cases)} 件</p>
                     </div>
                 </div>
+
+                <!-- 検索フィルター -->
+                <form method="get" action="/dashboard/cases" class="bg-white rounded-lg shadow p-4 mb-6">
+                    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
+                        {'<div><label class="block text-xs font-medium text-gray-600 mb-1">ユーザー</label><select name="q_user" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="">全員</option>' + user_options + '</select></div>' if is_admin else ''}
+                        <div><label class="block text-xs font-medium text-gray-600 mb-1">積み日（開始）</label>
+                          <input type="date" name="date_from" value="{date_from}" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></div>
+                        <div><label class="block text-xs font-medium text-gray-600 mb-1">積み日（終了）</label>
+                          <input type="date" name="date_to" value="{date_to}" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></div>
+                        <div><label class="block text-xs font-medium text-gray-600 mb-1">積地</label>
+                          <input type="text" name="pick" value="{pick}" placeholder="例: 東京" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></div>
+                        <div><label class="block text-xs font-medium text-gray-600 mb-1">卸地</label>
+                          <input type="text" name="drop" value="{drop}" placeholder="例: 大阪" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></div>
+                        <div><label class="block text-xs font-medium text-gray-600 mb-1">車種</label>
+                          <input type="text" name="vehicle" value="{vehicle}" placeholder="例: 平" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"></div>
+                    </div>
+                    <div class="flex gap-2 mt-3">
+                        <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2 rounded-lg">検索</button>
+                        <a href="/dashboard/cases" class="bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-semibold px-5 py-2 rounded-lg">クリア</a>
+                    </div>
+                </form>
 
                 <div class="bg-white rounded-lg shadow overflow-hidden">
                     <div class="overflow-x-auto">
@@ -267,12 +338,13 @@ async def cases_list(current_user: dict = Depends(get_current_user)):
                             <thead class="bg-gray-50 border-b border-gray-200">
                                 <tr>
                                     <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">ID</th>
+                                    {'<th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">ユーザー</th>' if is_admin else ''}
                                     <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">積地</th>
                                     <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">卸地</th>
                                     <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">重量</th>
                                     <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">車種</th>
                                     <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">運賃</th>
-                                    <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">日付</th>
+                                    <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">積み日</th>
                                     <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">アクション</th>
                                 </tr>
                             </thead>
@@ -281,28 +353,30 @@ async def cases_list(current_user: dict = Depends(get_current_user)):
 
         if cases:
             for case in cases:
-                case_id, pick_loc, drop_loc, weight, vehicle, rate, date, created = case
+                case_id, pick_loc, drop_loc, weight, vehicle, rate, date, created, owner = case
+                owner_cell = f'<td class="px-6 py-4 text-sm text-gray-600">{owner}</td>' if is_admin else ''
                 html += f"""
                                 <tr class="border-b border-gray-200 hover:bg-gray-50 transition">
                                     <td class="px-6 py-4 text-sm font-semibold text-gray-900">#{case_id}</td>
+                                    {owner_cell}
                                     <td class="px-6 py-4 text-sm text-gray-600">{pick_loc}</td>
                                     <td class="px-6 py-4 text-sm text-gray-600">{drop_loc}</td>
-                                    <td class="px-6 py-4 text-sm text-gray-600">{weight:.1f}kg</td>
+                                    <td class="px-6 py-4 text-sm text-gray-600">{weight:.0f}kg</td>
                                     <td class="px-6 py-4 text-sm text-gray-600">{vehicle}</td>
                                     <td class="px-6 py-4 text-sm text-gray-600">¥{rate:,.0f}</td>
                                     <td class="px-6 py-4 text-sm text-gray-600">{date}</td>
                                     <td class="px-6 py-4 text-sm">
-                                        <a href="/dashboard/cases/{case_id}" class="text-blue-600 hover:text-blue-700 font-medium">
-                                            詳細
+                                        <a href="/cases/{case_id}/manage" class="text-blue-600 hover:text-blue-700 font-medium">
+                                            管理
                                         </a>
                                     </td>
                                 </tr>
                 """
         else:
-            html += """
+            html += f"""
                                 <tr>
-                                    <td colspan="8" class="px-6 py-8 text-center text-gray-500">
-                                        案件がまだ登録されていません
+                                    <td colspan="{9 if is_admin else 8}" class="px-6 py-8 text-center text-gray-500">
+                                        条件に一致する案件がありません
                                     </td>
                                 </tr>
             """
