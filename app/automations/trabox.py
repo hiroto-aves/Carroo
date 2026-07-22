@@ -240,59 +240,135 @@ class TraboxAutomation:
             )
 
     async def _step_fill_form(self, page: Page, case_data: Dict[str, Any]) -> None:
-        """ステップ 4: フォーム入力"""
-        from app.automations.trabox_form_mapper import TraboxFormMapper
+        """ステップ 4: フォーム入力
+
+        🔴 Trabox は Ant Design 製 SPA のため、通常の fill/select_option ではなく
+        各コンポーネント専用の操作（カレンダー・地図型都道府県・ドロップダウン）を行う。
+        必須フィールド（発/着日時・発地/着地・荷姿・運賃）の失敗は投稿全体を失敗させる。
+        """
+        from app.automations.trabox_form_mapper import TraboxFormMapper as M
 
         try:
             logger.info("[Trabox] フォーム入力中...")
+
+            # フォーム描画完了を待機（SPA のため行構造の出現で判定）
+            await page.wait_for_selector(
+                ".tbx-form-item", timeout=TRABOX_TIMEOUTS["navigation"]
+            )
             await self.debug_capture.capture_screenshot("step_4_form_before_fill")
 
-            # case_data を検証
-            validation = TraboxFormMapper.validate_case_data(case_data)
-            logger.info(f"[Trabox] フィールド検証: {validation}")
+            pickup_date = M.parse_date(case_data.get("pickup_date"))
+            pickup_time = M.parse_time(case_data.get("pickup_time"))
+            pick_pref = M.normalize_prefecture(case_data.get("pick_location", ""))
+            drop_pref = M.normalize_prefecture(case_data.get("drop_location", ""))
+            pick_city = case_data.get("pick_city") or M.extract_city(
+                case_data.get("pick_location", "")
+            )
+            drop_city = case_data.get("drop_city") or M.extract_city(
+                case_data.get("drop_location", "")
+            )
+            weight_class = M.weight_to_class(case_data.get("cargo_weight"))
+            vehicle_option = M.vehicle_to_option(case_data.get("vehicle_type", ""))
+            freight = M.format_freight(case_data.get("freight_rate"))
+            cargo_type = case_data.get("cargo_type") or M.DEFAULT_CARGO_TYPE
+            highway_fee = case_data.get("highway_fee") or M.DEFAULT_HIGHWAY_FEE
 
-            if validation["unknown_fields"]:
-                logger.warning(
-                    f"[Trabox] 未定義フィールド: {validation['unknown_fields']}"
+            if not pickup_date:
+                raise ValueError(f"pickup_date が不正です: {case_data.get('pickup_date')}")
+            if not pick_pref or not drop_pref:
+                raise ValueError(
+                    f"発地/着地が不正です: {case_data.get('pick_location')} → "
+                    f"{case_data.get('drop_location')}"
+                )
+            if not pick_city or not drop_city:
+                # Trabox は市区町村が必須（都道府県だけでは登録できない）
+                raise ValueError(
+                    "Trabox 投稿には市区町村が必須です。発地/着地を"
+                    "「東京都港区」のように市区町村まで含めて入力してください "
+                    f"（現在: {case_data.get('pick_location')} → "
+                    f"{case_data.get('drop_location')}）"
+                )
+            if not freight:
+                raise ValueError(f"freight_rate が不正です: {case_data.get('freight_rate')}")
+
+            # --- 1. 発（日付+時刻）: カレンダードロップダウン ---
+            await self._select_datetime(page, "発", pickup_date, pickup_time)
+            await self.debug_capture.capture_screenshot("step_4_filled_pickup_datetime")
+
+            # --- 2. 積み時間（フリーテキスト・任意） ---
+            if case_data.get("pickup_time"):
+                await page.fill(
+                    M.PICKUP_TIME_TEXT_SELECTOR,
+                    str(case_data["pickup_time"]),
+                    timeout=TRABOX_TIMEOUTS["action"],
                 )
 
-            # 各フィールドに入力
-            field_mapping = TraboxFormMapper.get_fields_to_fill()
+            # --- 3. 発地（都道府県=地図型 + 市区町村=検索型・両方必須） ---
+            await self._select_prefecture(page, "発地", pick_pref)
+            await self._select_city(page, "発地", pick_city)
+            await self.debug_capture.capture_screenshot("step_4_filled_pick_location")
 
-            for key, value in case_data.items():
-                if key not in field_mapping:
-                    logger.debug(f"[Trabox] スキップ（未定義）: {key}")
-                    continue
+            # --- 4. 着（日時・必須）: 着日時データが無いため発日と同日を指定 ---
+            await self._select_datetime(page, "着", pickup_date, None)
+            await self.debug_capture.capture_screenshot("step_4_filled_drop_datetime")
 
-                field_info = field_mapping[key]
-                selector = field_info["selector"]
-                field_type = field_info["type"]
-                description = field_info["description"]
+            # --- 5. 着地（都道府県 + 市区町村） ---
+            await self._select_prefecture(page, "着地", drop_pref)
+            await self._select_city(page, "着地", drop_city)
+            await self.debug_capture.capture_screenshot("step_4_filled_drop_location")
 
+            # --- 6. 荷姿（必須ラジオ）: 「その他」選択で荷種等のサブフォームが出現 ---
+            await self._select_radio(page, "荷姿", "その他")
+
+            # --- 7. 荷種（荷姿=その他 選択時の必須項目） ---
+            # オートコンプリート型（.ant-select-auto-complete）のため search 入力にタイプする
+            # 🔴 Escape は入力値ごとクリアされるため使用禁止。Tab でフォーカスを外す
+            cargo_input = page.locator(
+                f"{M.row_selector('荷種')} input[type='search']"
+            ).first
+            await cargo_input.click(timeout=TRABOX_TIMEOUTS["action"])
+            await cargo_input.fill(cargo_type, timeout=TRABOX_TIMEOUTS["action"])
+            await page.wait_for_timeout(300)
+            await page.keyboard.press("Tab")
+            await page.wait_for_timeout(300)
+            # 値が保持されているか検証（AutoComplete はブラー時に消えることがある）
+            if not await cargo_input.input_value():
+                logger.warning("[Trabox] 荷種が消えたため再入力（Enter確定方式）")
+                await cargo_input.click(timeout=TRABOX_TIMEOUTS["action"])
+                await cargo_input.fill(cargo_type, timeout=TRABOX_TIMEOUTS["action"])
+                await page.wait_for_timeout(300)
+                await page.keyboard.press("Enter")
+                await page.wait_for_timeout(300)
+
+            # --- 8. 総重量（任意・kg）: 実際の荷物重量を記載 ---
+            if case_data.get("cargo_weight"):
                 try:
-                    # 値を変換
-                    transformed_value = TraboxFormMapper.transform_value(key, value)
-                    if transformed_value is None:
-                        logger.debug(f"[Trabox] スキップ（値なし）: {key}")
-                        continue
-
-                    logger.info(
-                        f"[Trabox] 入力: {description} ({key}) = {transformed_value}"
+                    weight_input = page.locator(
+                        f"{M.row_selector('総重量')} input.ant-input"
+                    ).first
+                    await weight_input.fill(
+                        str(int(float(case_data["cargo_weight"]))),
+                        timeout=TRABOX_TIMEOUTS["action"],
                     )
+                except Exception as we:
+                    logger.warning(f"[Trabox] 総重量の入力に失敗（任意のため続行）: {we}")
 
-                    # フィールド入力
-                    await self._fill_field(
-                        page, selector, field_type, transformed_value, key
-                    )
+            await self.debug_capture.capture_screenshot("step_4_filled_cargo")
 
-                    await self.debug_capture.capture_screenshot(f"step_4_filled_{key}")
+            # --- 9. 希望車両: 1つ目=重量クラス、2つ目=車種 ---
+            row = page.locator(M.row_selector("希望車両")).first
+            await self._select_ant_option(page, row.locator(".ant-select").nth(0), weight_class)
+            await self._select_ant_option(page, row.locator(".ant-select").nth(1), vehicle_option)
+            await self.debug_capture.capture_screenshot("step_4_filled_vehicle")
 
-                except Exception as field_error:
-                    logger.error(
-                        f"[Trabox] フィールド入力エラー ({key}): {field_error}"
-                    )
-                    # フィールド入力失敗は続行（任意フィールドの可能性）
-                    continue
+            # --- 10. 運賃（必須・円税別） ---
+            freight_input = page.locator(
+                f"{M.row_selector('運賃')} input.ant-input"
+            ).first
+            await freight_input.fill(freight, timeout=TRABOX_TIMEOUTS["action"])
+
+            # --- 11. 高速代（必須ラジオ） ---
+            await self._select_radio(page, "高速代", highway_fee)
 
             await self.debug_capture.capture_screenshot("step_4_form_after_fill")
 
@@ -302,8 +378,12 @@ class TraboxAutomation:
                 self.case_id,
                 "trabox",
                 details={
-                    "valid_fields": validation["valid_fields"],
-                    "missing_fields": validation["missing_fields"],
+                    "pickup_date": pickup_date,
+                    "pick_pref": pick_pref,
+                    "drop_pref": drop_pref,
+                    "weight_class": weight_class,
+                    "vehicle": vehicle_option,
+                    "freight": freight,
                 },
             )
 
@@ -317,43 +397,178 @@ class TraboxAutomation:
                 screenshots=self._get_screenshot_paths(),
             )
 
-    async def _fill_field(
+    async def _select_datetime(
         self,
         page: Page,
-        selector: str,
-        field_type: str,
-        value: str,
-        field_name: str,
+        row_label: str,
+        date_str: str,
+        time_parts,
     ) -> None:
-        """単一フィールドに入力"""
+        """発/着の日時ドロップダウン（.ui-datetime-select）を操作
+
+        クリック → カレンダー（td[title="YYYY-MM-DD"]）で日付選択
+        → 時刻指定があれば「H時」「MM分」メニューを選択 → Escape で閉じる
+        """
+        from app.automations.trabox_form_mapper import TraboxFormMapper as M
+        import re as _re
+
+        trigger = page.locator(
+            f"{M.row_selector(row_label)} .ui-datetime-select"
+        ).first
+        await trigger.click(timeout=TRABOX_TIMEOUTS["action"])
+
+        # 表示中のカレンダードロップダウンを特定
+        dropdown = page.locator(
+            f"{M.VISIBLE_DROPDOWN}:has(.datetime-container)"
+        ).first
+        await dropdown.wait_for(state="visible", timeout=TRABOX_TIMEOUTS["action"])
+
+        # 表示月が違う場合は矢印ボタンで移動（最大12回 = 1年分で打ち切り）
+        target_title = M.month_title(date_str)
+        for _ in range(12):
+            title = (
+                await dropdown.locator(".calendar-header__title__text").inner_text()
+            ).strip()
+            if title == target_title:
+                break
+            cur = _re.match(r"(\d+)年\s*(\d+)月", title)
+            tgt = _re.match(r"(\d+)年\s*(\d+)月", target_title)
+            if not cur or not tgt:
+                break
+            go_next = (int(tgt.group(1)), int(tgt.group(2))) > (
+                int(cur.group(1)), int(cur.group(2))
+            )
+            buttons = dropdown.locator(".calendar-header__button button")
+            await buttons.nth(1 if go_next else 0).click()
+            await page.wait_for_timeout(200)
+
+        # 日付セルをクリック（過去日等は disabled でクリック不可）
+        cell = dropdown.locator(
+            f"td.ant-picker-cell[title='{date_str}']"
+            ":not(.ant-picker-cell-disabled)"
+        )
+        await cell.first.click(timeout=TRABOX_TIMEOUTS["action"])
+        logger.info(f"[Trabox] {row_label} 日付選択: {date_str}")
+
+        # 時刻メニュー（時→分の順。10分刻み）
+        if time_parts:
+            hour_label, minute_label = time_parts
+            for label in (hour_label, minute_label):
+                item = dropdown.locator(
+                    ".time-dropdown-menu-item", has_text=_re.compile(f"^{label}$")
+                )
+                try:
+                    await item.first.click(timeout=TRABOX_TIMEOUTS["action"])
+                    logger.info(f"[Trabox] {row_label} 時刻選択: {label}")
+                except Exception as te:
+                    logger.warning(f"[Trabox] {row_label} 時刻選択失敗（{label}）: {te}")
+
+        # ドロップダウンを閉じる
+        await page.keyboard.press("Escape")
+        await page.wait_for_timeout(300)
+
+    async def _select_prefecture(
+        self, page: Page, row_label: str, pref_short: str
+    ) -> None:
+        """発地/着地の都道府県を日本地図型ドロップダウンから選択
+
+        地図ボタンは「東京」「大阪」等の短縮表記（北海道のみフル表記）
+        """
+        from app.automations.trabox_form_mapper import TraboxFormMapper as M
+        import re as _re
+
+        select = page.locator(
+            f"{M.row_selector(row_label)} .ant-select"
+        ).first
+        await select.click(timeout=TRABOX_TIMEOUTS["action"])
+
+        panel = page.locator(
+            f"{M.VISIBLE_SELECT_DROPDOWN} .ui-prefecture-dropdown-container"
+        ).first
+        await panel.wait_for(state="visible", timeout=TRABOX_TIMEOUTS["action"])
+
+        # 完全一致で地図ボタンをクリック（「京都」と「東京」の誤マッチ防止）
+        button = panel.locator(
+            "button.map-button", has_text=_re.compile(f"^{_re.escape(pref_short)}$")
+        )
+        await button.first.click(timeout=TRABOX_TIMEOUTS["action"])
+        logger.info(f"[Trabox] {row_label} 都道府県選択: {pref_short}")
+        await page.wait_for_timeout(300)
+
+    async def _select_city(
+        self, page: Page, row_label: str, city: str
+    ) -> None:
+        """発地/着地の市区町村を検索型ドロップダウンから選択【必須】
+
+        行内2つ目の .ant-select をクリック → 市区町村名をタイプして絞り込み
+        → title 完全一致のオプションをクリック（例: title="港区"）
+        """
+        from app.automations.trabox_form_mapper import TraboxFormMapper as M
+
+        select = page.locator(
+            f"{M.row_selector(row_label)} .ant-select"
+        ).nth(1)
+        await select.click(timeout=TRABOX_TIMEOUTS["action"])
+
+        dropdown = page.locator(M.VISIBLE_SELECT_DROPDOWN).last
+        await dropdown.wait_for(state="visible", timeout=TRABOX_TIMEOUTS["action"])
+
+        # 検索絞り込み（クリックで検索入力にフォーカスが当たる）
+        await page.keyboard.type(city)
+        await page.wait_for_timeout(500)
+
+        option = dropdown.locator(f".ant-select-item-option[title='{city}']")
         try:
-            if field_type == "select":
-                # select タグの場合
-                await page.select_option(selector, value, timeout=TRABOX_TIMEOUTS["action"])
-                logger.debug(f"[Trabox] セレクト: {field_name} = {value}")
+            await option.first.click(timeout=TRABOX_TIMEOUTS["action"])
+        except Exception:
+            # 完全一致が無い場合は絞り込み結果の先頭を選択
+            # （例: 入力「港区芝浦」→ 候補「港区」のような部分一致ケース）
+            fallback = dropdown.locator(".ant-select-item-option").first
+            fallback_title = await fallback.get_attribute("title")
+            logger.warning(
+                f"[Trabox] {row_label} 市区町村の完全一致なし: "
+                f"{city} → 候補先頭の {fallback_title} を選択"
+            )
+            await fallback.click(timeout=TRABOX_TIMEOUTS["action"])
+        logger.info(f"[Trabox] {row_label} 市区町村選択: {city}")
+        await page.wait_for_timeout(300)
 
-            elif field_type in ["text", "number", "tel", "email", "date", "time"]:
-                # テキスト入力タイプ
-                await page.fill(selector, value, timeout=TRABOX_TIMEOUTS["action"])
-                logger.debug(f"[Trabox] 入力: {field_name} = {value}")
+    async def _select_ant_option(
+        self, page: Page, select_locator, option_text: str
+    ) -> None:
+        """Ant Design セレクトのドロップダウンから選択肢を完全一致で選ぶ"""
+        import re as _re
 
-            elif field_type == "checkbox":
-                # チェックボックス
-                if value in ["true", "True", "1", True]:
-                    await page.check(selector, timeout=TRABOX_TIMEOUTS["action"])
-                    logger.debug(f"[Trabox] チェック: {field_name}")
-                else:
-                    await page.uncheck(selector, timeout=TRABOX_TIMEOUTS["action"])
-                    logger.debug(f"[Trabox] アンチェック: {field_name}")
+        from app.automations.trabox_form_mapper import TraboxFormMapper as M
 
-            else:
-                # 未知の型
-                await page.fill(selector, value, timeout=TRABOX_TIMEOUTS["action"])
-                logger.debug(f"[Trabox] 入力（型不明）: {field_name} = {value}")
+        await select_locator.click(timeout=TRABOX_TIMEOUTS["action"])
+        dropdown = page.locator(M.VISIBLE_SELECT_DROPDOWN).last
+        await dropdown.wait_for(state="visible", timeout=TRABOX_TIMEOUTS["action"])
 
+        option = dropdown.locator(
+            ".ant-select-item-option",
+            has_text=_re.compile(f"^{_re.escape(option_text)}$"),
+        )
+        try:
+            await option.first.click(timeout=TRABOX_TIMEOUTS["action"])
+            logger.info(f"[Trabox] セレクト選択: {option_text}")
         except Exception as e:
-            logger.error(f"[Trabox] フィールド入力失敗: {field_name} - {e}")
-            raise
+            # 選択肢が見つからない場合は既定値のまま閉じる（問わず等）
+            logger.warning(f"[Trabox] 選択肢が見つかりません（{option_text}）: {e}")
+            await page.keyboard.press("Escape")
+        await page.wait_for_timeout(200)
+
+    async def _select_radio(
+        self, page: Page, row_label: str, option_label: str
+    ) -> None:
+        """行内のラジオボタンをラベルテキストで選択（例: 荷姿 → その他）"""
+        from app.automations.trabox_form_mapper import TraboxFormMapper as M
+
+        radio = page.locator(
+            f"{M.row_selector(row_label)} .ant-radio-wrapper:has-text('{option_label}')"
+        )
+        await radio.first.click(timeout=TRABOX_TIMEOUTS["action"])
+        logger.info(f"[Trabox] {row_label} ラジオ選択: {option_label}")
 
     async def _step_submit_form(self, page: Page) -> None:
         """ステップ 5: フォーム送信"""
@@ -364,11 +579,22 @@ class TraboxAutomation:
             await self.debug_capture.capture_screenshot("step_5_before_submit")
 
             # 送信ボタンをクリック
-            submit_selector = TraboxFormMapper.get_submit_button_selector()
+            submit_selector = TraboxFormMapper.SUBMIT_BUTTON_SELECTOR
             logger.info(f"[Trabox] 送信ボタンをクリック: {submit_selector}")
 
             await page.click(submit_selector, timeout=TRABOX_TIMEOUTS["action"])
             await self.debug_capture.capture_screenshot("step_5_button_clicked")
+
+            # 確認モーダルが出た場合は確定ボタンをクリック（出ない場合はスキップ）
+            try:
+                confirm = page.locator(
+                    ".ant-modal:visible button.ant-btn-primary"
+                ).first
+                await confirm.click(timeout=5000)
+                logger.info("[Trabox] 確認モーダルで確定をクリック")
+                await self.debug_capture.capture_screenshot("step_5_modal_confirmed")
+            except Exception:
+                logger.debug("[Trabox] 確認モーダルなし（そのまま続行）")
 
             # 送信後のページ遷移を待機
             logger.info("[Trabox] ページ遷移を待機中...")
