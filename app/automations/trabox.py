@@ -83,18 +83,26 @@ class TraboxAutomation:
                 # ステップ 5: 送信
                 await self._step_submit_form(page)
 
+                # ステップ 6: 登録された荷物番号を取得（将来の更新・削除に使用）
+                baggage_no = await self._get_registered_baggage_no(page)
+
                 # 成功ログ
                 structured_logger.log_posting_completed(
                     self.user_id,
                     self.case_id,
                     "trabox",
-                    {"status": "success", "message": "Trabox への投稿に成功しました"},
+                    {
+                        "status": "success",
+                        "message": "Trabox への投稿に成功しました",
+                        "baggage_no": baggage_no,
+                    },
                 )
 
                 return {
                     "status": "success",
                     "platform": "trabox",
                     "message": "投稿に成功しました",
+                    "baggage_no": baggage_no,
                 }
 
             except PostingError as e:
@@ -120,6 +128,110 @@ class TraboxAutomation:
             finally:
                 await context.close()
                 await browser.close()
+
+    async def delete_case(self, baggage_no: str) -> Dict[str, Any]:
+        """登録済み荷物を削除（CRUD の Delete。実環境で検証済み 2026-07-22）
+
+        フロー: ログイン → 登録した荷物一覧 → 対象行の削除ボタン → 確認モーダルで確定
+        - 一覧の行は tr[data-row-key='荷物番号'] で一意に特定できる
+        - 削除ボタンはツールチップ等に被られるため dispatch_event('click') を使う
+        - 確認モーダルは .ant-modal-confirm 内の「削除」ボタン
+
+        Args:
+            baggage_no: Trabox の荷物番号（post_case の戻り値 baggage_no）
+        """
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=self.headless)
+            context = await browser.new_context(viewport={"width": 1280, "height": 720})
+            page = await context.new_page()
+            self.debug_capture = DebugCapture(page)
+
+            try:
+                await self._step_navigate_to_dashboard(page)
+                if await self._is_login_page(page):
+                    await self._step_login(page)
+                    await self._step_navigate_to_dashboard(page)
+
+                # 一覧の描画完了を待機
+                await page.wait_for_selector(
+                    "tr[data-row-key]", timeout=TRABOX_TIMEOUTS["navigation"]
+                )
+
+                row = page.locator(f"tr[data-row-key='{baggage_no}']")
+                if await row.count() != 1:
+                    raise ValueError(
+                        f"荷物番号 {baggage_no} が一覧に見つかりません"
+                        "（既に削除済みか、番号が不正です）"
+                    )
+
+                await self.debug_capture.capture_screenshot("delete_before")
+
+                # ツールチップの被りを回避するため click イベントを直接ディスパッチ
+                await row.locator("button:has-text('削除')").dispatch_event("click")
+
+                # 確認モーダルで確定
+                confirm = page.locator(
+                    ".ant-modal-confirm button:has-text('削除')"
+                )
+                await confirm.first.click(timeout=TRABOX_TIMEOUTS["action"])
+                await page.wait_for_timeout(2000)
+                await self.debug_capture.capture_screenshot("delete_after")
+
+                # 行が消えたことを確認
+                if await row.count() != 0:
+                    raise Exception(
+                        f"削除後も荷物番号 {baggage_no} が一覧に残っています"
+                    )
+
+                logger.info(f"[Trabox] 荷物削除成功: {baggage_no}")
+                structured_logger.log_event(
+                    "trabox_delete",
+                    self.user_id,
+                    self.case_id,
+                    "trabox",
+                    details={"baggage_no": baggage_no},
+                )
+                return {
+                    "status": "success",
+                    "platform": "trabox",
+                    "message": f"荷物 {baggage_no} を削除しました",
+                    "baggage_no": baggage_no,
+                }
+
+            except Exception as e:
+                raise ErrorHandler.handle_posting_error(
+                    e,
+                    self.user_id,
+                    self.case_id,
+                    "trabox",
+                    step="delete_case",
+                    screenshots=self._get_screenshot_paths(),
+                )
+            finally:
+                await context.close()
+                await browser.close()
+
+    async def _get_registered_baggage_no(self, page: Page) -> Optional[str]:
+        """投稿直後に一覧（新着順）の先頭行から荷物番号を取得
+
+        取得失敗しても投稿自体は成功しているため None を返すのみ（非致命）。
+        """
+        try:
+            await page.goto(
+                TRABOX_DASHBOARD_URL,
+                wait_until="networkidle",
+                timeout=TRABOX_TIMEOUTS["navigation"],
+            )
+            first_row = page.locator("tr[data-row-key]").first
+            await first_row.wait_for(
+                state="attached", timeout=TRABOX_TIMEOUTS["action"]
+            )
+            baggage_no = await first_row.get_attribute("data-row-key")
+            logger.info(f"[Trabox] 登録された荷物番号: {baggage_no}")
+            return baggage_no
+        except Exception as e:
+            logger.warning(f"[Trabox] 荷物番号の取得に失敗（投稿は成功）: {e}")
+            return None
 
     async def _step_navigate_to_dashboard(self, page: Page) -> None:
         """ステップ 1: ダッシュボードにナビゲート"""
@@ -257,6 +369,7 @@ class TraboxAutomation:
             )
             await self.debug_capture.capture_screenshot("step_4_form_before_fill")
 
+            D = M.TRABOX_DEFAULTS
             pickup_date = M.parse_date(case_data.get("pickup_date"))
             pickup_time = M.parse_time(case_data.get("pickup_time"))
             pick_pref = M.normalize_prefecture(case_data.get("pick_location", ""))
@@ -270,8 +383,24 @@ class TraboxAutomation:
             weight_class = M.weight_to_class(case_data.get("cargo_weight"))
             vehicle_option = M.vehicle_to_option(case_data.get("vehicle_type", ""))
             freight = M.format_freight(case_data.get("freight_rate"))
-            cargo_type = case_data.get("cargo_type") or M.DEFAULT_CARGO_TYPE
-            highway_fee = case_data.get("highway_fee") or M.DEFAULT_HIGHWAY_FEE
+            # --- 拡張キー（未指定なら Trabox 既定値。詳細は TraboxFormMapper 参照） ---
+            cargo_type = case_data.get("cargo_type") or D["cargo_type"]
+            highway_fee = case_data.get("highway_fee") or D["highway_fee"]
+            visibility = case_data.get("visibility") or D["visibility"]
+            share = case_data.get("share") or D["share"]
+            truck_count = case_data.get("truck_count") or D["truck_count"]
+            omakase_billing = case_data.get("omakase_billing") or D["omakase_billing"]
+            contact_method = case_data.get("contact_method") or D["contact_method"]
+            contact_name = case_data.get("contact_name")  # 指定時のみ担当者を変更
+            remarks = case_data.get("remarks")
+            # 着日: 未指定なら発日の翌日（翌日着が物流の一般慣行）
+            drop_date = M.parse_date(case_data.get("drop_date"))
+            # 着時刻: drop_time 指定時は HH:MM、未指定なら「午前」（翌朝着）
+            drop_time_parsed = M.parse_time(case_data.get("drop_time"))
+            drop_time_labels = (
+                list(drop_time_parsed) if drop_time_parsed
+                else [D["drop_time_label"]]
+            )
 
             if not pickup_date:
                 raise ValueError(f"pickup_date が不正です: {case_data.get('pickup_date')}")
@@ -290,9 +419,17 @@ class TraboxAutomation:
                 )
             if not freight:
                 raise ValueError(f"freight_rate が不正です: {case_data.get('freight_rate')}")
+            if not drop_date:
+                drop_date = M.next_day(pickup_date)
+
+            # --- 0. 公開範囲（既定: すべて） ---
+            await self._select_radio(page, "公開範囲", visibility)
 
             # --- 1. 発（日付+時刻）: カレンダードロップダウン ---
-            await self._select_datetime(page, "発", pickup_date, pickup_time)
+            await self._select_datetime(
+                page, "発", pickup_date,
+                list(pickup_time) if pickup_time else None,
+            )
             await self.debug_capture.capture_screenshot("step_4_filled_pickup_datetime")
 
             # --- 2. 積み時間（フリーテキスト・任意） ---
@@ -308,9 +445,17 @@ class TraboxAutomation:
             await self._select_city(page, "発地", pick_city)
             await self.debug_capture.capture_screenshot("step_4_filled_pick_location")
 
-            # --- 4. 着（日時・必須）: 着日時データが無いため発日と同日を指定 ---
-            await self._select_datetime(page, "着", pickup_date, None)
+            # --- 4. 着（日時・必須）: 既定は発日の翌日・午前着（翌朝着の一般慣行） ---
+            await self._select_datetime(page, "着", drop_date, drop_time_labels)
             await self.debug_capture.capture_screenshot("step_4_filled_drop_datetime")
+
+            # --- 4b. 卸し時間（フリーテキスト・任意） ---
+            if case_data.get("drop_time"):
+                await page.fill(
+                    M.DROP_TIME_TEXT_SELECTOR,
+                    str(case_data["drop_time"]),
+                    timeout=TRABOX_TIMEOUTS["action"],
+                )
 
             # --- 5. 着地（都道府県 + 市区町村） ---
             await self._select_prefecture(page, "着地", drop_pref)
@@ -361,14 +506,40 @@ class TraboxAutomation:
             await self._select_ant_option(page, row.locator(".ant-select").nth(1), vehicle_option)
             await self.debug_capture.capture_screenshot("step_4_filled_vehicle")
 
-            # --- 10. 運賃（必須・円税別） ---
+            # --- 10. 積合（必須ラジオ・既定: 不可） ---
+            await self._select_radio(page, "積合", share)
+
+            # --- 11. 台数（必須・既定: 1） ---
+            count_input = page.locator(
+                f"{M.row_selector('台数')} input"
+            ).first
+            await count_input.fill(str(truck_count), timeout=TRABOX_TIMEOUTS["action"])
+
+            # --- 12. 運賃（必須・円税別） ---
             freight_input = page.locator(
                 f"{M.row_selector('運賃')} input.ant-input"
             ).first
             await freight_input.fill(freight, timeout=TRABOX_TIMEOUTS["action"])
 
-            # --- 11. 高速代（必須ラジオ） ---
+            # --- 13. 高速代（必須ラジオ・既定: 支払わない） ---
             await self._select_radio(page, "高速代", highway_fee)
+
+            # --- 14. おまかせ請求受入可否（必須ラジオ・既定: 受入不可） ---
+            await self._select_radio(page, "おまかせ請求受入可否", omakase_billing)
+
+            # --- 15. 連絡方法（必須ラジオ・既定: 電話で受付） ---
+            await self._select_radio(page, "連絡方法", contact_method)
+
+            # --- 16. 備考（任意） ---
+            if remarks:
+                remarks_input = page.locator(
+                    f"{M.row_selector('備考')} textarea"
+                ).first
+                await remarks_input.fill(str(remarks), timeout=TRABOX_TIMEOUTS["action"])
+
+            # --- 17. 担当者（contact_name 指定時のみ変更。未指定はアカウント既定のまま） ---
+            if contact_name:
+                await self._set_contact_person(page, str(contact_name))
 
             await self.debug_capture.capture_screenshot("step_4_form_after_fill")
 
@@ -379,11 +550,14 @@ class TraboxAutomation:
                 "trabox",
                 details={
                     "pickup_date": pickup_date,
-                    "pick_pref": pick_pref,
-                    "drop_pref": drop_pref,
+                    "drop_date": drop_date,
+                    "pick": f"{pick_pref}{pick_city}",
+                    "drop": f"{drop_pref}{drop_city}",
                     "weight_class": weight_class,
                     "vehicle": vehicle_option,
                     "freight": freight,
+                    "cargo_type": cargo_type,
+                    "contact_name": contact_name,
                 },
             )
 
@@ -402,12 +576,17 @@ class TraboxAutomation:
         page: Page,
         row_label: str,
         date_str: str,
-        time_parts,
+        time_labels,
     ) -> None:
         """発/着の日時ドロップダウン（.ui-datetime-select）を操作
 
         クリック → カレンダー（td[title="YYYY-MM-DD"]）で日付選択
-        → 時刻指定があれば「H時」「MM分」メニューを選択 → Escape で閉じる
+        → time_labels のメニュー項目を順にクリック → Escape で閉じる
+
+        time_labels の例:
+            ["9時", "00分"]  … 時刻指定
+            ["午前"]         … 午前着（時メニューの特殊項目）
+            None            … 時刻指定なし
         """
         from app.automations.trabox_form_mapper import TraboxFormMapper as M
         import re as _re
@@ -450,10 +629,9 @@ class TraboxAutomation:
         await cell.first.click(timeout=TRABOX_TIMEOUTS["action"])
         logger.info(f"[Trabox] {row_label} 日付選択: {date_str}")
 
-        # 時刻メニュー（時→分の順。10分刻み）
-        if time_parts:
-            hour_label, minute_label = time_parts
-            for label in (hour_label, minute_label):
+        # 時刻メニュー（「9時」「00分」または「午前」「午後」等）
+        if time_labels:
+            for label in time_labels:
                 item = dropdown.locator(
                     ".time-dropdown-menu-item", has_text=_re.compile(f"^{label}$")
                 )
@@ -561,14 +739,60 @@ class TraboxAutomation:
     async def _select_radio(
         self, page: Page, row_label: str, option_label: str
     ) -> None:
-        """行内のラジオボタンをラベルテキストで選択（例: 荷姿 → その他）"""
+        """行内のラジオボタンをラベルテキストで選択（例: 荷姿 → その他）
+
+        まず完全一致（前後空白許容）で探し、なければ部分一致にフォールバック
+        （例:「電話で受付」→「電話で受付（従来通り）」）。
+        ⚠️「受入可」のように他の選択肢（受入不可）に包含されるラベルは
+        完全一致で解決されるため誤選択しない。
+        """
+        import re as _re
+
         from app.automations.trabox_form_mapper import TraboxFormMapper as M
 
-        radio = page.locator(
-            f"{M.row_selector(row_label)} .ant-radio-wrapper:has-text('{option_label}')"
+        wrappers = page.locator(
+            f"{M.row_selector(row_label)} .ant-radio-wrapper"
         )
-        await radio.first.click(timeout=TRABOX_TIMEOUTS["action"])
+        exact = wrappers.filter(
+            has_text=_re.compile(rf"^\s*{_re.escape(option_label)}\s*$")
+        )
+        try:
+            await exact.first.click(timeout=TRABOX_TIMEOUTS["action"])
+        except Exception:
+            partial = wrappers.filter(has_text=option_label)
+            await partial.first.click(timeout=TRABOX_TIMEOUTS["action"])
         logger.info(f"[Trabox] {row_label} ラジオ選択: {option_label}")
+
+    async def _set_contact_person(self, page: Page, name: str) -> None:
+        """担当者を変更する
+
+        「担当者を変更する」チェック → オートコンプリート入力が有効化されるので
+        担当者名をタイプして Tab で確定（荷種と同じ Ant AutoComplete 型）
+        """
+        from app.automations.trabox_form_mapper import TraboxFormMapper as M
+
+        checkbox = page.locator(
+            ".ant-checkbox-wrapper:has-text('担当者を変更する')"
+        ).first
+        await checkbox.click(timeout=TRABOX_TIMEOUTS["action"])
+        await page.wait_for_timeout(500)
+
+        name_input = page.locator(
+            f"{M.row_selector('担当者')} input[type='search']"
+        ).first
+        await name_input.click(timeout=TRABOX_TIMEOUTS["action"])
+        await name_input.fill(name, timeout=TRABOX_TIMEOUTS["action"])
+        await page.wait_for_timeout(300)
+        await page.keyboard.press("Tab")
+        await page.wait_for_timeout(300)
+        if not await name_input.input_value():
+            logger.warning("[Trabox] 担当者名が消えたため再入力（Enter確定方式）")
+            await name_input.click(timeout=TRABOX_TIMEOUTS["action"])
+            await name_input.fill(name, timeout=TRABOX_TIMEOUTS["action"])
+            await page.wait_for_timeout(300)
+            await page.keyboard.press("Enter")
+            await page.wait_for_timeout(300)
+        logger.info(f"[Trabox] 担当者変更: {name}")
 
     async def _step_submit_form(self, page: Page) -> None:
         """ステップ 5: フォーム送信"""

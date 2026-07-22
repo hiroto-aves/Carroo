@@ -50,8 +50,22 @@ class TraboxFormMapper:
         """フォーム行（.tbx-form-item）を行ラベルの完全一致で特定するセレクター
 
         例: row_selector("発") → 「発」行のみ（「発地」行にはマッチしない）
+
+        🔴 ラベル構造は2種類ある（実DOMで確認済み）:
+        1. <span class="label-wrapper">荷姿</span>            … テキスト直下
+        2. <span class="label-wrapper"><span class="label">積合</span><ヘルプアイコン></span>
+           … ヘルプアイコン付き行はネスト構造（積合・おまかせ請求受入可否・連絡方法 等）
+        3. 「おまかせ請求<br>受入可否」のように <br> 入りラベルは正規化で空白が入る
+        よって完全一致ではなく「各文字間に空白を許容する前後アンカー付き正規表現」で拾う。
+        （カンマ union だと後続の子孫セレクターが最後の項にしか付かないため必ず :is() を使う）
         """
-        return f".tbx-form-item:has(.label-wrapper:text-is('{label}'))"
+        # 例: 「おまかせ請求受入可否」→ ^\s*お\s*ま\s*…\s*否\s*$
+        pattern = r"\s*".join(re.escape(ch) for ch in label)
+        pattern = f"^\\s*{pattern}\\s*$"
+        return (
+            f'.tbx-form-item:has(:is(.label-wrapper:text-matches("{pattern}"), '
+            f'.label-wrapper .label:text-matches("{pattern}")))'
+        )
 
     # ============ 値変換 ============
 
@@ -97,13 +111,48 @@ class TraboxFormMapper:
         m = re.match(r"^(.+?郡.+?[町村]|.+?市.+?区|.+?[市区町村])", rest)
         return m.group(1) if m else rest
 
-    # 高速代【必須ラジオ】の既定値
-    # 追加費用を荷主に約束しない安全側の既定。case_data の highway_fee で上書き可能
-    DEFAULT_HIGHWAY_FEE = "支払わない"
+    # ============ Trabox フォーム既定値（2026-07-22 ユーザー指定） ============
+    # 🎯 設計方針: 1つのフォームから Trabox / WebKIT へ CRUD できるシステムが最終形。
+    # Trabox フォームの全項目を「必要十分条件」としてここに定義し、
+    # UI に未実装の細かい条件も case_data の同名キーで裏から上書きできるようにする。
+    #
+    # 【case_data 拡張キー一覧（すべて任意・未指定なら既定値）】
+    #   visibility      : 公開範囲（すべて / 限定）
+    #   drop_date       : 着日 YYYY-MM-DD（未指定なら発日の翌日 = 翌日着が一般的）
+    #   drop_time       : 卸し時間 HH:MM（未指定なら着時刻「午前」= 翌朝着）
+    #   cargo_type      : 荷種（荷姿=その他 時の必須項目）
+    #   share           : 積合（不可 / 可能）
+    #   truck_count     : 台数
+    #   highway_fee     : 高速代（別途支払う / 支払わない）
+    #   omakase_billing : おまかせ請求受入可否（必須 / 推奨 / 受入可 / 受入不可 / 未定）
+    #   contact_method  : 連絡方法（電話で受付 / オンラインで受付）
+    #   contact_name    : 担当者名（指定時のみ「担当者を変更する」で上書き）
+    #   remarks         : 備考
+    TRABOX_DEFAULTS = {
+        "visibility": "すべて",        # 公開範囲
+        "share": "不可",               # 積合
+        "truck_count": 1,              # 台数
+        "highway_fee": "支払わない",    # 高速代
+        "omakase_billing": "受入不可",  # おまかせ請求受入可否
+        "contact_method": "電話で受付",  # 連絡方法（画面表記は「電話で受付（従来通り）」）
+        "cargo_type": "鋼材",           # 荷種
+        "drop_time_label": "午前",      # 着時刻（翌朝着が一般的なため）
+    }
 
-    # 荷姿=その他 選択時に必須になる「荷種」の既定値
-    # case_data の cargo_type で上書き可能
-    DEFAULT_CARGO_TYPE = "雑貨"
+    # 後方互換のための別名
+    DEFAULT_HIGHWAY_FEE = TRABOX_DEFAULTS["highway_fee"]
+    DEFAULT_CARGO_TYPE = TRABOX_DEFAULTS["cargo_type"]
+
+    @staticmethod
+    def next_day(date_str: str) -> str:
+        """発日 → 着日の既定値（翌日着）を計算
+
+        物流の一般慣行「16日積み込み → 17日朝着」に合わせて +1 日。
+        case_data の drop_date で明示的に上書き可能。
+        """
+        from datetime import timedelta
+        d = datetime.strptime(date_str, "%Y-%m-%d")
+        return (d + timedelta(days=1)).strftime("%Y-%m-%d")
 
     @staticmethod
     def weight_to_class(weight_kg: Any) -> str:
