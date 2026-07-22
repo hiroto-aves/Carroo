@@ -208,8 +208,8 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
                                             <input type="date" name="pickup_date" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required>
                                         </div>
                                         <div>
-                                            <label class="block text-sm font-medium text-gray-700 mb-2">積み時間</label>
-                                            <input type="time" name="pickup_time" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition">
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">積み時間<span class="ml-1 px-1.5 py-0.5 text-xs font-semibold text-red-600 bg-red-50 rounded">必須</span></label>
+                                            <input type="time" name="pickup_time" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required>
                                         </div>
                                     </div>
                                     <div>
@@ -233,12 +233,12 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 border border-gray-200 rounded-lg">
                                     <div class="space-y-4">
                                         <div>
-                                            <label class="block text-sm font-medium text-gray-700 mb-2">着日 <span class="text-gray-400 text-xs">（未指定なら翌日・午前着）</span></label>
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">着日 <span class="text-gray-400 text-xs">（未指定なら翌日）</span></label>
                                             <input type="date" name="drop_date" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition">
                                         </div>
                                         <div>
-                                            <label class="block text-sm font-medium text-gray-700 mb-2">卸し時間</label>
-                                            <input type="time" name="drop_time" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition">
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">卸し時間<span class="ml-1 px-1.5 py-0.5 text-xs font-semibold text-red-600 bg-red-50 rounded">必須</span></label>
+                                            <input type="time" name="drop_time" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required>
                                         </div>
                                     </div>
                                     <div>
@@ -598,6 +598,18 @@ async def register_case(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="発地・着地は都道府県と市区町村まで必須です（例: 東京都港区）",
+            )
+
+        # 積み時間・卸し時間は必須（ブラウザ回避の送信に対する防御）
+        if not pickup_time:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="積み時間は必須です",
+            )
+        if not drop_time:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="卸し時間は必須です",
             )
 
         # 🔴 初期設定（連絡先メール）未登録なら登録不可（通知先が無いため）
