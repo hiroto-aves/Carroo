@@ -643,7 +643,10 @@ class TraboxAutomation:
                     f"（現在: {case_data.get('pick_location')} → "
                     f"{case_data.get('drop_location')}）"
                 )
-            if not freight:
+            freight_negotiable = case_data.get("freight_negotiable") in (
+                True, "true", "yes", "1", 1
+            )
+            if not freight and not freight_negotiable:
                 raise ValueError(f"freight_rate が不正です: {case_data.get('freight_rate')}")
             if not drop_date:
                 drop_date = M.next_day(pickup_date)
@@ -741,11 +744,18 @@ class TraboxAutomation:
             ).first
             await count_input.fill(str(truck_count), timeout=TRABOX_TIMEOUTS["action"])
 
-            # --- 12. 運賃（必須・円税別） ---
-            freight_input = page.locator(
-                f"{M.row_selector('運賃')} input.ant-input"
-            ).first
-            await freight_input.fill(freight, timeout=TRABOX_TIMEOUTS["action"])
+            # --- 12. 運賃（必須・円税別）: 要相談の場合は金額の代わりにチェック ---
+            if freight_negotiable:
+                negotiable_checkbox = page.locator(
+                    f"{M.row_selector('運賃')} .ant-checkbox-wrapper:has-text('要相談')"
+                ).first
+                await negotiable_checkbox.click(timeout=TRABOX_TIMEOUTS["action"])
+                logger.info("[Trabox] 運賃: 要相談にチェック")
+            else:
+                freight_input = page.locator(
+                    f"{M.row_selector('運賃')} input.ant-input"
+                ).first
+                await freight_input.fill(freight, timeout=TRABOX_TIMEOUTS["action"])
 
             # --- 13. 高速代（必須ラジオ・既定: 支払わない） ---
             await self._select_radio(page, "高速代", highway_fee)

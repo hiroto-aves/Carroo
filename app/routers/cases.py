@@ -225,22 +225,28 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
                                     <input type="number" name="cargo_weight" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" step="0.1" required>
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">希望車両（トン数）</label>
-                                    <select name="truck_weight" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
-                                        WEIGHT_OPTIONS
-                                    </select>
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">希望車両（形状）</label>
-                                    <select name="vehicle_type" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
-                                        SHAPE_OPTIONS
-                                    </select>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">希望車両（トン数 / 形状）</label>
+                                    <div class="flex gap-3">
+                                        <select name="truck_weight" class="w-1/2 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                                            WEIGHT_OPTIONS
+                                        </select>
+                                        <select name="vehicle_type" class="w-1/2 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                                            SHAPE_OPTIONS
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
 
                             <div>
                                 <label class="block text-sm font-medium text-gray-700 mb-2">運賃（円）<span class="ml-1 px-1.5 py-0.5 text-xs font-semibold text-red-600 bg-red-50 rounded">必須</span></label>
-                                <input type="number" name="freight_rate" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" step="100" required>
+                                <div class="flex items-center gap-4">
+                                    <input type="number" name="freight_rate" id="freight_rate" class="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition disabled:bg-gray-100 disabled:text-gray-400" step="100" required>
+                                    <label class="flex items-center gap-2 whitespace-nowrap cursor-pointer">
+                                        <input type="checkbox" name="freight_negotiable" id="freight_negotiable" value="yes" class="w-5 h-5 text-blue-600 rounded">
+                                        <span class="text-sm font-medium text-gray-700">要相談 <span class="text-xs text-gray-500">（Traboxのみ）</span></span>
+                                    </label>
+                                </div>
+                                <p id="webkit-alert" class="hidden mt-2 text-sm font-semibold text-red-600"></p>
                         </div>
                     </div>
 
@@ -358,7 +364,7 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
                                     </div>
                                 </label>
                                 <label class="flex items-center p-4 border border-gray-300 rounded-lg cursor-pointer hover:bg-blue-50 transition">
-                                    <input type="checkbox" name="post_to_webkit" class="w-5 h-5 text-blue-600 rounded">
+                                    <input type="checkbox" name="post_to_webkit" id="post_to_webkit" class="w-5 h-5 text-blue-600 rounded">
                                     <div class="ml-3">
                                         <span class="block font-medium text-gray-900">Webkit</span>
                                         <span class="block text-sm text-gray-600">XML API を使用した自動投稿</span>
@@ -433,6 +439,41 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
             setupCityLoader('pick_pref', 'pick_city');
             setupCityLoader('drop_pref', 'drop_city');
 
+            // 運賃「要相談」と WebKit の排他制御
+            // （WebKit は金額必須のため、要相談の案件は Trabox にしか投稿できない）
+            const negotiableCheckbox = document.getElementById('freight_negotiable');
+            const freightInput = document.getElementById('freight_rate');
+            const webkitCheckbox = document.getElementById('post_to_webkit');
+            const webkitAlert = document.getElementById('webkit-alert');
+
+            function showWebkitAlert(message) {
+                webkitAlert.textContent = '⚠ ' + message;
+                webkitAlert.classList.remove('hidden');
+                setTimeout(() => webkitAlert.classList.add('hidden'), 5000);
+            }
+
+            negotiableCheckbox.addEventListener('change', () => {
+                if (negotiableCheckbox.checked) {
+                    freightInput.disabled = true;
+                    freightInput.required = false;
+                    freightInput.value = '';
+                    if (webkitCheckbox.checked) {
+                        webkitCheckbox.checked = false;
+                        showWebkitAlert('金額の要相談にチェックが入っているため WebKit の選択を解除しました');
+                    }
+                } else {
+                    freightInput.disabled = false;
+                    freightInput.required = true;
+                }
+            });
+
+            webkitCheckbox.addEventListener('click', (e) => {
+                if (negotiableCheckbox.checked) {
+                    e.preventDefault();
+                    showWebkitAlert('金額の要相談にチェックが入っているため WebKit を選べません');
+                }
+            });
+
             const traboxCheckbox = document.querySelector('input[name="post_to_trabox"]');
             const traboxAuth = document.getElementById('trabox-auth');
 
@@ -461,7 +502,8 @@ async def register_case(
     vehicle_type: str = Form("問わず"),
     truck_weight: Optional[str] = Form(None),
     moving_case: Optional[str] = Form(None),
-    freight_rate: float = Form(...),
+    freight_rate: Optional[float] = Form(None),
+    freight_negotiable: Optional[str] = Form(None),
     pickup_date: str = Form(...),
     pickup_time: Optional[str] = Form(None),
     contact_name: Optional[str] = Form(None),
@@ -520,12 +562,29 @@ async def register_case(
                 detail="発地・着地は都道府県と市区町村まで必須です（例: 東京都港区）",
             )
 
+        # 運賃: 金額指定 or 要相談のどちらかが必須。
+        # 要相談は Trabox のみ対応（WebKit は金額必須のため併用不可）
+        is_negotiable = freight_negotiable == "yes"
+        if not is_negotiable and freight_rate is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="運賃の金額を入力するか「要相談」にチェックしてください",
+            )
+        if is_negotiable and post_to_webkit == "yes":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="金額の要相談にチェックが入っているため WebKit を選べません",
+            )
+        if is_negotiable:
+            freight_rate = 0  # DB は NOT NULL のため 0 を保存（実値は要相談）
+
         # 拡張キー（Trabox フォーム全項目に対応。指定されたものだけ保持し、
         # 未指定は投稿時に TraboxFormMapper.TRABOX_DEFAULTS が適用される）
         extras = {
             k: v for k, v in {
                 "truck_weight": truck_weight,
                 "moving_case": True if moving_case == "yes" else None,
+                "freight_negotiable": True if is_negotiable else None,
                 "drop_date": drop_date,
                 "drop_time": drop_time,
                 "cargo_type": cargo_type,
@@ -602,6 +661,10 @@ async def register_case(
             }
         )
 
+    except HTTPException:
+        # バリデーションエラー等はそのまま返す（detail を握りつぶさない）
+        conn.rollback()
+        raise
     except Exception as e:
         conn.rollback()
         logger.error(f"❌ エラー: {e}")
