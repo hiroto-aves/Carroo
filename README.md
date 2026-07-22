@@ -25,3 +25,24 @@
   - 各種物流入力項目（日付、時間、都道府県、市区町村、重量、車格、運賃等）
   - 「投稿先」セクション（チェックボックスと文字が横並び、かつ各グループ同士も横並びで配置）
   - 「案件を登録」ボタン
+
+
+## 5. システムメールアドレス
+
+投稿成否の通知メールに使うシステムメールアカウント。
+🔴 **認証情報（パスワード等）は git 管理外の `.env` にのみ記載する。README には書かないこと**（GitHub に公開されるため）。
+
+- メールアドレス: carroo@takeuchiunso.com
+- 送信SMTPサーバー: mail1019.onamae.ne.jp（ポート 465=SSL / 587=STARTTLS）
+- 受信IMAPサーバー: mail1019.onamae.ne.jp（993 / 143）
+- 受信POPサーバー: mail1019.onamae.ne.jp（995 / 110）
+- パスワード: → `.env` の `SMTP_PASSWORD` を参照
+
+`.env` の設定例（実値はローカルの `.env` に記載済み）:
+```
+SMTP_HOST=mail1019.onamae.ne.jp
+SMTP_PORT=465
+SMTP_USER=carroo@takeuchiunso.com
+SMTP_PASSWORD=（お名前.com のメールパスワード）
+MAIL_FROM=carroo@takeuchiunso.com
+```
