@@ -50,6 +50,23 @@ def _get_trabox_credentials(user_id: int) -> tuple:
     return username, password
 
 
+async def execute_task(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """タスクを action に応じて振り分ける（register / update / delete）
+
+    payload:
+      register: {"action":"register", "user_id", "case_data"}
+      update  : {"action":"update", "user_id", "case_id", "case_data", "platforms":[...]}
+      delete  : {"action":"delete", "user_id", "case_id", "platforms":[...]}
+    action 省略時は register（後方互換）。
+    """
+    action = payload.get("action", "register")
+    if action == "update":
+        return await execute_update_task(payload)
+    if action == "delete":
+        return await execute_delete_task(payload)
+    return await execute_posting_task(payload)
+
+
 async def execute_posting_task(payload: Dict[str, Any]) -> Dict[str, Any]:
     """投稿タスクを実行し、posting_history を結果で更新する
 
@@ -152,10 +169,12 @@ def _get_notification_email(user_id: int) -> str:
     return (row[0] or "") if row else ""
 
 
-def build_result_email(case_data: Dict[str, Any], results: Dict[str, Any]) -> tuple:
-    """投稿結果メールの (件名, 本文) を組み立てる
+def build_result_email(case_data: Dict[str, Any], results: Dict[str, Any],
+                       action_label: str = "投稿") -> tuple:
+    """結果メールの (件名, 本文) を組み立てる
 
     Trabox / WebKit それぞれの成否を分けて、両方まとめて1通にする。
+    action_label: 投稿 / 変更 / 削除
     """
     case_id = case_data.get("case_id")
     platform_names = {"trabox": "トラボックス", "webkit": "WebKit"}
@@ -169,7 +188,7 @@ def build_result_email(case_data: Dict[str, Any], results: Dict[str, Any]) -> tu
     else:
         summary = f"成功 {success_count} 件・失敗 {fail_count} 件"
 
-    subject = f"【Carroo】投稿結果: {summary}（案件ID {case_id}）"
+    subject = f"【Carroo】{action_label}結果: {summary}（案件ID {case_id}）"
 
     lines = [
         "Carroo 投稿システムからの自動通知です。",
@@ -185,12 +204,14 @@ def build_result_email(case_data: Dict[str, Any], results: Dict[str, Any]) -> tu
         "",
         "■ 投稿結果",
     ]
+    lines[-1] = f"■ {action_label}結果"
     for platform, result in results.items():
         name = platform_names.get(platform, platform)
         if result.get("status") == "success":
             lines.append(f"  ✅ {name}: 成功")
             if result.get("baggage_no"):
-                lines.append(f"      荷物番号: {result['baggage_no']}")
+                label = "伝票番号" if platform == "webkit" else "荷物番号"
+                lines.append(f"      {label}: {result['baggage_no']}")
         else:
             lines.append(f"  ❌ {name}: 失敗")
             message = (result.get("message") or "")[:200]
@@ -198,15 +219,16 @@ def build_result_email(case_data: Dict[str, Any], results: Dict[str, Any]) -> tu
                 lines.append(f"      理由: {message}")
     lines += [
         "",
-        "投稿状況の詳細はダッシュボードでご確認ください。",
+        "詳細はダッシュボードの案件管理画面でご確認ください。",
     ]
     return subject, "\n".join(lines)
 
 
 def _send_result_email(
-    user_id: int, case_data: Dict[str, Any], results: Dict[str, Any]
+    user_id: int, case_data: Dict[str, Any], results: Dict[str, Any],
+    action_label: str = "投稿",
 ) -> None:
-    """投稿結果メールを送信（失敗しても投稿処理は失敗させない）"""
+    """結果メールを送信（失敗しても処理は失敗させない）"""
     try:
         from app.utils.mailer import send_email
 
@@ -216,7 +238,146 @@ def _send_result_email(
                 f"[Poster] 通知先メール未登録のため送信スキップ: user_id={user_id}"
             )
             return
-        subject, body = build_result_email(case_data, results)
+        subject, body = build_result_email(case_data, results, action_label)
         send_email(to_address, subject, body)
     except Exception as e:
-        logger.error(f"[Poster] 結果メール送信処理でエラー（投稿は完了済み）: {e}")
+        logger.error(f"[Poster] 結果メール送信処理でエラー（処理は完了済み）: {e}")
+
+
+# ============ 変更（update）・削除（delete）タスク ============
+
+def _load_case_data(case_id: int, user_id: int) -> Dict[str, Any]:
+    """cases から case_data を組み立て（extras をフラットにマージ）"""
+    import json as _json
+    conn = get_db_connection()
+    row = conn.execute(
+        """SELECT id, pick_location, drop_location, cargo_weight, vehicle_type,
+                  freight_rate, pickup_date, pickup_time, contact_name,
+                  contact_phone, contact_email, extras
+           FROM cases WHERE id = ? AND user_id = ?""",
+        (case_id, user_id),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return {}
+    cd = {
+        "case_id": row[0], "pick_location": row[1], "drop_location": row[2],
+        "cargo_weight": row[3], "vehicle_type": row[4], "freight_rate": row[5],
+        "pickup_date": row[6], "pickup_time": row[7], "contact_name": row[8],
+        "contact_phone": row[9], "contact_email": row[10],
+    }
+    if row[11]:
+        try:
+            cd.update(_json.loads(row[11]))
+        except (ValueError, TypeError):
+            pass
+    return cd
+
+
+async def execute_update_task(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """変更タスク: 指定プラットフォームの掲載を更新し、履歴に update を追記"""
+    from app.db.database import get_active_baggage_no, update_posting_result
+
+    user_id = payload["user_id"]
+    case_id = payload["case_id"]
+    platforms = payload.get("platforms", [])
+    # 更新後の完全な案件データ（cases から再構築。UI で cases 側は更新済み前提）
+    case_data = payload.get("case_data") or _load_case_data(case_id, user_id)
+    case_data["case_id"] = case_id
+    results: Dict[str, Any] = {}
+    logger.info(f"[Poster] 変更タスク: case_id={case_id} platforms={platforms}")
+
+    for platform in platforms:
+        baggage_no = get_active_baggage_no(case_id, platform)
+        if not baggage_no:
+            msg = "掲載中の番号が見つかりません（未登録または削除済み）"
+            update_posting_result(case_id, platform, "error",
+                                  error_message=msg, action="update")
+            results[platform] = {"status": "error", "message": msg}
+            continue
+        try:
+            if platform == "trabox":
+                from app.automations.trabox import TraboxAutomation
+                username, password = _get_trabox_credentials(user_id)
+                auto = TraboxAutomation(user_id=user_id, case_id=case_id,
+                                        username=username, password=password)
+                result = await auto.update_case(baggage_no, case_data)
+            else:  # webkit
+                from app.automations.webkit import WebkitAutomation
+                auto = WebkitAutomation(person_id=_get_webkit_person_id(user_id))
+                result = await auto.update_case(baggage_no, case_data)
+            st = result.get("status", "success")
+            update_posting_result(
+                case_id, platform, "success" if st == "success" else "error",
+                baggage_no=baggage_no,
+                error_message=None if st == "success" else result.get("message"),
+                action="update",
+            )
+            results[platform] = result
+            logger.info(f"[Poster] {platform} 変更結果: {st}")
+        except Exception as e:
+            msg = str(e)[:500]
+            update_posting_result(case_id, platform, "error",
+                                  error_message=msg, action="update")
+            results[platform] = {"status": "error", "message": msg}
+            logger.error(f"[Poster] {platform} 変更失敗: {msg}")
+
+    if results:
+        _send_result_email(user_id, case_data, results, action_label="変更")
+    return results
+
+
+async def execute_delete_task(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """削除タスク: 指定プラットフォームの掲載を削除し、履歴に delete を追記
+
+    削除しても register の履歴行は残る（追記式）。
+    """
+    from app.db.database import get_active_baggage_no, update_posting_result
+
+    user_id = payload["user_id"]
+    case_id = payload["case_id"]
+    platforms = payload.get("platforms", [])
+    case_data = _load_case_data(case_id, user_id)
+    case_data["case_id"] = case_id
+    results: Dict[str, Any] = {}
+    logger.info(f"[Poster] 削除タスク: case_id={case_id} platforms={platforms}")
+
+    for platform in platforms:
+        baggage_no = get_active_baggage_no(case_id, platform)
+        if not baggage_no:
+            msg = "削除対象の番号が見つかりません（未登録または削除済み）"
+            update_posting_result(case_id, platform, "error",
+                                  error_message=msg, action="delete")
+            results[platform] = {"status": "error", "message": msg}
+            continue
+        try:
+            if platform == "trabox":
+                from app.automations.trabox import TraboxAutomation
+                username, password = _get_trabox_credentials(user_id)
+                auto = TraboxAutomation(user_id=user_id, case_id=case_id,
+                                        username=username, password=password)
+                result = await auto.delete_case(baggage_no)
+            else:  # webkit
+                from app.automations.webkit import WebkitAutomation
+                auto = WebkitAutomation(person_id=_get_webkit_person_id(user_id))
+                result = await auto.delete_case(baggage_no)
+            st = result.get("status", "success")
+            # 削除成功時も baggage_no を残す（どの番号を消したか履歴に記録）
+            update_posting_result(
+                case_id, platform, "success" if st == "success" else "error",
+                baggage_no=baggage_no,
+                error_message=None if st == "success" else result.get("message"),
+                action="delete",
+            )
+            results[platform] = result
+            logger.info(f"[Poster] {platform} 削除結果: {st}")
+        except Exception as e:
+            msg = str(e)[:500]
+            update_posting_result(case_id, platform, "error",
+                                  error_message=msg, action="delete")
+            results[platform] = {"status": "error", "message": msg}
+            logger.error(f"[Poster] {platform} 削除失敗: {msg}")
+
+    if results:
+        _send_result_email(user_id, case_data, results, action_label="削除")
+    return results

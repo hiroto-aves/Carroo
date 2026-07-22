@@ -712,12 +712,12 @@ async def register_case(
         # Step 4: posting_history に「pending」状態で記録
         if want_trabox:
             cursor.execute(
-                "INSERT INTO posting_history (case_id, platform, status) VALUES (?, ?, ?)",
+                "INSERT INTO posting_history (case_id, platform, status, action) VALUES (?, ?, ?, 'register')",
                 (case_id, "trabox", "pending")
             )
         if want_webkit:
             cursor.execute(
-                "INSERT INTO posting_history (case_id, platform, status) VALUES (?, ?, ?)",
+                "INSERT INTO posting_history (case_id, platform, status, action) VALUES (?, ?, ?, 'register')",
                 (case_id, "webkit", "pending")
             )
         conn.commit()
@@ -770,7 +770,7 @@ async def register_case(
             </p>
 
             <div class="flex gap-4 justify-center">
-                <a href="/dashboard/cases/{case_id}" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-lg transition">投稿状況を確認</a>
+                <a href="/cases/{case_id}/manage" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-lg transition">投稿状況を確認</a>
                 <a href="/cases/register" class="bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold py-2.5 px-6 rounded-lg transition">続けて登録</a>
             </div>
         </div>
@@ -791,3 +791,316 @@ async def register_case(
         )
     finally:
         conn.close()
+
+
+# ============ 案件管理（変更・削除）画面とエンドポイント ============
+
+def _platform_label(p: str) -> str:
+    return {"trabox": "トラボックス", "webkit": "WebKit"}.get(p, p)
+
+
+def _load_case_row(case_id: int, user_id: int):
+    conn = get_db_connection()
+    row = conn.execute(
+        """SELECT id, pick_location, drop_location, cargo_weight, vehicle_type,
+                  freight_rate, pickup_date, pickup_time, contact_name, extras, created_at
+           FROM cases WHERE id = ? AND user_id = ?""",
+        (case_id, user_id),
+    ).fetchone()
+    conn.close()
+    return row
+
+
+@router.get("/{case_id}/manage", response_class=HTMLResponse)
+async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(None)):
+    """案件管理画面: プラットフォーム別/一括の変更・削除＋投稿履歴タイムライン"""
+    from app.utils.security import decode_access_token
+    from app.db.database import get_platform_state, get_active_baggage_no
+    td = decode_access_token(access_token) if access_token else None
+    user_id = td.get("user_id") if td else None
+    if not user_id:
+        return HTMLResponse('<meta http-equiv="refresh" content="0; url=/auth/login">')
+
+    row = _load_case_row(case_id, user_id)
+    if not row:
+        return HTMLResponse("<h1>案件が見つかりません</h1>", status_code=404)
+
+    extras = json.loads(row[9]) if row[9] else {}
+    pickup = f"{row[6]} {row[7] or ''}".strip()
+    drop = f"{extras.get('drop_date','')} {extras.get('drop_time','')}".strip() or "翌日"
+    freight = "要相談" if extras.get("freight_negotiable") else f"{int(float(row[5])):,}円（税別）"
+
+    # プラットフォームカード
+    STATE = {
+        "live": ('● 掲載中', 'text-green-700 bg-green-50 border-green-200'),
+        "deleted": ('✓ 削除済み', 'text-gray-500 bg-gray-100 border-gray-200'),
+        "working": ('◍ 処理中…', 'text-amber-700 bg-amber-50 border-amber-200'),
+        "error": ('⚠ エラー', 'text-red-700 bg-red-50 border-red-200'),
+        "none": ('未投稿', 'text-gray-400 bg-gray-50 border-gray-200'),
+    }
+    cards = ""
+    active_platforms = []
+    for p, dot in (("trabox", "#16a34a"), ("webkit", "#7c3aed")):
+        st = get_platform_state(case_id, p)
+        no = get_active_baggage_no(case_id, p)
+        if st in ("live", "working"):
+            active_platforms.append(p)
+        badge_txt, badge_cls = STATE[st]
+        num_label = "伝票番号" if p == "webkit" else "荷物番号"
+        num_html = f'<p class="text-sm text-gray-600 mt-1">{num_label} <span class="font-mono font-semibold text-gray-900">{no}</span></p>' if no else ''
+        disabled = 'disabled' if st in ("working", "none") else ''
+        if st == "live":
+            actions = f'''
+              <button onclick="editCase('{p}')" class="flex-1 border border-gray-300 rounded-lg py-2 text-sm font-semibold hover:bg-gray-50">変更</button>
+              <button onclick="deleteCase('{p}')" class="flex-1 border border-red-200 text-red-600 bg-red-50 rounded-lg py-2 text-sm font-semibold hover:brightness-95">削除</button>'''
+        elif st == "deleted":
+            actions = f'<button onclick="editCase(\'{p}\',true)" class="flex-1 border border-gray-300 rounded-lg py-2 text-sm font-semibold hover:bg-gray-50">再投稿</button>'
+        elif st == "working":
+            actions = '<span class="text-sm text-amber-700">処理完了までお待ちください（メールでも通知します）</span>'
+        else:
+            actions = f'<button onclick="editCase(\'{p}\',true)" class="flex-1 border border-gray-300 rounded-lg py-2 text-sm font-semibold hover:bg-gray-50">投稿する</button>'
+        cards += f'''
+        <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <span class="font-bold flex items-center gap-2"><span style="width:9px;height:9px;border-radius:50%;background:{dot};display:inline-block"></span>{_platform_label(p)}</span>
+            <span class="text-xs font-bold px-2.5 py-1 rounded-full border {badge_cls}">{badge_txt}</span>
+          </div>
+          {num_html}
+          <div class="flex gap-2 mt-1">{actions}</div>
+        </div>'''
+
+    # 履歴タイムライン
+    conn = get_db_connection()
+    hist = conn.execute(
+        """SELECT platform, action, status, baggage_no, error_message,
+                  COALESCE(updated_at, posted_at)
+           FROM posting_history WHERE case_id = ? ORDER BY id DESC""",
+        (case_id,),
+    ).fetchall()
+    conn.close()
+    ACT = {"register": ("登録", "text-green-700 bg-green-50 border-green-200"),
+           "update": ("変更", "text-blue-700 bg-blue-50 border-blue-200"),
+           "delete": ("削除", "text-red-700 bg-red-50 border-red-200")}
+    ST_TXT = {"success": "成功", "error": "失敗", "pending": "処理中"}
+    rows_html = ""
+    for h in hist:
+        plat, action, stt, no, err, ts = h
+        act_txt, act_cls = ACT.get(action, (action, ""))
+        detail = ""
+        if no:
+            lbl = "伝票番号" if plat == "webkit" else "荷物番号"
+            detail = f'<span class="text-gray-500 font-mono">{lbl} {no}</span>'
+        if stt == "error" and err:
+            detail = f'<span class="text-red-600">{err[:80]}</span>'
+        rows_html += f'''
+        <div class="grid grid-cols-[130px_110px_1fr] gap-3 items-baseline px-4 py-3 border-b border-gray-100 last:border-0">
+          <span class="text-xs text-gray-500 font-mono">{ts or ''}</span>
+          <span class="text-sm font-semibold">{_platform_label(plat)}</span>
+          <span class="text-sm text-gray-700"><span class="font-bold">{act_txt} {ST_TXT.get(stt,stt)}</span>
+            <span class="text-xs font-bold px-2 py-0.5 rounded border {act_cls} ml-1">{act_txt}</span> {detail}</span>
+        </div>'''
+    if not rows_html:
+        rows_html = '<p class="text-gray-400 text-center py-8">履歴がありません</p>'
+
+    return HTMLResponse(f"""<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carroo - 案件管理 #{case_id}</title><script src="https://cdn.tailwindcss.com"></script></head>
+<body class="bg-gray-50">
+<nav class="bg-white shadow-sm border-b border-gray-200"><div class="max-w-4xl mx-auto px-4 py-3.5 flex items-center justify-between">
+  <a href="/dashboard/" class="text-2xl font-bold text-blue-600 hover:opacity-80">📦 Carroo</a>
+  <div class="flex gap-4 text-sm text-gray-600"><a href="/dashboard/" class="hover:text-blue-600">ダッシュボード</a><a href="/auth/logout" class="hover:text-red-600">ログアウト</a></div>
+</div></nav>
+<div class="max-w-4xl mx-auto px-4 py-8">
+  <p class="text-sm text-gray-500 mb-3"><a href="/dashboard/" class="text-blue-600">ダッシュボード</a> › 案件 #{case_id}</p>
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+    <div class="text-xs text-gray-500 font-mono">案件 ID {case_id} ・ {row[10]} 登録</div>
+    <h1 class="text-2xl font-bold mt-1">{row[1]} <span class="text-gray-400 font-normal mx-2">→</span> {row[2]}</h1>
+    <div class="flex flex-wrap gap-x-6 gap-y-1 mt-4 text-sm text-gray-700">
+      <span><span class="text-gray-400 mr-1">積み</span>{pickup}</span>
+      <span><span class="text-gray-400 mr-1">着</span>{drop}</span>
+      <span><span class="text-gray-400 mr-1">車両</span>{extras.get('truck_weight','')} {row[4]}</span>
+      <span><span class="text-gray-400 mr-1">荷種</span>{extras.get('cargo_type','鋼材')}</span>
+      <span><span class="text-gray-400 mr-1">運賃</span>{freight}</span>
+    </div>
+  </div>
+
+  <div class="flex items-center gap-3 mt-5 mb-1 flex-wrap">
+    <span class="text-sm text-gray-500">一括操作:</span>
+    <button onclick="editCase('both')" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">両方を変更</button>
+    <button onclick="deleteCase('both')" class="border border-red-200 text-red-600 bg-red-50 text-sm font-semibold px-4 py-2 rounded-lg hover:brightness-95">両方を削除</button>
+  </div>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">{cards}</div>
+
+  <h2 class="text-base font-bold mt-8 mb-1">投稿履歴</h2>
+  <p class="text-sm text-gray-500 mb-3">登録・変更・削除をすべて記録します。削除しても登録の履歴は残ります。</p>
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm">{rows_html}</div>
+</div>
+
+<form id="actForm" method="post" style="display:none"><input type="hidden" name="platforms" id="fPlatforms"></form>
+<script>
+  const CASE_ID = {case_id};
+  function editCase(which) {{
+    const p = which === 'both' ? 'trabox,webkit' : which;
+    location.href = '/cases/' + CASE_ID + '/edit?platforms=' + p;
+  }}
+  function deleteCase(which) {{
+    const plats = which === 'both' ? 'トラボックスとWebKitの両方' : (which==='trabox'?'トラボックス':'WebKit');
+    if (!confirm(plats + 'の掲載を削除します。よろしいですか？（登録の履歴は残ります）')) return;
+    const f = document.getElementById('actForm');
+    f.action = '/cases/' + CASE_ID + '/delete';
+    document.getElementById('fPlatforms').value = which === 'both' ? 'trabox,webkit' : which;
+    f.submit();
+  }}
+</script>
+</body></html>""")
+
+
+@router.post("/{case_id}/delete")
+async def case_delete(case_id: int, platforms: str = Form(...),
+                      current_user: dict = Depends(get_current_user)):
+    """指定プラットフォームの掲載を削除（非同期）。履歴に delete を追記"""
+    from app.db.database import add_posting_event
+    user_id = current_user["id"]
+    row = _load_case_row(case_id, user_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="案件が見つかりません")
+    plats = [p for p in platforms.split(",") if p in ("trabox", "webkit")]
+    if not plats:
+        raise HTTPException(status_code=400, detail="削除対象のプラットフォームが不正です")
+    # 履歴に delete イベントを pending で追記
+    for p in plats:
+        add_posting_event(case_id, p, "delete", "pending")
+    # 非同期タスクを投入
+    get_task_client().add_task({
+        "action": "delete", "user_id": user_id, "case_id": case_id, "platforms": plats,
+    })
+    return HTMLResponse(f'<meta http-equiv="refresh" content="0; url=/cases/{case_id}/manage">')
+
+
+@router.get("/{case_id}/edit", response_class=HTMLResponse)
+async def case_edit_page(case_id: int, platforms: str = "trabox,webkit",
+                         access_token: Optional[str] = Cookie(None)):
+    """変更フォーム（現在値プリフィル）。platforms で対象を指定（一括/個別）"""
+    from app.utils.security import decode_access_token
+    td = decode_access_token(access_token) if access_token else None
+    user_id = td.get("user_id") if td else None
+    if not user_id:
+        return HTMLResponse('<meta http-equiv="refresh" content="0; url=/auth/login">')
+    row = _load_case_row(case_id, user_id)
+    if not row:
+        return HTMLResponse("<h1>案件が見つかりません</h1>", status_code=404)
+    ex = json.loads(row[9]) if row[9] else {}
+    plats = [p for p in platforms.split(",") if p in ("trabox", "webkit")]
+    target_label = "・".join(_platform_label(p) for p in plats)
+
+    from app.automations.trabox_form_mapper import TraboxFormMapper as M
+    pick_pref = M.normalize_prefecture(row[1]) or ""
+    pick_pref_full = next((p for p in PREFECTURES if row[1].startswith(p)), "")
+    drop_pref_full = next((p for p in PREFECTURES if row[2].startswith(p)), "")
+    pick_city = M.extract_city(row[1]) or ""
+    drop_city = M.extract_city(row[2]) or ""
+
+    def opts(items, selected):
+        return "".join(f'<option value="{i}"{" selected" if i==selected else ""}>{i}</option>' for i in items)
+    weight_opts = opts(M.TRUCK_WEIGHT_OPTIONS, ex.get("truck_weight", "問わず"))
+    shape_opts = opts(M.VEHICLE_SHAPE_OPTIONS, row[4])
+    pref_opts_pick = '<option value="">都道府県</option>' + opts(PREFECTURES, pick_pref_full)
+    pref_opts_drop = '<option value="">都道府県</option>' + opts(PREFECTURES, drop_pref_full)
+    freight_val = "" if ex.get("freight_negotiable") else int(float(row[5]))
+
+    I = 'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500'
+    return HTMLResponse(f"""<!DOCTYPE html>
+<html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carroo - 変更 #{case_id}</title><script src="https://cdn.tailwindcss.com"></script></head>
+<body class="bg-gray-50">
+<nav class="bg-white shadow-sm border-b border-gray-200"><div class="max-w-3xl mx-auto px-4 py-3.5 flex items-center justify-between">
+  <a href="/dashboard/" class="text-2xl font-bold text-blue-600 hover:opacity-80">📦 Carroo</a>
+  <a href="/cases/{case_id}/manage" class="text-sm text-gray-600 hover:text-blue-600">← 案件管理へ戻る</a>
+</div></nav>
+<div class="max-w-3xl mx-auto px-4 py-8">
+  <h1 class="text-2xl font-bold">案件の変更</h1>
+  <p class="text-gray-600 mt-1 mb-6">変更対象: <span class="font-semibold text-blue-700">{target_label}</span> ・ 案件 #{case_id}</p>
+  <form method="post" action="/cases/{case_id}/update" class="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5">
+    <input type="hidden" name="platforms" value="{','.join(plats)}">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <div><label class="block text-sm font-medium mb-1">積み日</label><input type="date" name="pickup_date" value="{row[6]}" class="{I}" required></div>
+      <div><label class="block text-sm font-medium mb-1">積み時間</label><input type="time" name="pickup_time" value="{row[7] or ''}" class="{I}" required></div>
+      <div><label class="block text-sm font-medium mb-1">着日</label><input type="date" name="drop_date" value="{ex.get('drop_date','')}" class="{I}" required></div>
+      <div><label class="block text-sm font-medium mb-1">卸し時間</label><input type="time" name="drop_time" value="{ex.get('drop_time','')}" class="{I}" required></div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <div><label class="block text-sm font-medium mb-1">積地</label>
+        <div class="flex gap-2"><select name="pick_pref" class="{I}" required>{pref_opts_pick}</select>
+        <input type="text" name="pick_city" value="{pick_city}" placeholder="市区町村" class="{I}" required></div></div>
+      <div><label class="block text-sm font-medium mb-1">卸地</label>
+        <div class="flex gap-2"><select name="drop_pref" class="{I}" required>{pref_opts_drop}</select>
+        <input type="text" name="drop_city" value="{drop_city}" placeholder="市区町村" class="{I}" required></div></div>
+    </div>
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+      <div><label class="block text-sm font-medium mb-1">荷物重量(kg)</label><input type="number" name="cargo_weight" value="{int(float(row[3]))}" class="{I}" required></div>
+      <div><label class="block text-sm font-medium mb-1">希望車両（トン数/形状）</label>
+        <div class="flex gap-2"><select name="truck_weight" class="{I}">{weight_opts}</select><select name="vehicle_type" class="{I}">{shape_opts}</select></div></div>
+      <div><label class="block text-sm font-medium mb-1">荷種</label><input type="text" name="cargo_type" value="{ex.get('cargo_type','鋼材')}" class="{I}"></div>
+      <div><label class="block text-sm font-medium mb-1">運賃(円)</label><input type="number" name="freight_rate" value="{freight_val}" class="{I}"></div>
+    </div>
+    <div class="flex gap-3 pt-2">
+      <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2.5 rounded-lg">この内容で変更する</button>
+      <a href="/cases/{case_id}/manage" class="bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold px-6 py-2.5 rounded-lg">キャンセル</a>
+    </div>
+  </form>
+</div></body></html>""")
+
+
+@router.post("/{case_id}/update")
+async def case_update(case_id: int,
+                      platforms: str = Form(...),
+                      pickup_date: str = Form(...), pickup_time: str = Form(...),
+                      drop_date: str = Form(...), drop_time: str = Form(...),
+                      pick_pref: str = Form(...), pick_city: str = Form(...),
+                      drop_pref: str = Form(...), drop_city: str = Form(...),
+                      cargo_weight: float = Form(...), truck_weight: str = Form(None),
+                      vehicle_type: str = Form("問わず"), cargo_type: str = Form("鋼材"),
+                      freight_rate: Optional[float] = Form(None),
+                      current_user: dict = Depends(get_current_user)):
+    """案件を変更: cases を更新し、指定プラットフォームへ非同期で変更を反映"""
+    from app.db.database import add_posting_event
+    user_id = current_user["id"]
+    conn = get_db_connection()
+    try:
+        row = conn.execute("SELECT extras FROM cases WHERE id=? AND user_id=?",
+                           (case_id, user_id)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="案件が見つかりません")
+        plats = [p for p in platforms.split(",") if p in ("trabox", "webkit")]
+        if not plats:
+            raise HTTPException(status_code=400, detail="対象プラットフォームが不正です")
+
+        pick_location = f"{pick_pref}{pick_city}"
+        drop_location = f"{drop_pref}{drop_city}"
+        extras = json.loads(row[0]) if row[0] else {}
+        extras.update({
+            "truck_weight": truck_weight, "drop_date": drop_date, "drop_time": drop_time,
+            "cargo_type": cargo_type,
+        })
+        # cases を更新
+        conn.execute(
+            """UPDATE cases SET pick_location=?, drop_location=?, cargo_weight=?,
+                 vehicle_type=?, freight_rate=?, pickup_date=?, pickup_time=?, extras=?
+               WHERE id=? AND user_id=?""",
+            (pick_location, drop_location, cargo_weight, vehicle_type,
+             freight_rate or 0, pickup_date, pickup_time,
+             json.dumps(extras, ensure_ascii=False), case_id, user_id),
+        )
+        conn.commit()
+    except HTTPException:
+        conn.rollback(); raise
+    finally:
+        conn.close()
+
+    # 履歴に update を pending 追記 → 非同期タスク投入
+    for p in plats:
+        add_posting_event(case_id, p, "update", "pending")
+    get_task_client().add_task({
+        "action": "update", "user_id": user_id, "case_id": case_id, "platforms": plats,
+    })
+    return HTMLResponse(f'<meta http-equiv="refresh" content="0; url=/cases/{case_id}/manage">')

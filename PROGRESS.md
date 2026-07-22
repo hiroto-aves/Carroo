@@ -199,6 +199,27 @@ Cloud Run（Playwright）
   3. Cloud Run 環境での動作確認・再デプロイ（CLOUD_RUN_URL を /tasks/execute に向ける。SQLite の永続化方針も要検討）
   4. ユーザーの Trabox 認証情報を初期設定画面で再保存（旧キーで暗号化された分は復号不能のため）
 
+## 🔧 直近の実装 (2026-07-23) — CRUD管理UI・変更/削除の非同期化
+
+### A/B/C 完了: 案件管理画面と両プラットフォームCRUD
+- **A: 追記式イベントログ** — posting_history に action(register/update/delete)カラム追加。
+  操作のたびに1行追記。削除しても登録行は残る（「登録した事実」を保持）。
+  ヘルパー: add_posting_event / get_active_baggage_no / get_platform_state
+- **C: WebKit変更API(operation=U)** — webkit.update_case(slipno, case_data) 実装。
+  登録XMLビルダーを operation 引数対応にリファクタ。実環境で登録→変更→削除を検証
+- **B: 変更・削除の非同期化** — poster に execute_task ルーター＋execute_update_task/
+  execute_delete_task。cloud_tasks に汎用 add_task。/tasks/execute を action対応。
+  結果メールも「変更結果/削除結果」に対応
+- **UI: 案件管理画面** (/cases/{id}/manage) — ライト配色(既存Carroo準拠)。
+  プラットフォーム別カード(状態バッジ live/deleted/working/error)＋「変更」「削除」、
+  一括「両方を変更/両方を削除」、投稿履歴タイムライン(追記式)
+  - 変更フォーム /cases/{id}/edit?platforms=... (現在値プリフィル・対象指定)
+  - /cases/{id}/update, /cases/{id}/delete エンドポイント(非同期投入)
+- **WebKit担当者IDをユーザーごと** — WebkitAutomation(person_id=...)。apikeyはenv共通。
+  poster が user_credentials.webkit_person_id を渡す
+- **E2E実証**: 登録(両方)→Traboxのみ変更→WebKitのみ削除(片方)→Trabox削除。
+  片方操作で状態が正しく分離(trabox=live/webkit=deleted)。履歴に登録が残ることを確認
+
 ## 🔧 過去の修正 (2026-07-20)
 
 ### Trabox 投稿自動化の Playwright API 修正

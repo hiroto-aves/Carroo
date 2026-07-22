@@ -166,6 +166,45 @@ class WebkitAutomation:
             logger.error(f"[WebKit] レスポンス解析失敗: {e} / 本文: {response_text[:200]}")
             return None, response_text[:200], "", []
 
+    async def update_case(self, slipno: str, case_data: Dict[str, Any]) -> Dict[str, Any]:
+        """登録済み荷物を更新（CRUD の Update。operation=U）
+
+        WebKIT の更新は全必須項目の再送（全項目上書き）。case_data には
+        更新後の完全な案件データを渡すこと（変更フィールドだけでは不可）。
+
+        Args:
+            slipno: 更新対象の伝票番号（post_case の baggage_no）
+            case_data: 更新後の完全な案件データ
+        """
+        if not self.api_key or not self.person_id:
+            return {"status": "error", "platform": "webkit",
+                    "message": "WebKit API key or Person ID not configured"}
+        try:
+            xml_data = self._build_load_update_xml(case_data, slipno)
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    self.api_url, content=xml_data,
+                    headers={"Content-Type": "application/xml; charset=UTF-8"},
+                )
+            if response.status_code != 200:
+                return {"status": "error", "platform": "webkit",
+                        "message": f"HTTP エラー: {response.status_code}"}
+            st, memo, ret_slip, error_fields = self._parse_response(response.text)
+            if st == "0":
+                logger.info(f"[WebKit] 更新成功: 伝票番号={slipno}")
+                return {"status": "success", "platform": "webkit",
+                        "message": memo or "WebKit の荷物を更新しました",
+                        "baggage_no": ret_slip or slipno}
+            reason = memo or (f"入力エラー: {', '.join(error_fields)}"
+                              if error_fields else "更新失敗")
+            logger.error(f"[WebKit] 更新失敗 (status={st}): {reason}")
+            return {"status": "error", "platform": "webkit",
+                    "message": f"WebKit 更新失敗: {reason}"}
+        except Exception as e:
+            logger.error(f"[WebKit] 更新エラー: {e}")
+            return {"status": "error", "platform": "webkit",
+                    "message": f"{type(e).__name__}: {str(e)}"}
+
     async def delete_case(self, slipno: str) -> Dict[str, Any]:
         """登録済み荷物を削除（CRUD の Delete。operation=D。実環境検証済み）
 
@@ -210,14 +249,26 @@ class WebkitAutomation:
                     "message": f"{type(e).__name__}: {str(e)}"}
 
     def _build_load_registration_xml(self, case_data: Dict[str, Any]) -> bytes:
-        """荷物登録用XMLを構築（WebKIT API仕様書「2 荷物登録」準拠）
+        """荷物登録用XML（operation=I）を構築"""
+        return self._build_load_xml(case_data, operation='I')
+
+    def _build_load_update_xml(self, case_data: Dict[str, Any], slipno: str) -> bytes:
+        """荷物更新用XML（operation=U）を構築。伝票番号(slipno)が必須"""
+        return self._build_load_xml(case_data, operation='U', slipno=slipno)
+
+    def _build_load_xml(self, case_data: Dict[str, Any], operation: str,
+                        slipno: str = None) -> bytes:
+        """荷物登録/更新XMLを構築（WebKIT API仕様書「2 荷物登録」「3 荷物更新」準拠）
+
+        operation='I'（登録）/ 'U'（更新）。更新時は slipno（伝票番号）が必須で、
+        登録と同じ必須項目を全て再送する（部分更新ではなく全項目上書き）。
 
         🔴 【重要】仕様書の正しい構造:
           <webkit>
             <apikey/><personid/>
             <load_data>
-              <operation>I</operation>   ← load_data の中！
-              <memberid/> ... 各フィールド ...
+              <operation>I|U</operation>   ← load_data の中！
+              <memberid/> [<slipno/>(更新時)] ... 各フィールド ...
             </load_data>
           </webkit>
 
@@ -243,8 +294,10 @@ class WebkitAutomation:
             SubElement(load, tag).text = "" if value is None else str(value)
 
         # --- 認証・コマンド ---
-        add('operation', 'I')                         # I=登録【必須】
+        add('operation', operation)                   # I=登録 / U=更新【必須】
         add('memberid', (self.person_id or '')[:12])  # 会員ID=担当者ID前方12桁【必須】
+        if operation == 'U':
+            add('slipno', slipno)                     # 更新対象の伝票番号【必須】
 
         # --- 積地（日時+都道府県+市区町村） ---
         pickup_date = M.parse_date(case_data.get("pickup_date"))

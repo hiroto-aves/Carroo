@@ -154,27 +154,37 @@ class LocalTaskQueue:
         }
         self.tasks.append(task)
         logger.info(f"📋 ローカルタスク追加: {task_id}")
+        self._dispatch_local({"user_id": user_id, "case_data": case_data,
+                              "action": "register"}, task, task_id)
+        return task_id
 
-        # ローカル開発では即座にバックグラウンドで投稿を実行する
-        # （本番の Cloud Tasks → /tasks/execute と同じ処理を in-process で行う）
+    def add_task(self, payload: dict) -> str:
+        """汎用タスク（register/update/delete）をキュー追加＋ローカル即実行
+
+        payload に action を含めること。本番では Cloud Tasks → /tasks/execute。
+        """
+        task_id = f"local-task-{len(self.tasks)}"
+        task = {"id": task_id, "payload": payload, "status": "pending"}
+        self.tasks.append(task)
+        logger.info(f"📋 ローカルタスク追加({payload.get('action')}): {task_id}")
+        self._dispatch_local(payload, task, task_id)
+        return task_id
+
+    def _dispatch_local(self, payload: dict, task: dict, task_id: str) -> None:
+        """ローカル開発ではタスク追加と同時にバックグラウンドで実行
+        （本番の Cloud Tasks → /tasks/execute と同じ処理を in-process で行う）"""
         try:
             import asyncio
-            from app.services.poster import execute_posting_task
+            from app.services.poster import execute_task
             loop = asyncio.get_event_loop()
             if loop.is_running():
-                loop.create_task(
-                    execute_posting_task(
-                        {"user_id": user_id, "case_data": case_data}
-                    )
-                )
+                loop.create_task(execute_task(payload))
                 task["status"] = "dispatched"
                 logger.info(f"🚀 ローカル実行開始（バックグラウンド）: {task_id}")
             else:
                 logger.warning("イベントループ未稼働のためタスクは保存のみ")
         except Exception as e:
             logger.error(f"ローカル実行の起動失敗: {e}")
-
-        return task_id
 
     def get_queue_stats(self) -> Dict[str, Any]:
         """キュー統計"""
