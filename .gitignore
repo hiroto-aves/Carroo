@@ -61,3 +61,4 @@ development_log/*.md
 Thumbs.db
 trabox_fill_test/
 docs/conversation_logs/
+.claude/.last_push_date
