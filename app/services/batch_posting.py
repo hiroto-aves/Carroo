@@ -143,13 +143,14 @@ class BatchPostingService:
                 for platform in platforms:
                     result = await self._post_to_platform(platform, case_data)
 
-                    # 投稿結果を記録
+                    # 投稿結果を記録（baggage_no は Trabox の荷物番号。更新・削除に必要）
                     cursor.execute(
                         """INSERT INTO posting_history
-                        (case_id, platform, status, error_message)
-                        VALUES (?, ?, ?, ?)""",
+                        (case_id, platform, status, error_message, baggage_no)
+                        VALUES (?, ?, ?, ?, ?)""",
                         (case_id, platform, result["status"],
-                         result.get("message") if result["status"] == "error" else None)
+                         result.get("message") if result["status"] == "error" else None,
+                         result.get("baggage_no"))
                     )
 
                     # キューステータスを更新

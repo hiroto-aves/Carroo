@@ -51,9 +51,19 @@ def init_db():
         posted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP,
         error_message TEXT,
+        baggage_no TEXT,
         FOREIGN KEY(case_id) REFERENCES cases(id)
     )
     ''')
+
+    # 既存DBへのマイグレーション: baggage_no カラムを追加
+    # （Trabox の荷物番号。投稿後の更新・削除＝CRUD に必要）
+    cursor.execute("PRAGMA table_info(posting_history)")
+    columns = [row[1] for row in cursor.fetchall()]
+    if "baggage_no" not in columns:
+        cursor.execute(
+            "ALTER TABLE posting_history ADD COLUMN baggage_no TEXT"
+        )
 
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS posting_batches (
@@ -98,6 +108,37 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+def update_posting_result(
+    case_id: int,
+    platform: str,
+    status: str,
+    baggage_no: str = None,
+    error_message: str = None,
+):
+    """投稿完了時に posting_history の pending レコードを結果で更新する
+
+    cases.py の登録エンドポイントは pending 状態で先に記録するため、
+    実投稿を行うワーカー（Cloud Tasks → poster）は完了時にこれを呼ぶこと。
+    baggage_no は Trabox の荷物番号（更新・削除＝CRUD に必要）。
+    """
+    conn = get_db_connection()
+    try:
+        conn.execute(
+            """UPDATE posting_history
+            SET status = ?, baggage_no = ?, error_message = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = (
+                SELECT id FROM posting_history
+                WHERE case_id = ? AND platform = ? AND status = 'pending'
+                ORDER BY posted_at DESC LIMIT 1
+            )""",
+            (status, baggage_no, error_message, case_id, platform),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
 
 if __name__ == "__main__":
     init_db()
