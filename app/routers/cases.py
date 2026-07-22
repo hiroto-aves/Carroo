@@ -233,8 +233,8 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 border border-gray-200 rounded-lg">
                                     <div class="space-y-4">
                                         <div>
-                                            <label class="block text-sm font-medium text-gray-700 mb-2">着日 <span class="text-gray-400 text-xs">（未指定なら翌日）</span></label>
-                                            <input type="date" name="drop_date" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition">
+                                            <label class="block text-sm font-medium text-gray-700 mb-2">着日<span class="ml-1 px-1.5 py-0.5 text-xs font-semibold text-red-600 bg-red-50 rounded">必須</span></label>
+                                            <input type="date" name="drop_date" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required>
                                         </div>
                                         <div>
                                             <label class="block text-sm font-medium text-gray-700 mb-2">卸し時間<span class="ml-1 px-1.5 py-0.5 text-xs font-semibold text-red-600 bg-red-50 rounded">必須</span></label>
@@ -395,14 +395,14 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
 
                             <div class="space-y-3">
                                 <label class="flex items-center p-4 border border-gray-300 rounded-lg cursor-pointer hover:bg-blue-50 transition">
-                                    <input type="checkbox" name="post_to_trabox" class="w-5 h-5 text-blue-600 rounded">
+                                    <input type="checkbox" name="post_to_trabox" value="yes" class="w-5 h-5 text-blue-600 rounded">
                                     <div class="ml-3">
                                         <span class="block font-medium text-gray-900">トラボックス</span>
                                         <span class="block text-sm text-gray-600">Playwright を使用した自動投稿</span>
                                     </div>
                                 </label>
                                 <label class="flex items-center p-4 border border-gray-300 rounded-lg cursor-pointer hover:bg-blue-50 transition">
-                                    <input type="checkbox" name="post_to_webkit" id="post_to_webkit" class="w-5 h-5 text-blue-600 rounded">
+                                    <input type="checkbox" name="post_to_webkit" id="post_to_webkit" value="yes" class="w-5 h-5 text-blue-600 rounded">
                                     <div class="ml-3">
                                         <span class="block font-medium text-gray-900">Webkit</span>
                                         <span class="block text-sm text-gray-600">XML API を使用した自動投稿</span>
@@ -588,6 +588,15 @@ async def register_case(
     try:
         user_id = current_user["id"]
 
+        # チェックボックスの値を堅牢に判定
+        # （ブラウザは value 未指定のチェックボックスを "on" で送るため
+        #   "yes"/"on"/"true"/"1" いずれも「チェック済み」とみなす）
+        def _checked(v) -> bool:
+            return str(v).lower() in ("yes", "on", "true", "1")
+
+        want_trabox = _checked(post_to_trabox)
+        want_webkit = _checked(post_to_webkit)
+
         # Step 0: 発地/着地を組み立て（新UI: pref+city+address 分割入力）
         # Trabox は市区町村必須のため「東京都港区」形式に結合する
         if pick_pref and pick_city:
@@ -600,11 +609,16 @@ async def register_case(
                 detail="発地・着地は都道府県と市区町村まで必須です（例: 東京都港区）",
             )
 
-        # 積み時間・卸し時間は必須（ブラウザ回避の送信に対する防御）
+        # 積み時間・着日・卸し時間は必須（ブラウザ回避の送信に対する防御）
         if not pickup_time:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="積み時間は必須です",
+            )
+        if not drop_date:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="着日は必須です",
             )
         if not drop_time:
             raise HTTPException(
@@ -632,7 +646,7 @@ async def register_case(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="運賃の金額を入力するか「要相談」にチェックしてください",
             )
-        if is_negotiable and post_to_webkit == "yes":
+        if is_negotiable and want_webkit:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="金額の要相談にチェックが入っているため WebKit を選べません",
@@ -685,8 +699,8 @@ async def register_case(
             "contact_name": contact_name,
             "contact_phone": contact_phone,
             "contact_email": contact_email,
-            "post_to_trabox": post_to_trabox == "yes",
-            "post_to_webkit": post_to_webkit == "yes",
+            "post_to_trabox": want_trabox,
+            "post_to_webkit": want_webkit,
             **extras,
         }
 
@@ -696,12 +710,12 @@ async def register_case(
         logger.info(f"✅ タスク追加: Case ID {case_id} → {task_name}")
 
         # Step 4: posting_history に「pending」状態で記録
-        if post_to_trabox == "yes":
+        if want_trabox:
             cursor.execute(
                 "INSERT INTO posting_history (case_id, platform, status) VALUES (?, ?, ?)",
                 (case_id, "trabox", "pending")
             )
-        if post_to_webkit == "yes":
+        if want_webkit:
             cursor.execute(
                 "INSERT INTO posting_history (case_id, platform, status) VALUES (?, ?, ?)",
                 (case_id, "webkit", "pending")
@@ -710,9 +724,9 @@ async def register_case(
 
         # Step 5: 結果画面を返す（投稿処理は背景で実行される）
         platforms = []
-        if post_to_trabox == "yes":
+        if want_trabox:
             platforms.append("トラボックス")
-        if post_to_webkit == "yes":
+        if want_webkit:
             platforms.append("WebKit")
         platforms_text = "・".join(platforms) if platforms else "なし（案件保存のみ）"
 
