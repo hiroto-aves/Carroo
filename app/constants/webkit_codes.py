@@ -106,9 +106,51 @@ SAFETY_DEVICE = {
 }
 
 
+# Trabox 車種形状（平/箱/ウイング等）→ WebKIT 車種コード（[車種]シート）
+# WebKIT には「箱型」がなく「バン型=2」が該当。付帯（-低床等）は基本形にまとめる。
+TRABOX_SHAPE_TO_WEBKIT_CAR = {
+    "問わず": "13",   # その他
+    "平": "1", "平-低床": "1", "平-パワーゲート": "1", "平-エアサス": "1",
+    "箱": "2", "箱-低床": "2", "箱-パワーゲート": "2", "箱-エアサス": "2",
+    "ウイング": "3", "ウイング-低床": "3", "ウイング-パワーゲート": "3",
+    "ウイング-エアサス": "3", "ウイング又は平": "3", "ウイング又は箱": "3",
+    "ユニック": "11", "冷凍": "5", "保冷": "4", "他": "13",
+    # 旧UIの英字コードも後方互換で受ける
+    "small_truck": "1", "medium_truck": "2", "large_truck": "3",
+    "refrigerated": "4", "frozen": "5", "other": "13",
+}
+
+
 def get_prefecture_code(name: str) -> str:
-    """都道府県名からコードを取得"""
-    return PREFECTURES.get(name, '')
+    """都道府県名からコードを取得（前方一致。「東京都港区」→17）
+
+    北海道は WebKIT では道北/道央/道東/道南に分かれるが、市区町村からの
+    地域判定は本関数では行わず、暫定で道央(02)を返す（要・呼び出し側補正）。
+    """
+    if not name:
+        return ''
+    # 完全一致優先
+    if name in PREFECTURES:
+        return PREFECTURES[name]
+    # 前方一致（住所文字列から都道府県を判定）
+    if name.startswith('北海道'):
+        return '02'  # 暫定: 道央
+    for pref, code in PREFECTURES.items():
+        if name.startswith(pref):
+            return code
+    return ''
+
+
+def get_webkit_car_code(trabox_shape: str) -> str:
+    """Trabox の車種形状 → WebKIT 車種コード（未知は 13=その他）"""
+    if not trabox_shape:
+        return '13'
+    return TRABOX_SHAPE_TO_WEBKIT_CAR.get(trabox_shape, '13')
+
+
+def get_cargo_shape_code(name: str) -> str:
+    """輸送品形状名からコードを取得（未知は 10=その他）"""
+    return CARGO_SHAPE.get(name, '10')
 
 def get_vehicle_code(name: str) -> str:
     """車種名からコードを取得"""

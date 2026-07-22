@@ -11,6 +11,13 @@ from playwright.async_api import async_playwright, Page
 
 logger = logging.getLogger(__name__)
 
+
+def _looks_like_hhmm(value: str) -> bool:
+    """"09:00" のような HH:MM 形式か判定"""
+    import re
+    return bool(re.match(r"^\d{1,2}:\d{2}", str(value or "")))
+
+
 class WebkitAutomation:
     """WebKIT APIへのXML投稿を実行
 
@@ -132,101 +139,128 @@ class WebkitAutomation:
             return None, response_text[:200]
 
     def _build_load_registration_xml(self, case_data: Dict[str, Any]) -> bytes:
-        """荷物登録用XMLを構築"""
-        root = Element('xml')
+        """荷物登録用XMLを構築（WebKIT API仕様書「2 荷物登録」準拠）
 
-        # 認証情報
-        webkit = SubElement(root, 'webkit')
-        apikey_elem = SubElement(webkit, 'apikey')
-        apikey_elem.text = self.api_key
-        personid_elem = SubElement(webkit, 'personid')
-        personid_elem.text = self.person_id
+        🔴 【重要】仕様書の正しい構造:
+          <webkit>
+            <apikey/><personid/>
+            <load_data>
+              <operation>I</operation>   ← load_data の中！
+              <memberid/> ... 各フィールド ...
+            </load_data>
+          </webkit>
 
-        # operation: I = Insert (登録)
-        operation_elem = SubElement(webkit, 'operation')
-        operation_elem.text = 'I'
+        必須項目(〇): operation, memberid, loaddate, loaddatetype,
+          loadprefecture, loadarea, destdate, destdatetype, destprefecture,
+          destarea, loadkind, packagetype, weight, carkindtype, mix,
+          opentype, charge, charge_taxtype, toll_flg
+        - weight は【トン】単位（4.1形式）。kg入力を1000で割る
+        - loadarea/destarea は市区町村（例: 港区）。分割入力の pick_city 等を使う
+        """
+        from app.constants.webkit_codes import (
+            get_webkit_car_code, get_cargo_shape_code,
+        )
+        from app.automations.trabox_form_mapper import TraboxFormMapper as M
 
-        # 荷物情報
-        load_data = SubElement(webkit, 'load_data')
+        webkit = Element('webkit')
+        SubElement(webkit, 'apikey').text = self.api_key or ''
+        SubElement(webkit, 'personid').text = self.person_id or ''
 
-        # 積地
-        pick_location = case_data.get("pick_location", "")
-        tsumichi_code = get_prefecture_code(pick_location)
-        tsumichi = SubElement(load_data, 'tsumichi_code')
-        tsumichi.text = tsumichi_code or '17'  # デフォルト: 東京都
+        load = SubElement(webkit, 'load_data')
 
-        # 積日
-        pickup_date = case_data.get("pickup_date", "")
-        if pickup_date:
-            try:
-                date_obj = datetime.strptime(pickup_date, "%Y-%m-%d")
-                loaddate_y = SubElement(load_data, 'loaddate_Y')
-                loaddate_y.text = str(date_obj.year)
-                loaddate_m = SubElement(load_data, 'loaddate_M')
-                loaddate_m.text = str(date_obj.month).zfill(2)
-                loaddate_d = SubElement(load_data, 'loaddate_D')
-                loaddate_d.text = str(date_obj.day).zfill(2)
-            except ValueError:
-                logger.warning(f"[WebKit] Invalid pickup_date format: {pickup_date}")
+        def add(tag, value):
+            SubElement(load, tag).text = "" if value is None else str(value)
 
-        # 卸地
-        drop_location = case_data.get("drop_location", "")
-        oroshichi_code = get_prefecture_code(drop_location)
-        oroshichi = SubElement(load_data, 'oroshichi_code')
-        oroshichi.text = oroshichi_code or '30'  # デフォルト: 大阪府
+        # --- 認証・コマンド ---
+        add('operation', 'I')                         # I=登録【必須】
+        add('memberid', (self.person_id or '')[:12])  # 会員ID=担当者ID前方12桁【必須】
 
-        # 卸日（積日+2日）
-        if pickup_date:
-            try:
-                from datetime import timedelta
-                date_obj = datetime.strptime(pickup_date, "%Y-%m-%d")
-                dest_date = date_obj + timedelta(days=2)
-                destdate_y = SubElement(load_data, 'destdate_Y')
-                destdate_y.text = str(dest_date.year)
-                destdate_m = SubElement(load_data, 'destdate_M')
-                destdate_m.text = str(dest_date.month).zfill(2)
-                destdate_d = SubElement(load_data, 'destdate_D')
-                destdate_d.text = str(dest_date.day).zfill(2)
-            except:
-                pass
+        # --- 積地（日時+都道府県+市区町村） ---
+        pickup_date = M.parse_date(case_data.get("pickup_date"))
+        pickup_time = case_data.get("pickup_time") or "09:00"
+        add('loaddate', f"{pickup_date} {pickup_time}")           # 積日時【必須】
+        add('loaddatetype', self._datetime_type(
+            case_data.get("loading_time_option")))               # 積日時指定区分【必須】
+        add('loadprefecture',
+            get_prefecture_code(case_data.get("pick_location", "")) or '17')  # 【必須】
+        pick_city = case_data.get("pick_city") or M.extract_city(
+            case_data.get("pick_location", "")) or ""
+        add('loadarea', pick_city)                               # 積地地区（市区町村）【必須】
+        if case_data.get("pick_address"):
+            add('loadaddress', case_data["pick_address"])        # 積地住所（任意）
 
-        # 荷物重量
-        cargo_weight = case_data.get("cargo_weight")
-        if cargo_weight:
-            weight = SubElement(load_data, 'weight')
-            weight.text = str(int(cargo_weight))
+        # --- 卸地 ---
+        drop_date = M.parse_date(case_data.get("drop_date")) or M.next_day(pickup_date)
+        drop_time = case_data.get("drop_time") or "午前"
+        # 「午前」等の非HH:MM表記は WebKIT の日時形式に合わないため 09:00 に丸める
+        if not _looks_like_hhmm(drop_time):
+            drop_time = "09:00"
+        add('destdate', f"{drop_date} {drop_time}")              # 卸日時【必須】
+        add('destdatetype', self._datetime_type(
+            case_data.get("unloading_time_option")))             # 卸日時指定区分【必須】
+        add('destprefecture',
+            get_prefecture_code(case_data.get("drop_location", "")) or '30')  # 【必須】
+        drop_city = case_data.get("drop_city") or M.extract_city(
+            case_data.get("drop_location", "")) or ""
+        add('destarea', drop_city)                              # 卸地地区（市区町村）【必須】
+        if case_data.get("drop_address"):
+            add('destaddress', case_data["drop_address"])
 
-        # 希望車種
-        vehicle_type = case_data.get("vehicle_type", "")
-        if vehicle_type:
-            carkindtype = SubElement(load_data, 'carkindtype')
-            # 英数値から日本語に変換（例: small_truck -> 平型）
-            vehicle_code = self._map_vehicle_type(vehicle_type)
-            carkindtype.text = vehicle_code or '1'
+        # --- 荷物 ---
+        cargo_type = case_data.get("cargo_type") or "その他"
+        add('loadkind', get_cargo_type_code(cargo_type) or '21')  # 輸送品区分【必須】
+        # 輸送形状: Trabox 荷姿(パレット/その他) or package_type。既定 その他(10)
+        add('packagetype',
+            get_cargo_shape_code(case_data.get("package_type", "その他")))  # 【必須】
+        add('weight', self._weight_to_ton(case_data.get("cargo_weight")))   # 重量(t)【必須】
+        add('carkindtype',
+            get_webkit_car_code(case_data.get("vehicle_type", "")))  # 希望車種【必須】
 
-        # 荷扱い
-        handling = SubElement(load_data, 'loadhanding')
-        handling.text = '9'  # 指定なし
+        # --- 積合せ（1:可 2:不可 9:未選択）: Trabox share と整合 ---
+        share = case_data.get("share", "不可")
+        add('mix', '1' if share == "可能" else '2')            # 【必須】
 
-        # 積合せ
-        mix = SubElement(load_data, 'mix')
-        mix.text = '1'  # 可
+        # --- 公開範囲（1:すべて 5:指定） ---
+        add('opentype', '5' if case_data.get("visibility") == "限定" else '1')  # 【必須】
 
-        # XML文字列に変換
-        xml_str = tostring(root, encoding='utf-8')
-        return xml_str
+        # --- 運賃 ---
+        freight = M.format_freight(case_data.get("freight_rate")) or '0'
+        add('charge', freight)                                  # 希望運賃【必須】
+        add('charge_taxtype', '1')                              # 1:課税【必須】
+        add('charge_nego',
+            '1' if case_data.get("freight_negotiable") else '2')  # 応相談(任意)
 
-    def _map_vehicle_type(self, vehicle_type: str) -> str:
-        """英数値の車種をWebKITコードにマッピング"""
-        mapping = {
-            'small_truck': '1',      # 平型
-            'medium_truck': '2',      # バン型
-            'large_truck': '3',       # ウイング型
-            'refrigerated': '4',      # 保冷車
-            'frozen': '5',            # 冷凍車
-            'other': '13',            # その他
-        }
-        return mapping.get(vehicle_type, '13')
+        # --- 高速代の別途支払（0:なし 1:あり） ---
+        add('toll_flg',
+            '1' if case_data.get("highway_fee") == "別途支払う" else '0')  # 【必須】
+
+        # --- 担当情報（任意。空欄なら担当者IDの登録情報が使われる） ---
+        if case_data.get("contact_name"):
+            add('personname', case_data["contact_name"])
+        if case_data.get("contact_phone"):
+            add('portablephone', case_data["contact_phone"])
+        if case_data.get("remarks"):
+            add('note1', case_data["remarks"])
+
+        return tostring(webkit, encoding='utf-8')
+
+    @staticmethod
+    def _datetime_type(option: str) -> str:
+        """積/卸日時指定区分（1:以降 2:必着 3:迄 9:指定なし）。既定 1:以降"""
+        mapping = {"以降": "1", "必着": "2", "迄": "3", "指定なし": "9"}
+        return mapping.get(option or "", "1")
+
+    @staticmethod
+    def _weight_to_ton(cargo_weight) -> str:
+        """荷物重量(kg) → トン（WebKIT weight は 4.1 形式のトン単位）
+
+        例: 1500kg → "1.5"、350kg → "0.4"（小数第1位に丸め）
+        """
+        try:
+            kg = float(cargo_weight)
+        except (TypeError, ValueError):
+            return "0.0"
+        return f"{round(kg / 1000.0, 1)}"
 
     async def login_and_post_case(self, case_data: Dict[str, Any]) -> Dict[str, Any]:
         """ブラウザ自動化で WebKIT にログイン＆投稿"""
