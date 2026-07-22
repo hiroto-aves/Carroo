@@ -350,7 +350,7 @@ async def case_detail(case_id: int, current_user: dict = Depends(get_current_use
 
         # 投稿履歴を取得
         cursor.execute("""
-            SELECT id, platform, status, posted_at, error_message
+            SELECT id, platform, status, posted_at, error_message, baggage_no
             FROM posting_history
             WHERE case_id = ?
             ORDER BY posted_at DESC
@@ -455,16 +455,23 @@ async def case_detail(case_id: int, current_user: dict = Depends(get_current_use
                         <div class="space-y-3">
             """
             for history in histories:
-                hist_id, platform, status, posted_at, error_msg = history
-                status_badge = '✓ 成功' if status == 'success' else '✗ エラー'
-                status_color = 'bg-green-100 text-green-800' if status == 'success' else 'bg-red-100 text-red-800'
+                hist_id, platform, status, posted_at, error_msg, baggage_no = history
+                if status == 'success':
+                    status_badge, status_color = '✓ 成功', 'bg-green-100 text-green-800'
+                elif status == 'pending':
+                    status_badge, status_color = '⏳ 投稿中', 'bg-yellow-100 text-yellow-800'
+                else:
+                    status_badge, status_color = '✗ エラー', 'bg-red-100 text-red-800'
+                # エラー詳細は先頭150文字まで表示（Playwrightのログは長大なため）
+                error_short = (error_msg[:150] + '…') if error_msg and len(error_msg) > 150 else error_msg
 
                 html += f"""
                             <div class="flex items-start justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
                                 <div>
                                     <p class="font-semibold text-gray-900">{platform.upper()}</p>
                                     <p class="text-sm text-gray-600">{posted_at}</p>
-                                    {f'<p class="text-sm text-red-600 mt-2">{error_msg}</p>' if error_msg else ''}
+                                    {f'<p class="text-sm text-gray-700 mt-1">荷物番号: <span class="font-mono font-semibold">{baggage_no}</span></p>' if baggage_no else ''}
+                                    {f'<p class="text-sm text-red-600 mt-2">{error_short}</p>' if error_short else ''}
                                 </div>
                                 <span class="px-3 py-1 rounded-full text-sm font-medium {status_color}">
                                     {status_badge}

@@ -57,7 +57,9 @@ class TraboxAutomation:
         """
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=self.headless)
-            context = await browser.new_context(viewport={"width": 1280, "height": 720})
+            # 🔴 ビューポートは縦長必須: 720px 等ではスクロール時にサイトの
+            # スティッキーヘッダーがフォーム要素に被さりクリックが遮られる
+            context = await browser.new_context(viewport={"width": 1440, "height": 2400})
             page = await context.new_page()
 
             # デバッグキャプチャを初期化
@@ -334,7 +336,7 @@ class TraboxAutomation:
         """
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=self.headless)
-            context = await browser.new_context(viewport={"width": 1280, "height": 720})
+            context = await browser.new_context(viewport={"width": 1440, "height": 2400})
             page = await context.new_page()
             self.debug_capture = DebugCapture(page)
 
@@ -1033,7 +1035,17 @@ class TraboxAutomation:
             await exact.first.click(timeout=TRABOX_TIMEOUTS["action"])
         except Exception:
             partial = wrappers.filter(has_text=option_label)
-            await partial.first.click(timeout=TRABOX_TIMEOUTS["action"])
+            try:
+                await partial.first.click(timeout=TRABOX_TIMEOUTS["action"])
+            except Exception:
+                # スティッキーヘッダー等に被られた場合は input に直接イベント送信
+                logger.warning(
+                    f"[Trabox] {row_label} 通常クリック失敗 → dispatch_event"
+                )
+                target = exact if await exact.count() else partial
+                await target.first.locator(
+                    "input.ant-radio-input"
+                ).dispatch_event("click")
         logger.info(f"[Trabox] {row_label} ラジオ選択: {option_label}")
 
     async def _set_contact_person(self, page: Page, name: str) -> None:

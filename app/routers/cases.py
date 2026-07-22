@@ -646,20 +646,61 @@ async def register_case(
             )
         conn.commit()
 
-        # Step 5: 即座に返す（投稿処理は背景で実行）
-        return JSONResponse(
-            status_code=202,
-            content={
-                "status": "success",
-                "message": "✅ 投稿をキューに追加しました",
-                "case_id": case_id,
-                "task_name": task_name,
-                "platforms_queued": {
-                    "trabox": post_to_trabox == "yes",
-                    "webkit": post_to_webkit == "yes"
-                }
-            }
-        )
+        # Step 5: 結果画面を返す（投稿処理は背景で実行される）
+        platforms = []
+        if post_to_trabox == "yes":
+            platforms.append("トラボックス")
+        if post_to_webkit == "yes":
+            platforms.append("WebKit")
+        platforms_text = "・".join(platforms) if platforms else "なし（案件保存のみ）"
+
+        return HTMLResponse(f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carroo - 登録完了</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <a href="/dashboard/" class="text-2xl font-bold text-blue-600 hover:opacity-80 transition">📦 Carroo</a>
+                <div class="flex items-center gap-4">
+                    <a href="/auth/me" class="text-gray-600 hover:text-gray-900">プロフィール</a>
+                    <a href="/auth/logout" class="text-red-600 hover:text-red-700">ログアウト</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="min-h-screen flex items-center justify-center px-4 -mt-16">
+        <div class="max-w-lg w-full bg-white rounded-2xl shadow-lg p-10 text-center">
+            <div class="text-6xl mb-4">✅</div>
+            <h1 class="text-2xl font-bold text-gray-900 mb-2">案件を登録しました</h1>
+            <p class="text-gray-600 mb-6">案件ID: <span class="font-mono font-semibold">{case_id}</span></p>
+
+            <div class="text-left bg-gray-50 rounded-lg p-4 mb-6 text-sm space-y-2">
+                <p><span class="text-gray-500">積地:</span> <span class="font-medium">{pick_location}</span></p>
+                <p><span class="text-gray-500">卸地:</span> <span class="font-medium">{drop_location}</span></p>
+                <p><span class="text-gray-500">積み日:</span> <span class="font-medium">{pickup_date}</span></p>
+                <p><span class="text-gray-500">投稿先:</span> <span class="font-medium">{platforms_text}</span></p>
+            </div>
+
+            <p class="text-sm text-gray-500 mb-8">
+                投稿は背景で実行中です（1〜2分程度）。<br>
+                結果（成功/失敗・荷物番号）はダッシュボードの案件詳細で確認できます。
+            </p>
+
+            <div class="flex gap-4 justify-center">
+                <a href="/dashboard/cases/{case_id}" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-lg transition">投稿状況を確認</a>
+                <a href="/cases/register" class="bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold py-2.5 px-6 rounded-lg transition">続けて登録</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>""")
 
     except HTTPException:
         # バリデーションエラー等はそのまま返す（detail を握りつぶさない）

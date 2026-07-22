@@ -154,6 +154,26 @@ class LocalTaskQueue:
         }
         self.tasks.append(task)
         logger.info(f"📋 ローカルタスク追加: {task_id}")
+
+        # ローカル開発では即座にバックグラウンドで投稿を実行する
+        # （本番の Cloud Tasks → /tasks/execute と同じ処理を in-process で行う）
+        try:
+            import asyncio
+            from app.services.poster import execute_posting_task
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                loop.create_task(
+                    execute_posting_task(
+                        {"user_id": user_id, "case_data": case_data}
+                    )
+                )
+                task["status"] = "dispatched"
+                logger.info(f"🚀 ローカル実行開始（バックグラウンド）: {task_id}")
+            else:
+                logger.warning("イベントループ未稼働のためタスクは保存のみ")
+        except Exception as e:
+            logger.error(f"ローカル実行の起動失敗: {e}")
+
         return task_id
 
     def get_queue_stats(self) -> Dict[str, Any]:

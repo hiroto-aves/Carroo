@@ -180,11 +180,24 @@ Cloud Run（Playwright）
 - **現在着手中のタスク**:
   - なし
 
+- **実装済みの機能（2026-07-22 深夜追加分）**:
+  - **poster 完成（既知のギャップ解消）**: `app/services/poster.py` + `POST /tasks/execute`
+    - 登録 → キュー → 実投稿 → posting_history 更新（success/error・荷物番号・エラー詳細）の全自動フロー
+    - ローカル: LocalTaskQueue が登録と同時にバックグラウンド実行 / 本番: Cloud Tasks → /tasks/execute
+    - E2E実証済み: Web登録 → Trabox実投稿（荷物番号27497261）→ 履歴success記録 → 削除まで確認
+  - 登録後の結果画面（JSON → HTML化。案件内容・投稿先・ダッシュボードへの導線付き）
+  - ダッシュボード投稿履歴に荷物番号・「投稿中」バッジ・エラー要約を表示
+  - post_case のビューポート修正（720px高だとスティッキーヘッダーがクリックを遮る問題）
+  - ENCRYPTION_KEY を .env に永続化（再起動しても認証情報が復号可能に）
+  - UI改善多数: 日時左/場所右、Trabox準拠の車種2セレクト、市区町村の都道府県連動
+    （HeartRails Geo API）、運賃要相談（WebKit排他＋赤字アラート）、連絡先初期設定、
+    プロフィール画面、ロゴのホームリンク統一
+
 - **次にやるべきこと**:
   1. WebKIT 側も同じ case_data（必要十分条件 = Trabox フォーム全項目）で動くよう突き合わせ
-  2. 【既知のギャップ】functions/main.py（Cloud Tasks の受け先 poster）がスタブのまま。実投稿＋`update_posting_result()` での履歴更新の実装が必要
-  3. 一覧/履歴画面から Update・Delete を呼べる UI 追加（baggage_no は posting_history に保存済み）
-  4. Cloud Run 環境での動作確認・再デプロイ（SQLite の永続化方針も要検討）
+  2. 一覧/履歴画面から Update・Delete を呼べる UI 追加（baggage_no は posting_history に保存済み）
+  3. Cloud Run 環境での動作確認・再デプロイ（CLOUD_RUN_URL を /tasks/execute に向ける。SQLite の永続化方針も要検討）
+  4. ユーザーの Trabox 認証情報を初期設定画面で再保存（旧キーで暗号化された分は復号不能のため）
 
 ## 🔧 過去の修正 (2026-07-20)
 

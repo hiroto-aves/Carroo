@@ -141,14 +141,16 @@ def update_posting_result(
     """
     conn = get_db_connection()
     try:
+        # 最新レコードを状態問わず更新する
+        # （リトライ時は前回が error になっているため pending 限定にしない）
         conn.execute(
             """UPDATE posting_history
             SET status = ?, baggage_no = ?, error_message = ?,
                 updated_at = CURRENT_TIMESTAMP
             WHERE id = (
                 SELECT id FROM posting_history
-                WHERE case_id = ? AND platform = ? AND status = 'pending'
-                ORDER BY posted_at DESC LIMIT 1
+                WHERE case_id = ? AND platform = ?
+                ORDER BY id DESC LIMIT 1
             )""",
             (status, baggage_no, error_message, case_id, platform),
         )
