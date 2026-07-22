@@ -3,14 +3,17 @@
 投稿結果通知などのメールを SMTP で送信する。
 
 【.env 設定（必須）】
-    SMTP_HOST=smtp.gmail.com
-    SMTP_PORT=587
-    SMTP_USER=送信元Gmailアドレス
-    SMTP_PASSWORD=Gmailアプリパスワード（通常のパスワードではない）
+    SMTP_HOST=メールプロバイダのSMTPサーバー（例: smtp.gmail.com）
+    SMTP_PORT=587 または 465
+    SMTP_USER=SMTP認証ユーザー名（通常はメールアドレス）
+    SMTP_PASSWORD=SMTP認証パスワード
     MAIL_FROM=送信元アドレス（省略時は SMTP_USER）
 
-Gmail の場合は 2段階認証を有効にした上で「アプリパスワード」を発行して
-SMTP_PASSWORD に設定すること（https://myaccount.google.com/apppasswords）。
+任意のSMTPサーバーに対応（Gmail・会社メール・Outlook等）:
+- ポート 587 → STARTTLS 方式で自動接続
+- ポート 465 → SSL 方式で自動接続（さくら・Xserver等の国内ホスティングに多い）
+- Gmail の場合のみ「アプリパスワード」が必要
+  （https://myaccount.google.com/apppasswords）
 
 未設定の場合は送信をスキップして警告ログのみ残す（投稿処理は失敗させない）。
 """
@@ -58,10 +61,16 @@ def send_email(to_address: str, subject: str, body: str) -> bool:
         msg["From"] = formataddr((str(Header("Carroo 投稿システム", "utf-8")), mail_from))
         msg["To"] = to_address
 
-        with smtplib.SMTP(host, port, timeout=30) as server:
-            server.starttls()
-            server.login(user, password)
-            server.sendmail(mail_from, [to_address], msg.as_string())
+        # ポート 465 は SSL 方式、それ以外（587 等）は STARTTLS 方式で接続
+        if port == 465:
+            with smtplib.SMTP_SSL(host, port, timeout=30) as server:
+                server.login(user, password)
+                server.sendmail(mail_from, [to_address], msg.as_string())
+        else:
+            with smtplib.SMTP(host, port, timeout=30) as server:
+                server.starttls()
+                server.login(user, password)
+                server.sendmail(mail_from, [to_address], msg.as_string())
 
         logger.info(f"[Mailer] メール送信成功: {to_address} 「{subject}」")
         return True
