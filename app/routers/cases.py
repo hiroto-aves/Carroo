@@ -98,9 +98,47 @@ def _get_contact_defaults(access_token: Optional[str]) -> dict:
         return empty
 
 
+SETUP_REQUIRED_HTML = """<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carroo - 初期設定が必要です</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <a href="/dashboard/" class="text-2xl font-bold text-blue-600 hover:opacity-80 transition">📦 Carroo</a>
+                <div class="flex items-center gap-4">
+                    <a href="/auth/me" class="text-gray-600 hover:text-gray-900">プロフィール</a>
+                    <a href="/auth/logout" class="text-red-600 hover:text-red-700">ログアウト</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+    <div class="min-h-screen flex items-center justify-center px-4 -mt-16">
+        <div class="max-w-lg w-full bg-white rounded-2xl shadow-lg p-10 text-center">
+            <div class="text-6xl mb-4">⚙️</div>
+            <h1 class="text-2xl font-bold text-gray-900 mb-4">初期設定が必要です</h1>
+            <p class="text-gray-600 mb-8">
+                案件登録には<span class="font-semibold">連絡先メールアドレス</span>の登録が必要です。<br>
+                投稿の成否通知がこのアドレスに届きます。
+            </p>
+            <a href="/settings/" class="inline-block bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition">初期設定へ進む</a>
+        </div>
+    </div>
+</body>
+</html>"""
+
+
 @router.get("/register", response_class=HTMLResponse)
 async def case_register_page(access_token: Optional[str] = Cookie(None)):
     contact = _get_contact_defaults(access_token)
+    # 🔴 初期設定（連絡先メール）未登録の場合は案件登録に進めない
+    if not contact["email"]:
+        return HTMLResponse(SETUP_REQUIRED_HTML)
     pref_options = "".join(
         f'<option value="{p}">{p}</option>' for p in PREFECTURES
     )
@@ -560,6 +598,18 @@ async def register_case(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="発地・着地は都道府県と市区町村まで必須です（例: 東京都港区）",
+            )
+
+        # 🔴 初期設定（連絡先メール）未登録なら登録不可（通知先が無いため）
+        cursor.execute(
+            "SELECT contact_email FROM user_credentials WHERE user_id = ?",
+            (user_id,),
+        )
+        email_row = cursor.fetchone()
+        if not email_row or not email_row[0]:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="初期設定でメールアドレスを登録してから案件登録してください（/settings/）",
             )
 
         # 運賃: 金額指定 or 要相談のどちらかが必須。

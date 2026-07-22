@@ -120,5 +120,90 @@ async def execute_posting_task(payload: Dict[str, Any]) -> Dict[str, Any]:
             results["webkit"] = {"status": "error", "message": error_msg}
             logger.error(f"[Poster] WebKit 投稿失敗: case_id={case_id} {error_msg}")
 
+    # --- 結果通知メール（Trabox/WebKit の成否をまとめて1通） ---
+    if results:
+        _send_result_email(user_id, case_data, results)
+
     logger.info(f"[Poster] 投稿タスク実行完了: case_id={case_id}")
     return results
+
+
+def _get_notification_email(user_id: int) -> str:
+    """通知先メールアドレス（初期設定画面で登録した連絡先メール）を取得"""
+    conn = get_db_connection()
+    row = conn.execute(
+        "SELECT contact_email FROM user_credentials WHERE user_id = ?",
+        (user_id,),
+    ).fetchone()
+    conn.close()
+    return (row[0] or "") if row else ""
+
+
+def build_result_email(case_data: Dict[str, Any], results: Dict[str, Any]) -> tuple:
+    """投稿結果メールの (件名, 本文) を組み立てる
+
+    Trabox / WebKit それぞれの成否を分けて、両方まとめて1通にする。
+    """
+    case_id = case_data.get("case_id")
+    platform_names = {"trabox": "トラボックス", "webkit": "WebKit"}
+
+    success_count = sum(1 for r in results.values() if r.get("status") == "success")
+    fail_count = len(results) - success_count
+    if fail_count == 0:
+        summary = "すべて成功"
+    elif success_count == 0:
+        summary = "すべて失敗"
+    else:
+        summary = f"成功 {success_count} 件・失敗 {fail_count} 件"
+
+    subject = f"【Carroo】投稿結果: {summary}（案件ID {case_id}）"
+
+    lines = [
+        "Carroo 投稿システムからの自動通知です。",
+        "",
+        "■ 案件内容",
+        f"  案件ID    : {case_id}",
+        f"  積地      : {case_data.get('pick_location', '-')}",
+        f"  卸地      : {case_data.get('drop_location', '-')}",
+        f"  積み日    : {case_data.get('pickup_date', '-')} {case_data.get('pickup_time') or ''}".rstrip(),
+        f"  運賃      : "
+        + ("要相談" if case_data.get("freight_negotiable")
+           else f"{int(float(case_data.get('freight_rate', 0))):,} 円（税別）"),
+        "",
+        "■ 投稿結果",
+    ]
+    for platform, result in results.items():
+        name = platform_names.get(platform, platform)
+        if result.get("status") == "success":
+            lines.append(f"  ✅ {name}: 成功")
+            if result.get("baggage_no"):
+                lines.append(f"      荷物番号: {result['baggage_no']}")
+        else:
+            lines.append(f"  ❌ {name}: 失敗")
+            message = (result.get("message") or "")[:200]
+            if message:
+                lines.append(f"      理由: {message}")
+    lines += [
+        "",
+        "投稿状況の詳細はダッシュボードでご確認ください。",
+    ]
+    return subject, "\n".join(lines)
+
+
+def _send_result_email(
+    user_id: int, case_data: Dict[str, Any], results: Dict[str, Any]
+) -> None:
+    """投稿結果メールを送信（失敗しても投稿処理は失敗させない）"""
+    try:
+        from app.utils.mailer import send_email
+
+        to_address = _get_notification_email(user_id)
+        if not to_address:
+            logger.warning(
+                f"[Poster] 通知先メール未登録のため送信スキップ: user_id={user_id}"
+            )
+            return
+        subject, body = build_result_email(case_data, results)
+        send_email(to_address, subject, body)
+    except Exception as e:
+        logger.error(f"[Poster] 結果メール送信処理でエラー（投稿は完了済み）: {e}")
