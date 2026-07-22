@@ -65,6 +65,15 @@ def init_db():
             "ALTER TABLE posting_history ADD COLUMN baggage_no TEXT"
         )
 
+    # 既存DBへのマイグレーション: cases.extras カラムを追加
+    # Trabox フォーム全項目（必要十分条件）のうち基本スキーマ外の拡張キーを
+    # JSON で保持する（drop_date / drop_time / cargo_type / highway_fee /
+    # omakase_billing / contact_method / truck_count / share / visibility / remarks）
+    cursor.execute("PRAGMA table_info(cases)")
+    case_columns = [row[1] for row in cursor.fetchall()]
+    if "extras" not in case_columns:
+        cursor.execute("ALTER TABLE cases ADD COLUMN extras TEXT")
+
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS posting_batches (
         id INTEGER PRIMARY KEY,

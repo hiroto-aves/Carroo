@@ -7,6 +7,7 @@ from app.automations.webkit import WebkitAutomation
 from app.dependencies import get_current_user
 from app.services.cloud_tasks import get_task_client
 from typing import Optional
+import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,7 +16,20 @@ router = APIRouter(prefix="/cases", tags=["cases"])
 
 @router.get("/register", response_class=HTMLResponse)
 async def case_register_page():
-    return """
+    # 都道府県セレクトの選択肢（Trabox の地図ボタンに対応する正式名称）
+    prefs = [
+        "北海道", "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
+        "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
+        "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県", "岐阜県",
+        "静岡県", "愛知県", "三重県", "滋賀県", "京都府", "大阪府", "兵庫県",
+        "奈良県", "和歌山県", "鳥取県", "島根県", "岡山県", "広島県", "山口県",
+        "徳島県", "香川県", "愛媛県", "高知県", "福岡県", "佐賀県", "長崎県",
+        "熊本県", "大分県", "宮崎県", "鹿児島県", "沖縄県",
+    ]
+    pref_options = "".join(
+        f'<option value="{p}">{p}</option>' for p in prefs
+    )
+    html = """
     <!DOCTYPE html>
     <html lang="ja">
     <head>
@@ -60,14 +74,29 @@ async def case_register_page():
                                 基本情報
                             </h3>
 
+                            <!-- 🔴 Trabox は市区町村まで必須（都道府県だけでは登録不可） -->
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">積地（都道府県）</label>
-                                    <input type="text" name="pick_location" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" required placeholder="東京都">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">積地 <span class="text-red-500">*</span></label>
+                                    <div class="space-y-2">
+                                        <select name="pick_pref" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required>
+                                            <option value="">都道府県を選択</option>
+                                            PREF_OPTIONS
+                                        </select>
+                                        <input type="text" name="pick_city" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required placeholder="市区町村（必須）例: 港区">
+                                        <input type="text" name="pick_address" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" placeholder="番地・建物（任意）">
+                                    </div>
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">卸地（都道府県）</label>
-                                    <input type="text" name="drop_location" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" required placeholder="大阪府">
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">卸地 <span class="text-red-500">*</span></label>
+                                    <div class="space-y-2">
+                                        <select name="drop_pref" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required>
+                                            <option value="">都道府県を選択</option>
+                                            PREF_OPTIONS
+                                        </select>
+                                        <input type="text" name="drop_city" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required placeholder="市区町村（必須）例: 大阪市北区">
+                                        <input type="text" name="drop_address" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" placeholder="番地・建物（任意）">
+                                    </div>
                                 </div>
                             </div>
 
@@ -106,14 +135,88 @@ async def case_register_page():
 
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">積地日付</label>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">積み日 <span class="text-red-500">*</span></label>
                                     <input type="date" name="pickup_date" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" required>
                                 </div>
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">積地時間</label>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">積み時間</label>
                                     <input type="time" name="pickup_time" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
                                 </div>
                             </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">着日 <span class="text-gray-400 text-xs">（未指定なら翌日・午前着）</span></label>
+                                    <input type="date" name="drop_date" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                                </div>
+                                <div>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">卸し時間</label>
+                                    <input type="time" name="drop_time" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- セクション 2.5: 詳細設定（Trabox 全項目対応・既定値プリセット） -->
+                        <div>
+                            <details class="group">
+                                <summary class="cursor-pointer text-lg font-semibold text-gray-900 mb-4 flex items-center list-none">
+                                    <span class="w-8 h-8 bg-gray-500 text-white rounded-full flex items-center justify-center text-sm font-bold mr-3">+</span>
+                                    詳細設定（任意・既定値のままでOK）
+                                    <span class="ml-2 text-gray-400 text-sm group-open:hidden">▼ 開く</span>
+                                    <span class="ml-2 text-gray-400 text-sm hidden group-open:inline">▲ 閉じる</span>
+                                </summary>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-gray-50 rounded-lg">
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">荷種</label>
+                                        <input type="text" name="cargo_type" value="鋼材" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">台数</label>
+                                        <input type="number" name="truck_count" value="1" min="1" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg transition">
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">積合</label>
+                                        <select name="share" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg transition">
+                                            <option value="不可" selected>不可</option>
+                                            <option value="可能">可能</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">高速代</label>
+                                        <select name="highway_fee" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg transition">
+                                            <option value="支払わない" selected>支払わない</option>
+                                            <option value="別途支払う">別途支払う</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">おまかせ請求受入可否</label>
+                                        <select name="omakase_billing" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg transition">
+                                            <option value="受入不可" selected>受入不可</option>
+                                            <option value="必須">必須</option>
+                                            <option value="推奨">推奨</option>
+                                            <option value="受入可">受入可</option>
+                                            <option value="未定">未定</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">連絡方法</label>
+                                        <select name="contact_method" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg transition">
+                                            <option value="電話で受付" selected>電話で受付</option>
+                                            <option value="オンラインで受付">オンラインで受付</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">公開範囲</label>
+                                        <select name="visibility" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg transition">
+                                            <option value="すべて" selected>すべて</option>
+                                            <option value="限定">限定</option>
+                                        </select>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">備考</label>
+                                        <textarea name="remarks" rows="2" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg transition" placeholder="運送会社への連絡事項など"></textarea>
+                                    </div>
+                                </div>
+                            </details>
                         </div>
 
                         <!-- セクション 3: 連絡先 -->
@@ -203,11 +306,13 @@ async def case_register_page():
     </body>
     </html>
     """
+    return html.replace("PREF_OPTIONS", pref_options)
 
 @router.post("/register")
 async def register_case(
-    pick_location: str = Form(...),
-    drop_location: str = Form(...),
+    # 後方互換: 旧API（結合済み文字列）でも新UI（pref+city 分割）でも受け付ける
+    pick_location: Optional[str] = Form(None),
+    drop_location: Optional[str] = Form(None),
     cargo_weight: float = Form(...),
     vehicle_type: str = Form(...),
     freight_rate: float = Form(...),
@@ -218,6 +323,24 @@ async def register_case(
     contact_email: Optional[str] = Form(None),
     post_to_trabox: Optional[str] = Form(None),
     post_to_webkit: Optional[str] = Form(None),
+    # --- 発地/着地の分割入力（Trabox は市区町村必須） ---
+    pick_pref: Optional[str] = Form(None),
+    pick_city: Optional[str] = Form(None),
+    pick_address: Optional[str] = Form(None),
+    drop_pref: Optional[str] = Form(None),
+    drop_city: Optional[str] = Form(None),
+    drop_address: Optional[str] = Form(None),
+    # --- 拡張キー（Trabox フォーム全項目 = 必要十分条件。未指定は既定値） ---
+    drop_date: Optional[str] = Form(None),
+    drop_time: Optional[str] = Form(None),
+    cargo_type: Optional[str] = Form(None),
+    truck_count: Optional[int] = Form(None),
+    share: Optional[str] = Form(None),
+    highway_fee: Optional[str] = Form(None),
+    omakase_billing: Optional[str] = Form(None),
+    contact_method: Optional[str] = Form(None),
+    visibility: Optional[str] = Form(None),
+    remarks: Optional[str] = Form(None),
     current_user: dict = Depends(get_current_user),
 ):
     """
@@ -239,17 +362,47 @@ async def register_case(
     try:
         user_id = current_user["id"]
 
-        # Step 1: 案件データを DB に保存
+        # Step 0: 発地/着地を組み立て（新UI: pref+city+address 分割入力）
+        # Trabox は市区町村必須のため「東京都港区」形式に結合する
+        if pick_pref and pick_city:
+            pick_location = f"{pick_pref}{pick_city}{pick_address or ''}"
+        if drop_pref and drop_city:
+            drop_location = f"{drop_pref}{drop_city}{drop_address or ''}"
+        if not pick_location or not drop_location:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="発地・着地は都道府県と市区町村まで必須です（例: 東京都港区）",
+            )
+
+        # 拡張キー（Trabox フォーム全項目に対応。指定されたものだけ保持し、
+        # 未指定は投稿時に TraboxFormMapper.TRABOX_DEFAULTS が適用される）
+        extras = {
+            k: v for k, v in {
+                "drop_date": drop_date,
+                "drop_time": drop_time,
+                "cargo_type": cargo_type,
+                "truck_count": truck_count,
+                "share": share,
+                "highway_fee": highway_fee,
+                "omakase_billing": omakase_billing,
+                "contact_method": contact_method,
+                "visibility": visibility,
+                "remarks": remarks,
+            }.items() if v not in (None, "")
+        }
+
+        # Step 1: 案件データを DB に保存（拡張キーは extras JSON で裏に保持）
         cursor.execute(
             """INSERT INTO cases
-            (user_id, pick_location, drop_location, cargo_weight, vehicle_type, freight_rate, pickup_date, pickup_time, contact_name, contact_phone, contact_email)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (user_id, pick_location, drop_location, cargo_weight, vehicle_type, freight_rate, pickup_date, pickup_time, contact_name, contact_phone, contact_email)
+            (user_id, pick_location, drop_location, cargo_weight, vehicle_type, freight_rate, pickup_date, pickup_time, contact_name, contact_phone, contact_email, extras)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (user_id, pick_location, drop_location, cargo_weight, vehicle_type, freight_rate, pickup_date, pickup_time, contact_name, contact_phone, contact_email,
+             json.dumps(extras, ensure_ascii=False) if extras else None)
         )
         conn.commit()
         case_id = cursor.lastrowid
 
-        # Step 2: 投稿用データを構築
+        # Step 2: 投稿用データを構築（拡張キーはフラットにマージ）
         case_data = {
             "case_id": case_id,
             "user_id": user_id,
@@ -265,6 +418,7 @@ async def register_case(
             "contact_email": contact_email,
             "post_to_trabox": post_to_trabox == "yes",
             "post_to_webkit": post_to_webkit == "yes",
+            **extras,
         }
 
         # Step 3: Cloud Tasks にタスク追加（0.1秒で返す）

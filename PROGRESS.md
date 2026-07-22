@@ -166,15 +166,25 @@ Cloud Run（Playwright）
   - **CRUD 対応**: `post_case()` が登録後の荷物番号を返却、`delete_case(荷物番号)` で削除（実環境検証済み）
   - 回帰テスト: `test_trabox_fill_form.py`（既定は入力のみ、SUBMIT=1 で実登録）
 
+- **実装済みの機能（2026-07-22 追加分）**:
+  - **会話ログ自動保存**: `docs/save_conversation_log.py` + Stop hook（詳細は CLAUDE.md）
+  - **Trabox CRUD 完成**:
+    - Create: `post_case()`（荷物番号を返却）
+    - Read: 一覧 `tr[data-row-key]` / 詳細 `?baggageId=荷物番号`
+    - Update: `update_case(荷物番号, 更新フィールド)` — 編集URL `?baggageId=X&edit=true` 直接アクセス、実環境検証済み（運賃・積み時間の変更→反映確認→削除まで）
+    - Delete: `delete_case(荷物番号)` — 実環境検証済み
+  - **DB拡張**: `posting_history.baggage_no`・`cases.extras`（JSON）カラム追加（自動マイグレーション付き）、`update_posting_result()` ヘルパー
+  - **Web UI 刷新**: 発地/着地を「都道府県セレクト＋市区町村（必須）＋番地」に分割、着日・卸し時間追加、折りたたみ式「詳細設定」（荷種=鋼材・台数=1・積合=不可・高速代=支払わない・おまかせ請求=受入不可・連絡方法=電話で受付・公開範囲=すべて の既定値プリセット、備考）
+  - 拡張キーは `cases.extras` に JSON で裏保持し、投稿時に case_data へフラットにマージ（Trabox/WebKIT 共通CRUDフォームの土台）
+
 - **現在着手中のタスク**:
-  - なし（Trabox 登録・削除の自動化完成）
+  - なし
 
 - **次にやるべきこと**:
-  1. Trabox の Update（編集）フロー実装 → CRUD 完成（一覧に編集ボタンが無いため詳細画面の調査から）
-  2. Web UI 側の入力フォーム連携（pick_location に「東京都港区」形式で市区町村まで必須・拡張キー対応）
-  3. WebKIT 側も同じ case_data（必要十分条件 = Trabox フォーム全項目）で動くよう突き合わせ
-  4. posting_history に baggage_no を保存するDB拡張（削除・編集に必要）
-  5. Cloud Run 環境での動作確認・再デプロイ
+  1. WebKIT 側も同じ case_data（必要十分条件 = Trabox フォーム全項目）で動くよう突き合わせ
+  2. 【既知のギャップ】functions/main.py（Cloud Tasks の受け先 poster）がスタブのまま。実投稿＋`update_posting_result()` での履歴更新の実装が必要
+  3. 一覧/履歴画面から Update・Delete を呼べる UI 追加（baggage_no は posting_history に保存済み）
+  4. Cloud Run 環境での動作確認・再デプロイ（SQLite の永続化方針も要検討）
 
 ## 🔧 過去の修正 (2026-07-20)
 

@@ -124,11 +124,11 @@ class BatchPostingService:
             for case_id, platform_str in queue_items:
                 platforms = platform_str.split(",")
 
-                # 案件情報を取得
+                # 案件情報を取得（extras = Trabox 拡張キーの JSON）
                 cursor.execute(
                     """SELECT id, pick_location, drop_location, cargo_weight,
                             vehicle_type, freight_rate, pickup_date, pickup_time,
-                            contact_name, contact_phone, contact_email
+                            contact_name, contact_phone, contact_email, extras
                     FROM cases WHERE id = ?""",
                     (case_id,)
                 )
@@ -334,8 +334,10 @@ class BatchPostingService:
             }
 
     def _case_tuple_to_dict(self, case_tuple) -> Dict[str, Any]:
-        """ケースタプルを辞書に変換"""
-        return {
+        """ケースタプルを辞書に変換（extras JSON の拡張キーはフラットにマージ）"""
+        import json as _json
+
+        case_data = {
             "case_id": case_tuple[0],
             "pick_location": case_tuple[1],
             "drop_location": case_tuple[2],
@@ -348,3 +350,10 @@ class BatchPostingService:
             "contact_phone": case_tuple[9],
             "contact_email": case_tuple[10],
         }
+        # extras カラム（12番目）がある場合は拡張キーをマージ
+        if len(case_tuple) > 11 and case_tuple[11]:
+            try:
+                case_data.update(_json.loads(case_tuple[11]))
+            except (ValueError, TypeError) as e:
+                logger.warning(f"extras JSON の解析失敗（無視して続行）: {e}")
+        return case_data
