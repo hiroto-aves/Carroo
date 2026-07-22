@@ -102,7 +102,8 @@ async def execute_posting_task(payload: Dict[str, Any]) -> Dict[str, Any]:
         try:
             from app.automations.webkit import WebkitAutomation
 
-            automation = WebkitAutomation()
+            # 担当者IDはユーザーごと（初期設定画面で登録）。apikey は env 共通。
+            automation = WebkitAutomation(person_id=_get_webkit_person_id(user_id))
             result = await automation.post_case(case_data)
             status = result.get("status", "success")
             update_posting_result(
@@ -127,6 +128,17 @@ async def execute_posting_task(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     logger.info(f"[Poster] 投稿タスク実行完了: case_id={case_id}")
     return results
+
+
+def _get_webkit_person_id(user_id: int) -> str:
+    """ユーザーの WebKIT 担当者ID（初期設定で登録）を取得。未設定なら env にフォールバック"""
+    conn = get_db_connection()
+    row = conn.execute(
+        "SELECT webkit_person_id FROM user_credentials WHERE user_id = ?",
+        (user_id,),
+    ).fetchone()
+    conn.close()
+    return (row[0] or "") if row and row[0] else ""
 
 
 def _get_notification_email(user_id: int) -> str:

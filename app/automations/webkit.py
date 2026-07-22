@@ -29,13 +29,21 @@ class WebkitAutomation:
     - 認証: apikey（20桁）+ personid（14桁）
     """
 
-    def __init__(self):
+    def __init__(self, person_id: str = None):
+        """
+        Args:
+            person_id: WebKIT 担当者ID（14桁）。ユーザーごとに異なる。
+                       未指定時は .env の WEBKIT_PERSON_ID にフォールバック。
+
+        🔴 apikey は会員（竹内運送）単位で全ユーザー共通のため、常に .env
+           （WEBKIT_API_KEY）から取得する。担当者IDのみユーザー個別。
+        """
         self.webkit_url = settings.WEBKIT_URL
         self.login_id = settings.WEBKIT_LOGIN_ID
         self.login_password = settings.WEBKIT_LOGIN_PASSWORD
         self.api_url = "https://www.wkit.jp/api/LoadInfo"
-        self.api_key = settings.WEBKIT_API_KEY
-        self.person_id = getattr(settings, 'WEBKIT_PERSON_ID', None)
+        self.api_key = settings.WEBKIT_API_KEY  # 全ユーザー共通
+        self.person_id = person_id or getattr(settings, 'WEBKIT_PERSON_ID', None)
         self.timeout = 30.0
 
     async def post_case(self, case_data: Dict[str, Any]) -> Dict[str, Any]:
