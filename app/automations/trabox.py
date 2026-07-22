@@ -129,6 +129,198 @@ class TraboxAutomation:
                 await context.close()
                 await browser.close()
 
+    async def update_case(
+        self, baggage_no: str, updates: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """登録済み荷物を部分更新（CRUD の Update。実環境調査済み 2026-07-22）
+
+        編集フォームは直接URL（?baggageId=荷物番号&edit=true）で開ける。
+        登録フォームと同じ .tbx-form-item 行構造だが、行ラベルが一部異なる:
+        「発」→「発日時/発地」、「着」→「着日時/着地」。送信ボタンは「変更」。
+        全項目プリフィル済みのため、updates に含まれるフィールドのみ書き換える。
+
+        Args:
+            baggage_no: Trabox の荷物番号
+            updates: 更新するフィールドのみを含む dict（case_data と同じキー体系）
+        """
+        from app.automations.trabox_form_mapper import TraboxFormMapper as M
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=self.headless)
+            context = await browser.new_context(viewport={"width": 1440, "height": 1400})
+            page = await context.new_page()
+            self.debug_capture = DebugCapture(page)
+
+            try:
+                await self._step_navigate_to_dashboard(page)
+                if await self._is_login_page(page):
+                    await self._step_login(page)
+                    await self._step_navigate_to_dashboard(page)
+
+                # 編集フォームを直接URLで開く
+                edit_url = f"{TRABOX_DASHBOARD_URL}?baggageId={baggage_no}&edit=true"
+                await page.goto(
+                    edit_url,
+                    wait_until="networkidle",
+                    timeout=TRABOX_TIMEOUTS["navigation"],
+                )
+                # 編集ドロワー（荷物情報変更）の描画を待機
+                # 🔴 詳細パネルと編集パネルの2枚のドロワーが開き、どちらも
+                # 「荷物情報変更」テキストを含むため、フォーム行（.tbx-form-item）を
+                # 持つ方 = 編集ドロワーで特定する
+                modal = page.locator(
+                    ".ant-drawer.ant-drawer-open:has(.tbx-form-item)"
+                ).first
+                await modal.wait_for(
+                    state="visible", timeout=TRABOX_TIMEOUTS["navigation"]
+                )
+                await page.wait_for_timeout(1000)
+                # お知らせモーダル等がクリックを遮ることがあるため先に閉じる
+                await self._dismiss_overlays(page)
+                await self.debug_capture.capture_screenshot("update_before")
+
+                # --- 発日時（日付・時刻） ---
+                if "pickup_date" in updates or "pickup_time" in updates:
+                    pickup_date = M.parse_date(updates.get("pickup_date"))
+                    pickup_time = M.parse_time(updates.get("pickup_time"))
+                    if pickup_date or pickup_time:
+                        # 日付未指定で時刻のみ変更の場合もカレンダー操作が必要なため
+                        # 日付は必須（未指定なら呼び出し側で現値を渡すこと）
+                        if not pickup_date:
+                            raise ValueError(
+                                "pickup_time のみの更新には pickup_date も指定してください"
+                            )
+                        await self._select_datetime(
+                            page, "発日時/発地", pickup_date,
+                            list(pickup_time) if pickup_time else None,
+                            root=modal,
+                        )
+                if "pickup_time" in updates and updates.get("pickup_time"):
+                    await modal.locator(M.PICKUP_TIME_TEXT_SELECTOR).fill(
+                        str(updates["pickup_time"]),
+                        timeout=TRABOX_TIMEOUTS["action"],
+                    )
+
+                # --- 着日時 ---
+                if "drop_date" in updates or "drop_time" in updates:
+                    drop_date = M.parse_date(updates.get("drop_date"))
+                    drop_time_parsed = M.parse_time(updates.get("drop_time"))
+                    if drop_date:
+                        labels = (
+                            list(drop_time_parsed) if drop_time_parsed
+                            else [M.TRABOX_DEFAULTS["drop_time_label"]]
+                        )
+                        await self._select_datetime(
+                            page, "着日時/着地", drop_date, labels, root=modal
+                        )
+
+                # --- 発地・着地 ---
+                if "pick_location" in updates:
+                    pref = M.normalize_prefecture(updates["pick_location"])
+                    city = updates.get("pick_city") or M.extract_city(updates["pick_location"])
+                    if pref:
+                        await self._select_prefecture(page, "発地", pref, root=modal)
+                    if city:
+                        await self._select_city(page, "発地", city, root=modal)
+                if "drop_location" in updates:
+                    pref = M.normalize_prefecture(updates["drop_location"])
+                    city = updates.get("drop_city") or M.extract_city(updates["drop_location"])
+                    if pref:
+                        await self._select_prefecture(page, "着地", pref, root=modal)
+                    if city:
+                        await self._select_city(page, "着地", city, root=modal)
+
+                # --- 荷種 ---
+                if "cargo_type" in updates:
+                    cargo_input = modal.locator(
+                        f"{M.row_selector('荷種')} input"
+                    ).first
+                    await cargo_input.fill(
+                        str(updates["cargo_type"]), timeout=TRABOX_TIMEOUTS["action"]
+                    )
+                    await page.keyboard.press("Tab")
+
+                # --- 総重量・希望車両（重量クラス連動） ---
+                if "cargo_weight" in updates:
+                    weight_input = modal.locator(
+                        f"{M.row_selector('総重量')} input.ant-input"
+                    ).first
+                    await weight_input.fill(
+                        str(int(float(updates["cargo_weight"]))),
+                        timeout=TRABOX_TIMEOUTS["action"],
+                    )
+                    row = modal.locator(M.row_selector("希望車両")).first
+                    await self._select_ant_option(
+                        page, row.locator(".ant-select").nth(0),
+                        M.weight_to_class(updates["cargo_weight"]),
+                    )
+
+                # --- 車種 ---
+                if "vehicle_type" in updates:
+                    row = modal.locator(M.row_selector("希望車両")).first
+                    await self._select_ant_option(
+                        page, row.locator(".ant-select").nth(1),
+                        M.vehicle_to_option(updates["vehicle_type"]),
+                    )
+
+                # --- 運賃 ---
+                if "freight_rate" in updates:
+                    freight = M.format_freight(updates["freight_rate"])
+                    if freight:
+                        freight_input = modal.locator(
+                            f"{M.row_selector('運賃')} input.ant-input"
+                        ).first
+                        await freight_input.fill(
+                            freight, timeout=TRABOX_TIMEOUTS["action"]
+                        )
+
+                # --- 備考 ---
+                if "remarks" in updates:
+                    remarks_input = modal.locator(
+                        f"{M.row_selector('備考')} textarea"
+                    ).first
+                    await remarks_input.fill(
+                        str(updates["remarks"]), timeout=TRABOX_TIMEOUTS["action"]
+                    )
+
+                await self.debug_capture.capture_screenshot("update_filled")
+
+                # 「変更」ボタンで確定
+                await modal.locator(
+                    "button.ant-btn-primary:has-text('変更')"
+                ).first.click(timeout=TRABOX_TIMEOUTS["action"])
+                await page.wait_for_timeout(2500)
+                await self.debug_capture.capture_screenshot("update_after")
+
+                logger.info(f"[Trabox] 荷物更新成功: {baggage_no} {list(updates.keys())}")
+                structured_logger.log_event(
+                    "trabox_update",
+                    self.user_id,
+                    self.case_id,
+                    "trabox",
+                    details={"baggage_no": baggage_no, "fields": list(updates.keys())},
+                )
+                return {
+                    "status": "success",
+                    "platform": "trabox",
+                    "message": f"荷物 {baggage_no} を更新しました",
+                    "baggage_no": baggage_no,
+                    "updated_fields": list(updates.keys()),
+                }
+
+            except Exception as e:
+                raise ErrorHandler.handle_posting_error(
+                    e,
+                    self.user_id,
+                    self.case_id,
+                    "trabox",
+                    step="update_case",
+                    screenshots=self._get_screenshot_paths(),
+                )
+            finally:
+                await context.close()
+                await browser.close()
+
     async def delete_case(self, baggage_no: str) -> Dict[str, Any]:
         """登録済み荷物を削除（CRUD の Delete。実環境で検証済み 2026-07-22）
 
@@ -152,10 +344,14 @@ class TraboxAutomation:
                     await self._step_login(page)
                     await self._step_navigate_to_dashboard(page)
 
-                # 一覧の描画完了を待機
+                # 一覧の描画完了を待機（visible 待ちだと描画遅延で失敗することが
+                # あるため DOM 追加時点で先に進む）
                 await page.wait_for_selector(
-                    "tr[data-row-key]", timeout=TRABOX_TIMEOUTS["navigation"]
+                    "tr[data-row-key]",
+                    state="attached",
+                    timeout=TRABOX_TIMEOUTS["navigation"],
                 )
+                await self._dismiss_overlays(page)
 
                 row = page.locator(f"tr[data-row-key='{baggage_no}']")
                 if await row.count() != 1:
@@ -210,6 +406,31 @@ class TraboxAutomation:
             finally:
                 await context.close()
                 await browser.close()
+
+    async def _dismiss_overlays(self, page: Page) -> None:
+        """お知らせモーダル・通知パネル等のオーバーレイを閉じる
+
+        Trabox はログイン後に不定期でお知らせ（.ant-modal-wrap / 通知パネル）を
+        表示し、フォーム操作のクリックを遮ることがある。
+        """
+        try:
+            # お知らせパネルの「閉じる」ボタン
+            close_btn = page.locator("button:has-text('閉じる')")
+            for i in range(await close_btn.count()):
+                if await close_btn.nth(i).is_visible():
+                    await close_btn.nth(i).click(timeout=3000)
+                    logger.info("[Trabox] オーバーレイの「閉じる」をクリック")
+                    await page.wait_for_timeout(300)
+            # 残っているモーダルは Escape で閉じる
+            modal_wrap = page.locator(".ant-modal-wrap")
+            for i in range(await modal_wrap.count()):
+                if await modal_wrap.nth(i).is_visible():
+                    await page.keyboard.press("Escape")
+                    logger.info("[Trabox] モーダルを Escape で閉じた")
+                    await page.wait_for_timeout(300)
+                    break
+        except Exception as e:
+            logger.debug(f"[Trabox] オーバーレイ処理スキップ: {e}")
 
     async def _get_registered_baggage_no(self, page: Page) -> Optional[str]:
         """投稿直後に一覧（新着順）の先頭行から荷物番号を取得
@@ -488,7 +709,7 @@ class TraboxAutomation:
             # --- 8. 総重量（任意・kg）: 実際の荷物重量を記載 ---
             if case_data.get("cargo_weight"):
                 try:
-                    weight_input = page.locator(
+                    weight_input = modal.locator(
                         f"{M.row_selector('総重量')} input.ant-input"
                     ).first
                     await weight_input.fill(
@@ -577,6 +798,7 @@ class TraboxAutomation:
         row_label: str,
         date_str: str,
         time_labels,
+        root=None,
     ) -> None:
         """発/着の日時ドロップダウン（.ui-datetime-select）を操作
 
@@ -587,14 +809,23 @@ class TraboxAutomation:
             ["9時", "00分"]  … 時刻指定
             ["午前"]         … 午前着（時メニューの特殊項目）
             None            … 時刻指定なし
+
+        root: 行を探すスコープ（編集モーダル等）。ドロップダウン自体は body 直下に
+              描画されるため常に page から探す。
         """
         from app.automations.trabox_form_mapper import TraboxFormMapper as M
         import re as _re
 
-        trigger = page.locator(
+        base = root if root is not None else page
+        trigger = base.locator(
             f"{M.row_selector(row_label)} .ui-datetime-select"
         ).first
-        await trigger.click(timeout=TRABOX_TIMEOUTS["action"])
+        try:
+            await trigger.click(timeout=TRABOX_TIMEOUTS["action"])
+        except Exception:
+            # お知らせモーダル等に被られた場合はイベント直接ディスパッチで開く
+            logger.warning(f"[Trabox] {row_label} 通常クリック失敗 → dispatch_event")
+            await trigger.dispatch_event("click")
 
         # 表示中のカレンダードロップダウンを特定
         dropdown = page.locator(
@@ -642,11 +873,28 @@ class TraboxAutomation:
                     logger.warning(f"[Trabox] {row_label} 時刻選択失敗（{label}）: {te}")
 
         # ドロップダウンを閉じる
-        await page.keyboard.press("Escape")
+        # 🔴 編集ドロワーのカレンダーは「確定」ボタン付きインライン表示。
+        #    Escape で閉じると「入力途中の項目があります」警告モーダルが出るため、
+        #    確定ボタンがあればクリック、無ければ（登録ページ）Escape で閉じる
+        confirm_btn = dropdown.locator("button:has-text('確定')")
+        if await confirm_btn.count() and await confirm_btn.first.is_visible():
+            await confirm_btn.first.click(timeout=TRABOX_TIMEOUTS["action"])
+            logger.info(f"[Trabox] {row_label} カレンダー確定")
+        else:
+            await page.keyboard.press("Escape")
         await page.wait_for_timeout(300)
 
+        # 万一「入力途中の項目があります」警告が出た場合は「編集を続ける」で復帰
+        warn_continue = page.locator(
+            ".ant-modal-wrap:visible button:has-text('編集を続ける')"
+        )
+        if await warn_continue.count():
+            await warn_continue.first.click(timeout=TRABOX_TIMEOUTS["action"])
+            logger.info(f"[Trabox] 入力途中警告 → 編集を続けるで復帰")
+            await page.wait_for_timeout(300)
+
     async def _select_prefecture(
-        self, page: Page, row_label: str, pref_short: str
+        self, page: Page, row_label: str, pref_short: str, root=None
     ) -> None:
         """発地/着地の都道府県を日本地図型ドロップダウンから選択
 
@@ -655,7 +903,8 @@ class TraboxAutomation:
         from app.automations.trabox_form_mapper import TraboxFormMapper as M
         import re as _re
 
-        select = page.locator(
+        base = root if root is not None else page
+        select = base.locator(
             f"{M.row_selector(row_label)} .ant-select"
         ).first
         await select.click(timeout=TRABOX_TIMEOUTS["action"])
@@ -674,7 +923,7 @@ class TraboxAutomation:
         await page.wait_for_timeout(300)
 
     async def _select_city(
-        self, page: Page, row_label: str, city: str
+        self, page: Page, row_label: str, city: str, root=None
     ) -> None:
         """発地/着地の市区町村を検索型ドロップダウンから選択【必須】
 
@@ -683,7 +932,8 @@ class TraboxAutomation:
         """
         from app.automations.trabox_form_mapper import TraboxFormMapper as M
 
-        select = page.locator(
+        base = root if root is not None else page
+        select = base.locator(
             f"{M.row_selector(row_label)} .ant-select"
         ).nth(1)
         await select.click(timeout=TRABOX_TIMEOUTS["action"])
