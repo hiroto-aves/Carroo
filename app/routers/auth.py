@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Response, Depends, Form
+from fastapi import APIRouter, HTTPException, status, Response, Depends, Form, Cookie
 from fastapi.responses import HTMLResponse, RedirectResponse
 from app.models.schemas import UserCreate, User
 from app.db.database import get_db_connection
@@ -347,6 +347,93 @@ async def logout(response: Response):
     response.delete_cookie("access_token")
     return {"status": "success", "message": "Logged out successfully"}
 
-@router.get("/me")
+@router.get("/logout")
+async def logout_link():
+    """ナビの「ログアウト」リンク（GET）用: Cookie を消してログイン画面へ"""
+    response = RedirectResponse(url="/auth/login", status_code=302)
+    response.delete_cookie("access_token")
+    return response
+
+@router.get("/me", response_class=HTMLResponse)
+async def profile_page(access_token: str = Cookie(None)):
+    """プロフィールページ（HTML）
+
+    未ログイン時は JSON エラーではなくログイン画面へリダイレクトする。
+    JSON が必要な場合は /auth/api/me を使用。
+    """
+    from app.utils.security import decode_access_token
+
+    # 未ログイン・トークン失効ならログイン画面へ
+    token_data = decode_access_token(access_token) if access_token else None
+    user_id = token_data.get("user_id") if token_data else None
+    if not user_id:
+        return RedirectResponse(url="/auth/login", status_code=302)
+
+    conn = get_db_connection()
+    user = conn.execute(
+        "SELECT username, email, created_at FROM users WHERE id = ?", (user_id,)
+    ).fetchone()
+    conn.close()
+    if not user:
+        return RedirectResponse(url="/auth/login", status_code=302)
+
+    username, email, created_at = user[0], user[1], user[2]
+    return f"""<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Carroo - プロフィール</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50">
+    <nav class="bg-white shadow-sm border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16 items-center">
+                <a href="/dashboard/" class="text-2xl font-bold text-blue-600 hover:opacity-80 transition">📦 Carroo</a>
+                <div class="flex items-center gap-4">
+                    <a href="/dashboard/" class="text-gray-600 hover:text-blue-600 transition">ダッシュボード</a>
+                    <a href="/auth/logout" class="text-red-600 hover:text-red-700">ログアウト</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-2xl mx-auto px-4 py-12">
+        <h1 class="text-3xl font-bold text-gray-900 mb-8">プロフィール</h1>
+        <div class="bg-white rounded-2xl shadow-lg p-8 space-y-6">
+            <div class="flex items-center gap-4 pb-6 border-b">
+                <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-3xl">👤</div>
+                <div>
+                    <p class="text-xl font-bold text-gray-900">{username}</p>
+                    <p class="text-gray-500">{email}</p>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                <div class="p-4 bg-gray-50 rounded-lg">
+                    <p class="text-gray-500 mb-1">ユーザー名</p>
+                    <p class="font-semibold text-gray-900">{username}</p>
+                </div>
+                <div class="p-4 bg-gray-50 rounded-lg">
+                    <p class="text-gray-500 mb-1">メールアドレス</p>
+                    <p class="font-semibold text-gray-900">{email}</p>
+                </div>
+                <div class="p-4 bg-gray-50 rounded-lg md:col-span-2">
+                    <p class="text-gray-500 mb-1">登録日</p>
+                    <p class="font-semibold text-gray-900">{created_at or "-"}</p>
+                </div>
+            </div>
+            <div class="flex gap-4 pt-4">
+                <a href="/settings/" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-lg transition">⚙ 初期設定を編集</a>
+                <a href="/cases/register" class="bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold py-2.5 px-6 rounded-lg transition">案件登録へ</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>"""
+
+
+@router.get("/api/me")
 async def get_current_user_info(current_user: dict = Depends(get_current_user)):
+    """現在のユーザー情報（JSON API）"""
     return current_user

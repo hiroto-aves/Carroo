@@ -129,7 +129,7 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="flex justify-between h-16 items-center">
                     <div class="flex items-center">
-                        <span class="text-2xl font-bold text-blue-600">📦 Carroo</span>
+                        <a href="/dashboard/" class="text-2xl font-bold text-blue-600 hover:opacity-80 transition">📦 Carroo</a>
                     </div>
                     <div class="flex items-center gap-4">
                         <a href="/auth/me" class="text-gray-600 hover:text-gray-900">プロフィール</a>
