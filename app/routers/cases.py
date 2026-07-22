@@ -306,6 +306,21 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
                                         <input type="text" name="cargo_type" value="鋼材" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg transition">
                                     </div>
                                     <div>
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">荷姿・輸送形状</label>
+                                        <select name="package_type" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg transition">
+                                            <option value="その他" selected>その他</option>
+                                            <option value="パレット">パレット</option>
+                                            <option value="ケース">ケース</option>
+                                            <option value="袋">袋</option>
+                                            <option value="ハダカ">ハダカ</option>
+                                            <option value="フレコンパック">フレコンパック</option>
+                                            <option value="ドラム類">ドラム類</option>
+                                            <option value="缶類">缶類</option>
+                                            <option value="ラック">ラック</option>
+                                            <option value="バラ">バラ</option>
+                                        </select>
+                                    </div>
+                                    <div>
                                         <label class="block text-sm font-medium text-gray-700 mb-2">台数</label>
                                         <input type="number" name="truck_count" value="1" min="1" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg transition">
                                     </div>
@@ -560,6 +575,7 @@ async def register_case(
     drop_date: Optional[str] = Form(None),
     drop_time: Optional[str] = Form(None),
     cargo_type: Optional[str] = Form(None),
+    package_type: Optional[str] = Form(None),
     truck_count: Optional[int] = Form(None),
     share: Optional[str] = Form(None),
     highway_fee: Optional[str] = Form(None),
@@ -664,6 +680,7 @@ async def register_case(
                 "drop_date": drop_date,
                 "drop_time": drop_time,
                 "cargo_type": cargo_type,
+                "package_type": package_type,
                 "truck_count": truck_count,
                 "share": share,
                 "highway_fee": highway_fee,
