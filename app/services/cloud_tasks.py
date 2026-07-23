@@ -50,23 +50,28 @@ class GoogleCloudTasksClient:
             タスク名
         """
 
-        # ペイロード構築
+        # register 用ペイロード（action 省略時は poster 側で register 扱い）
         payload = {
+            "action": "register",
             "user_id": user_id,
             "case_data": case_data,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
+        return self.add_task(payload, scheduled_time=scheduled_time)
 
+    def add_task(self, payload: dict, scheduled_time: Optional[datetime] = None) -> str:
+        """汎用タスク（register / update / delete）を Cloud Tasks に投入。
+
+        payload には action を含めること。受け先は Cloud Run の /tasks/execute。
+        LocalTaskQueue.add_task と同一シグネチャで、本番はこちらが使われる。
+        """
         # Cloud Run 相手先 URL（環境変数から取得）
-        # ローカル開発: http://localhost:8001
-        # 本番: https://region-project-id.cloudfunctions.net/poster
         cloud_run_url = os.getenv(
             "CLOUD_RUN_URL",
             "https://us-central1-{}.cloudfunctions.net/poster".format(self.project_id)
         )
 
-        # タスク定義
-        task = {
+        task: Dict[str, Any] = {
             "http_request": {
                 "http_method": tasks_v2.HttpMethod.POST,
                 "url": cloud_run_url,
@@ -78,19 +83,16 @@ class GoogleCloudTasksClient:
             }
         }
 
-        # スケジュール設定（未指定なら即座に実行）
         if scheduled_time:
             timestamp = timestamp_pb2.Timestamp()
             timestamp.FromDatetime(scheduled_time)
             task["schedule_time"] = timestamp
 
-        # タスクを作成
         try:
             response = self.client.create_task(request={"parent": self.parent, "task": task})
             task_name = response.name
-            logger.info(f"✅ タスク作成: {task_name}")
+            logger.info(f"✅ タスク作成({payload.get('action')}): {task_name}")
             return task_name
-
         except Exception as e:
             logger.error(f"❌ タスク作成失敗: {e}")
             raise
