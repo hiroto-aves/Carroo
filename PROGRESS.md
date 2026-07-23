@@ -11,19 +11,27 @@
 - WebKit(API) 投稿 本番E2E成功（登録・削除とも）。テスト掲載は全て削除済み。
 - 初期設定（連絡先メール・WebKit担当者ID・Trabox認証）は本番Firestoreに保存済み。
 
-### 未解決の課題（要ユーザー判断）
-1. **メール通知が届かない**: お名前.com SMTP が Google Cloud の IP を
-   「海外(US)」として 554 拒否。東京へ移設してもGoogle IPはUS判定で不可。
-   → 対策: (A) お名前.com 管理画面で海外IP送信制限を解除 / (B) メール送信APIへ切替。
-2. **Trabox 投稿が headless で失敗**: Vue/ant-design 日付部品が headless Chromium で
-   選択を確定できず（"日時を選択してください"バリデーション）。close方式変更/
-   networkidle→domcontentloaded/日付後待機/Xvfb headed を試行。Xvfbは起動プローブ
-   失敗のため revert。要ライブ調査（headed動作の実績確認）。
+### 未解決の課題
+1. **メール通知が届かない → 送信API方式(Resend)で対応する方針に決定（2026-07-23）**
+   - 原因: お名前.com SMTP が Google Cloud の IP を「海外(US)」として 554 拒否
+     （`Incorrect country code US`）。東京リージョンでも Google IP は US 判定で不可。
+   - 検討: 「Googleの特定IPだけ許可」は、①Cloud Run に静的IP(VPC+Cloud NAT、月数百円)を
+     付与し、②お名前.com が IP 個別ホワイトリストに対応している場合のみ成立。
+     お名前.com 共用メールは国単位ON/OFFのみで個別IP許可は不可なことが多い。
+   - **結論: お名前.comの海外制限も静的IPも触らず、HPの防御を維持できる「送信API方式」を採用。**
+     - 採用: **Resend**（月3,000通無料、独自ドメイン `carroo@takeuchiunso.com` を SPF/DKIM 認証）
+     - 必要作業: ユーザーが resend.com でアカウント作成 → ドメイン認証 → API キー発行
+     - 実装は Claude 側。`app/utils/mailer.py` を SMTP から Resend API 送信に切替予定。
+2. **Trabox 投稿が失敗（保留）**: 当初 headless 起因と推定し close方式変更/
+   networkidle→domcontentloaded/日付後待機/Xvfb headed(entrypoint.sh で Xvfb直起動、rev7で稼働)
+   を試行したが解消せず。ログで **時刻メニュー「00分」が not found、登録ページに以前無かった
+   「確定」ボタンが出現、日付が未確定** を確認 → **Trabox 側の日付/時刻ピッカー UI 変更が濃厚**。
+   「昨日は投稿成功していた」との証言とも整合。セレクタ張り替えが必要。**ユーザー指示により保留**。
 
 ### 次にやるべきこと
-- 上記1のメール方式をユーザーと決定 → 実装
-- 上記2のTrabox: xvfb-run 起動調整 or headed実行の別手段を検討
-- テスト用ダミー案件(ID 1〜5)の整理
+- **メール: Resend 実装**（ユーザーの API キー発行待ち → mailer.py 切替 → 本番E2E再テスト）
+- Trabox: 現行サイトの日付/時刻ピッカー DOM を確認しセレクタ更新（保留中）
+- テスト用ダミー案件(ID 1〜6)の整理
 
 ---
 
