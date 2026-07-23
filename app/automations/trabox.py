@@ -899,15 +899,36 @@ class TraboxAutomation:
 
         # ドロップダウンを閉じる
         # 🔴 編集ドロワーのカレンダーは「確定」ボタン付きインライン表示。
-        #    Escape で閉じると「入力途中の項目があります」警告モーダルが出るため、
-        #    確定ボタンがあればクリック、無ければ（登録ページ）Escape で閉じる
+        #    確定ボタンがあればクリックして確定する。
+        # 🔴 登録ページのカレンダーには確定ボタンが無い。以前は Escape で閉じていたが、
+        #    ant-design の date picker は Escape で「選択中の日付をキャンセル」してしまい、
+        #    headless 環境では日付が未確定のまま（"日時を選択してください" のバリデーション
+        #    エラー）になり送信に失敗していた。そのため Escape ではなく
+        #    「ドロップダウン外の中立な領域をクリック」して blur で値を確定させる。
         confirm_btn = dropdown.locator("button:has-text('確定')")
         if await confirm_btn.count() and await confirm_btn.first.is_visible():
             await confirm_btn.first.click(timeout=TRABOX_TIMEOUTS["action"])
             logger.info(f"[Trabox] {row_label} カレンダー確定")
         else:
-            await page.keyboard.press("Escape")
+            # 外側クリックで確定（左上余白。ナビ等に当たらない安全な座標）
+            await page.mouse.click(3, 3)
+            await page.wait_for_timeout(200)
+            # 念のため、まだ開いていれば trigger 再クリックで閉じる
+            if await dropdown.is_visible():
+                await trigger.click(timeout=TRABOX_TIMEOUTS["action"])
         await page.wait_for_timeout(300)
+
+        # 日付が確定されたか検証（placeholder のままなら未確定＝失敗の前兆）
+        try:
+            picked = (await trigger.inner_text()).strip()
+            if not picked or "選択" in picked:
+                logger.warning(
+                    f"[Trabox] {row_label} 日付が未確定の可能性: '{picked}'"
+                )
+            else:
+                logger.info(f"[Trabox] {row_label} 日時確定: {picked}")
+        except Exception:
+            pass
 
         # 万一「入力途中の項目があります」警告が出た場合は「編集を続ける」で復帰
         warn_continue = page.locator(
