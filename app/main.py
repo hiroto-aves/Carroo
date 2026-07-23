@@ -21,6 +21,48 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
+# PWA（ホーム画面に追加してアプリとして起動可能に）用の head 注入内容
+_PWA_HEAD = (
+    '<link rel="manifest" href="/static/manifest.json">'
+    '<meta name="theme-color" content="#2563eb">'
+    '<meta name="apple-mobile-web-app-capable" content="yes">'
+    '<meta name="mobile-web-app-capable" content="yes">'
+    '<meta name="apple-mobile-web-app-status-bar-style" content="default">'
+    '<meta name="apple-mobile-web-app-title" content="Carroo">'
+    '<link rel="apple-touch-icon" href="/static/icons/icon-180.png">'
+    '<link rel="icon" type="image/png" href="/static/icons/icon-192.png">'
+    '<script>if("serviceWorker"in navigator){navigator.serviceWorker.register("/static/sw.js").catch(function(){});}</script>'
+)
+
+
+@app.middleware("http")
+async def pwa_head_middleware(request, call_next):
+    """全HTMLページの <head> に PWA メタタグを一括注入（各画面を個別編集せず対応）
+
+    これにより社用端末（Jamf配信）で「ホーム画面に追加」するとアプリとして
+    フルスクリーン起動できる。
+    """
+    response = await call_next(request)
+    try:
+        ctype = response.headers.get("content-type", "")
+        if "text/html" in ctype and hasattr(response, "body_iterator"):
+            body = b"".join([chunk async for chunk in response.body_iterator])
+            text = body.decode("utf-8", "ignore")
+            if "</head>" in text and "manifest.json" not in text:
+                text = text.replace("</head>", _PWA_HEAD + "</head>", 1)
+            from starlette.responses import Response as _Resp
+            new = _Resp(content=text, status_code=response.status_code,
+                        media_type="text/html")
+            # Set-Cookie 等のヘッダを引き継ぐ
+            for k, v in response.headers.items():
+                if k.lower() not in ("content-length", "content-type"):
+                    new.headers[k] = v
+            return new
+    except Exception:
+        pass
+    return response
+
+
 @app.middleware("http")
 async def sliding_session_middleware(request, call_next):
     """スライディングセッション: 有効なトークンでアクセスがあるたびに

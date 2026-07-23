@@ -67,12 +67,6 @@ async def login_page():
                             >
                         </div>
 
-                        <!-- ログイン状態を保持する -->
-                        <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
-                            <input type="checkbox" name="remember_me" value="yes" class="w-4 h-4 text-blue-600 rounded">
-                            ログイン状態を保持する（30日間）
-                        </label>
-
                         <!-- ログインボタン -->
                         <button
                             type="submit"
@@ -307,10 +301,11 @@ async def login(username: str = Form(...), password: str = Form(...),
             detail="Invalid username or password"
         )
 
-    # ログイン状態を保持する（チェック時は長期、未チェックは通常＋アクティブ中はスライド更新）
+    # 🔴 一生ログイン方針: 管理端末(Jamf配信)での利用のため常に永続ログイン。
+    # スライディング更新と併せて、使い続ける限りログアウトされない。
+    # セキュリティは「端末紛失＝アカウント削除」で担保（削除で即ログイン不能になる）。
     from app.utils.security import issue_access_token, set_auth_cookie, clear_auth_cookie
-    remember = remember_me in ("yes", "on", "true", "1")
-    access_token, max_age = issue_access_token(user[0], remember)
+    access_token, max_age = issue_access_token(user[0], remember=True)
     set_auth_cookie(response, access_token, max_age)
 
     return {
