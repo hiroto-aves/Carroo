@@ -1,5 +1,32 @@
 # Progress Tracking - OneLogi-Post
 
+## 🆕 2026-07-23 Firestore移行＋東京リージョン本番デプロイ
+
+### 実装済み
+- Firestore(Native) へ全面移行（SQLite 廃止）。単価/検索/履歴すべて store.py 経由。
+- 東京リージョン(asia-northeast1)へ Cloud Run 本番デプロイ
+  - URL: https://carroo-775782114179.asia-northeast1.run.app
+  - 永続ログイン・PWA・Secure Cookie・管理者自動シード 動作確認済み
+- **本番バグ修正**: GoogleCloudTasksClient に add_task 実装 → 更新/削除タスク復旧（削除E2E成功で検証）
+- WebKit(API) 投稿 本番E2E成功（登録・削除とも）。テスト掲載は全て削除済み。
+- 初期設定（連絡先メール・WebKit担当者ID・Trabox認証）は本番Firestoreに保存済み。
+
+### 未解決の課題（要ユーザー判断）
+1. **メール通知が届かない**: お名前.com SMTP が Google Cloud の IP を
+   「海外(US)」として 554 拒否。東京へ移設してもGoogle IPはUS判定で不可。
+   → 対策: (A) お名前.com 管理画面で海外IP送信制限を解除 / (B) メール送信APIへ切替。
+2. **Trabox 投稿が headless で失敗**: Vue/ant-design 日付部品が headless Chromium で
+   選択を確定できず（"日時を選択してください"バリデーション）。close方式変更/
+   networkidle→domcontentloaded/日付後待機/Xvfb headed を試行。Xvfbは起動プローブ
+   失敗のため revert。要ライブ調査（headed動作の実績確認）。
+
+### 次にやるべきこと
+- 上記1のメール方式をユーザーと決定 → 実装
+- 上記2のTrabox: xvfb-run 起動調整 or headed実行の別手段を検討
+- テスト用ダミー案件(ID 1〜5)の整理
+
+---
+
 ## 🚀 本番環境 完全稼働 ✅
 
 **Step 18: 本番環境デプロイメント完全稼働** ✅
