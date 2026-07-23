@@ -163,7 +163,7 @@ class TraboxAutomation:
                 edit_url = f"{TRABOX_DASHBOARD_URL}?baggageId={baggage_no}&edit=true"
                 await page.goto(
                     edit_url,
-                    wait_until="networkidle",
+                    wait_until="domcontentloaded",
                     timeout=TRABOX_TIMEOUTS["navigation"],
                 )
                 # 編集ドロワー（荷物情報変更）の描画を待機
@@ -442,7 +442,7 @@ class TraboxAutomation:
         try:
             await page.goto(
                 TRABOX_DASHBOARD_URL,
-                wait_until="networkidle",
+                wait_until="domcontentloaded",
                 timeout=TRABOX_TIMEOUTS["navigation"],
             )
             first_row = page.locator("tr[data-row-key]").first
@@ -464,7 +464,7 @@ class TraboxAutomation:
 
             await page.goto(
                 TRABOX_DASHBOARD_URL,
-                wait_until="networkidle",
+                wait_until="domcontentloaded",
                 timeout=TRABOX_TIMEOUTS["navigation"],
             )
 
@@ -516,7 +516,7 @@ class TraboxAutomation:
             await self.debug_capture.capture_screenshot("step_2_login_button_clicked")
 
             # ログイン完了待機
-            await page.wait_for_load_state("networkidle", timeout=TRABOX_TIMEOUTS["navigation"])
+            await page.wait_for_load_state("domcontentloaded", timeout=TRABOX_TIMEOUTS["navigation"])
             await self.debug_capture.capture_screenshot("step_2_login_completed")
 
             structured_logger.log_event(
@@ -550,7 +550,7 @@ class TraboxAutomation:
             # 直接URLアクセス（ログイン後のセッション保持）
             await page.goto(
                 TRABOX_BAGGAGE_REGISTER_URL,
-                wait_until="networkidle",
+                wait_until="domcontentloaded",
                 timeout=TRABOX_TIMEOUTS["navigation"],
             )
 
@@ -1129,7 +1129,7 @@ class TraboxAutomation:
             # 送信後のページ遷移を待機
             logger.info("[Trabox] ページ遷移を待機中...")
             try:
-                await page.wait_for_load_state("networkidle", timeout=TRABOX_TIMEOUTS["navigation"])
+                await page.wait_for_load_state("domcontentloaded", timeout=TRABOX_TIMEOUTS["navigation"])
                 await self.debug_capture.capture_screenshot("step_5_after_navigation")
             except Exception as nav_error:
                 logger.warning(f"[Trabox] ページ遷移タイムアウト: {nav_error}")
