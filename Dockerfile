@@ -16,9 +16,7 @@ COPY . .
 # Cloud Run は PORT 環境変数を渡す（デフォルト 8080）
 ENV PORT=8080
 
-# 🔴 Trabox の日付コンポーネント（Vue/ant-design）は headless Chromium だと
-#    選択が確定せず投稿に失敗する。Xvfb（仮想ディスプレイ）上で headed Chromium を
-#    動かすことで実ブラウザと同じ挙動にする。TRABOX_HEADLESS=False と併用すること。
-#    Web UI＋/tasks/execute（投稿ワーカー）を同一プロセスで提供。
-CMD exec xvfb-run -a --server-args="-screen 0 1440x2400x24" \
-    uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+# Web UI＋/tasks/execute（投稿ワーカー）を同一プロセスで提供
+# 🔴 Trabox は headless Chromium だと日付コンポーネントが確定せず投稿失敗する既知問題あり。
+#    対策として Xvfb 上で headed 実行する案を検討中（xvfb-run の起動調整が必要）。
+CMD exec uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
