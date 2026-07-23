@@ -884,6 +884,11 @@ class TraboxAutomation:
         )
         await cell.first.click(timeout=TRABOX_TIMEOUTS["action"])
         logger.info(f"[Trabox] {row_label} 日付選択: {date_str}")
+        # 🔴 日付クリックが Vue コンポーネントのモデルに反映されるのを待つ。
+        #    待機せず直後に時刻メニューを押すと、time handler が未確定の日付
+        #    （dateValue undefined）を読んで例外を投げ、日付が空のまま送信されて
+        #    バリデーション失敗になる（headless で顕著なレース）。
+        await page.wait_for_timeout(500)
 
         # 時刻メニュー（「9時」「00分」または「午前」「午後」等）
         if time_labels:
