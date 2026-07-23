@@ -202,8 +202,12 @@ def get_task_client() -> Union[GoogleCloudTasksClient, LocalTaskQueue]:
     """
 
     gcp_project_id = os.getenv("GCP_PROJECT_ID")
+    # 🔴 GCP_PROJECT_ID は Firestore のプロジェクト指定にも使うため、Cloud Tasks の
+    # 使用可否は「本番（= Firestore エミュレータを使っていない）」かどうかで判定する。
+    # ローカル開発（FIRESTORE_EMULATOR_HOST 設定時）は常にローカルキュー。
+    in_emulator = bool(os.getenv("FIRESTORE_EMULATOR_HOST"))
 
-    if gcp_project_id:
+    if gcp_project_id and not in_emulator:
         logger.info("🌩️ Cloud Tasks クライアントを使用")
         return GoogleCloudTasksClient(gcp_project_id)
     else:

@@ -28,24 +28,19 @@ async def get_current_user(access_token: Optional[str] = Cookie(None)):
             detail="Invalid token",
         )
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, username, email, COALESCE(is_admin, 0) FROM users WHERE id = ?",
-        (user_id,),
-    )
-    user = cursor.fetchone()
-    conn.close()
+    from app.db import store
+    user = store.get_user_by_id(user_id)
 
     if user is None:
+        # ユーザーが削除された場合（端末紛失時の無効化等）は即認証エラー
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
         )
 
     return {
-        "id": user[0],
-        "username": user[1],
-        "email": user[2],
-        "is_admin": bool(user[3]),
+        "id": user["id"],
+        "username": user["username"],
+        "email": user.get("email"),
+        "is_admin": bool(user.get("is_admin")),
     }

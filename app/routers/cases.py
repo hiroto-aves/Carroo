@@ -76,22 +76,15 @@ def _get_contact_defaults(access_token: Optional[str]) -> dict:
         return empty
     try:
         from app.utils.security import decode_access_token
+        from app.db import store
         token_data = decode_access_token(access_token)
         if not token_data or not token_data.get("user_id"):
             return empty
-        conn = get_db_connection()
-        row = conn.execute(
-            """SELECT contact_name, contact_phone, contact_email
-               FROM user_credentials WHERE user_id = ?""",
-            (token_data["user_id"],),
-        ).fetchone()
-        conn.close()
-        if not row:
-            return empty
+        creds = store.get_credentials(token_data["user_id"])
         return {
-            "name": row[0] or "",
-            "phone": row[1] or "",
-            "email": row[2] or "",
+            "name": creds.get("contact_name", "") or "",
+            "phone": creds.get("contact_phone", "") or "",
+            "email": creds.get("contact_email", "") or "",
         }
     except Exception as e:
         logger.warning(f"連絡先初期設定の取得失敗（空欄で続行）: {e}")
@@ -385,7 +378,7 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
 
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">担当者名</label>
+                                    <label class="block text-sm font-medium text-gray-700 mb-2">登録者名 <span class="text-xs text-gray-400">（案件を登録した人。一覧で絞り込めます）</span></label>
                                     <input type="text" name="contact_name" value="CONTACT_NAME_VALUE" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="山田太郎">
                                 </div>
                                 <div>
@@ -598,8 +591,7 @@ async def register_case(
     - WebKIT: .env の WEBKIT_LOGIN_ID, WEBKIT_LOGIN_PASSWORD
     """
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    from app.db import store
 
     try:
         user_id = current_user["id"]
@@ -643,12 +635,7 @@ async def register_case(
             )
 
         # 🔴 初期設定（連絡先メール）未登録なら登録不可（通知先が無いため）
-        cursor.execute(
-            "SELECT contact_email FROM user_credentials WHERE user_id = ?",
-            (user_id,),
-        )
-        email_row = cursor.fetchone()
-        if not email_row or not email_row[0]:
+        if not store.get_credentials(user_id).get("contact_email"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="初期設定でメールアドレスを登録してから案件登録してください（/settings/）",
@@ -691,16 +678,15 @@ async def register_case(
             }.items() if v not in (None, "")
         }
 
-        # Step 1: 案件データを DB に保存（拡張キーは extras JSON で裏に保持）
-        cursor.execute(
-            """INSERT INTO cases
-            (user_id, pick_location, drop_location, cargo_weight, vehicle_type, freight_rate, pickup_date, pickup_time, contact_name, contact_phone, contact_email, extras)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (user_id, pick_location, drop_location, cargo_weight, vehicle_type, freight_rate, pickup_date, pickup_time, contact_name, contact_phone, contact_email,
-             json.dumps(extras, ensure_ascii=False) if extras else None)
-        )
-        conn.commit()
-        case_id = cursor.lastrowid
+        # Step 1: 案件データを Firestore に保存（extras は map で保持。contact_name=登録者名）
+        case_id = store.create_case(user_id, {
+            "pick_location": pick_location, "drop_location": drop_location,
+            "cargo_weight": cargo_weight, "vehicle_type": vehicle_type,
+            "freight_rate": freight_rate, "pickup_date": pickup_date,
+            "pickup_time": pickup_time, "contact_name": contact_name,
+            "contact_phone": contact_phone, "contact_email": contact_email,
+            "extras": extras,
+        })
 
         # Step 2: 投稿用データを構築（拡張キーはフラットにマージ）
         case_data = {
@@ -726,18 +712,11 @@ async def register_case(
         task_name = task_client.add_posting_task(case_data, user_id)
         logger.info(f"✅ タスク追加: Case ID {case_id} → {task_name}")
 
-        # Step 4: posting_history に「pending」状態で記録
+        # Step 4: posting_history に「pending」状態で記録（追記式）
         if want_trabox:
-            cursor.execute(
-                "INSERT INTO posting_history (case_id, platform, status, action) VALUES (?, ?, ?, 'register')",
-                (case_id, "trabox", "pending")
-            )
+            store.add_posting_event(case_id, "trabox", "register", "pending")
         if want_webkit:
-            cursor.execute(
-                "INSERT INTO posting_history (case_id, platform, status, action) VALUES (?, ?, ?, 'register')",
-                (case_id, "webkit", "pending")
-            )
-        conn.commit()
+            store.add_posting_event(case_id, "webkit", "register", "pending")
 
         # Step 5: 結果画面を返す（投稿処理は背景で実行される）
         platforms = []
@@ -797,17 +776,13 @@ async def register_case(
 
     except HTTPException:
         # バリデーションエラー等はそのまま返す（detail を握りつぶさない）
-        conn.rollback()
         raise
     except Exception as e:
-        conn.rollback()
         logger.error(f"❌ エラー: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
-    finally:
-        conn.close()
 
 
 # ============ 案件管理（変更・削除）画面とエンドポイント ============
@@ -817,22 +792,17 @@ def _platform_label(p: str) -> str:
 
 
 def _load_case_row(case_id: int, user_id: int):
-    conn = get_db_connection()
-    row = conn.execute(
-        """SELECT id, pick_location, drop_location, cargo_weight, vehicle_type,
-                  freight_rate, pickup_date, pickup_time, contact_name, extras, created_at
-           FROM cases WHERE id = ? AND user_id = ?""",
-        (case_id, user_id),
-    ).fetchone()
-    conn.close()
-    return row
+    """案件を取得（store の dict をそのまま返す。extras は map）"""
+    from app.db import store
+    return store.get_case(case_id, user_id)
 
 
 @router.get("/{case_id}/manage", response_class=HTMLResponse)
 async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(None)):
     """案件管理画面: プラットフォーム別/一括の変更・削除＋投稿履歴タイムライン"""
     from app.utils.security import decode_access_token
-    from app.db.database import get_platform_state, get_active_baggage_no
+    from app.db import store
+    from app.db.store import get_platform_state, get_active_baggage_no
     td = decode_access_token(access_token) if access_token else None
     user_id = td.get("user_id") if td else None
     if not user_id:
@@ -842,10 +812,10 @@ async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(No
     if not row:
         return HTMLResponse("<h1>案件が見つかりません</h1>", status_code=404)
 
-    extras = json.loads(row[9]) if row[9] else {}
-    pickup = f"{row[6]} {row[7] or ''}".strip()
+    extras = row.get("extras") or {}
+    pickup = f"{row.get('pickup_date','')} {row.get('pickup_time') or ''}".strip()
     drop = f"{extras.get('drop_date','')} {extras.get('drop_time','')}".strip() or "翌日"
-    freight = "要相談" if extras.get("freight_negotiable") else f"{int(float(row[5])):,}円（税別）"
+    freight = "要相談" if extras.get("freight_negotiable") else f"{int(float(row.get('freight_rate') or 0)):,}円（税別）"
 
     # プラットフォームカード
     STATE = {
@@ -886,22 +856,17 @@ async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(No
           <div class="flex gap-2 mt-1">{actions}</div>
         </div>'''
 
-    # 履歴タイムライン
-    conn = get_db_connection()
-    hist = conn.execute(
-        """SELECT platform, action, status, baggage_no, error_message,
-                  COALESCE(updated_at, posted_at)
-           FROM posting_history WHERE case_id = ? ORDER BY id DESC""",
-        (case_id,),
-    ).fetchall()
-    conn.close()
+    # 履歴タイムライン（Firestore）
+    hist = store.list_posting_history(case_id)
     ACT = {"register": ("登録", "text-green-700 bg-green-50 border-green-200"),
            "update": ("変更", "text-blue-700 bg-blue-50 border-blue-200"),
            "delete": ("削除", "text-red-700 bg-red-50 border-red-200")}
     ST_TXT = {"success": "成功", "error": "失敗", "pending": "処理中"}
     rows_html = ""
     for h in hist:
-        plat, action, stt, no, err, ts = h
+        plat, action, stt = h.get("platform"), h.get("action"), h.get("status")
+        no, err = h.get("baggage_no"), h.get("error_message")
+        ts = h.get("updated_at") or h.get("posted_at")
         act_txt, act_cls = ACT.get(action, (action, ""))
         detail = ""
         if no:
@@ -930,12 +895,12 @@ async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(No
 <div class="max-w-4xl mx-auto px-4 py-8">
   <p class="text-sm text-gray-500 mb-3"><a href="/dashboard/" class="text-blue-600">ダッシュボード</a> › 案件 #{case_id}</p>
   <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-    <div class="text-xs text-gray-500 font-mono">案件 ID {case_id} ・ {row[10]} 登録</div>
-    <h1 class="text-2xl font-bold mt-1">{row[1]} <span class="text-gray-400 font-normal mx-2">→</span> {row[2]}</h1>
+    <div class="text-xs text-gray-500 font-mono">案件 ID {case_id} ・ {row.get('created_at','')} 登録 ・ 登録者: {row.get('contact_name','') or '-'}</div>
+    <h1 class="text-2xl font-bold mt-1">{row.get('pick_location','')} <span class="text-gray-400 font-normal mx-2">→</span> {row.get('drop_location','')}</h1>
     <div class="flex flex-wrap gap-x-6 gap-y-1 mt-4 text-sm text-gray-700">
       <span><span class="text-gray-400 mr-1">積み</span>{pickup}</span>
       <span><span class="text-gray-400 mr-1">着</span>{drop}</span>
-      <span><span class="text-gray-400 mr-1">車両</span>{extras.get('truck_weight','')} {row[4]}</span>
+      <span><span class="text-gray-400 mr-1">車両</span>{extras.get('truck_weight','')} {row.get('vehicle_type','')}</span>
       <span><span class="text-gray-400 mr-1">荷種</span>{extras.get('cargo_type','鋼材')}</span>
       <span><span class="text-gray-400 mr-1">運賃</span>{freight}</span>
     </div>
@@ -976,7 +941,7 @@ async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(No
 async def case_delete(case_id: int, platforms: str = Form(...),
                       current_user: dict = Depends(get_current_user)):
     """指定プラットフォームの掲載を削除（非同期）。履歴に delete を追記"""
-    from app.db.database import add_posting_event
+    from app.db import store
     user_id = current_user["id"]
     row = _load_case_row(case_id, user_id)
     if not row:
@@ -986,7 +951,7 @@ async def case_delete(case_id: int, platforms: str = Form(...),
         raise HTTPException(status_code=400, detail="削除対象のプラットフォームが不正です")
     # 履歴に delete イベントを pending で追記
     for p in plats:
-        add_posting_event(case_id, p, "delete", "pending")
+        store.add_posting_event(case_id, p, "delete", "pending")
     # 非同期タスクを投入
     get_task_client().add_task({
         "action": "delete", "user_id": user_id, "case_id": case_id, "platforms": plats,
@@ -1006,24 +971,24 @@ async def case_edit_page(case_id: int, platforms: str = "trabox,webkit",
     row = _load_case_row(case_id, user_id)
     if not row:
         return HTMLResponse("<h1>案件が見つかりません</h1>", status_code=404)
-    ex = json.loads(row[9]) if row[9] else {}
+    ex = row.get("extras") or {}
+    pl, dl = row.get("pick_location", ""), row.get("drop_location", "")
     plats = [p for p in platforms.split(",") if p in ("trabox", "webkit")]
     target_label = "・".join(_platform_label(p) for p in plats)
 
     from app.automations.trabox_form_mapper import TraboxFormMapper as M
-    pick_pref = M.normalize_prefecture(row[1]) or ""
-    pick_pref_full = next((p for p in PREFECTURES if row[1].startswith(p)), "")
-    drop_pref_full = next((p for p in PREFECTURES if row[2].startswith(p)), "")
-    pick_city = M.extract_city(row[1]) or ""
-    drop_city = M.extract_city(row[2]) or ""
+    pick_pref_full = next((p for p in PREFECTURES if pl.startswith(p)), "")
+    drop_pref_full = next((p for p in PREFECTURES if dl.startswith(p)), "")
+    pick_city = M.extract_city(pl) or ""
+    drop_city = M.extract_city(dl) or ""
 
     def opts(items, selected):
         return "".join(f'<option value="{i}"{" selected" if i==selected else ""}>{i}</option>' for i in items)
     weight_opts = opts(M.TRUCK_WEIGHT_OPTIONS, ex.get("truck_weight", "問わず"))
-    shape_opts = opts(M.VEHICLE_SHAPE_OPTIONS, row[4])
+    shape_opts = opts(M.VEHICLE_SHAPE_OPTIONS, row.get("vehicle_type", ""))
     pref_opts_pick = '<option value="">都道府県</option>' + opts(PREFECTURES, pick_pref_full)
     pref_opts_drop = '<option value="">都道府県</option>' + opts(PREFECTURES, drop_pref_full)
-    freight_val = "" if ex.get("freight_negotiable") else int(float(row[5]))
+    freight_val = "" if ex.get("freight_negotiable") else int(float(row.get("freight_rate") or 0))
 
     I = 'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500'
     return HTMLResponse(f"""<!DOCTYPE html>
@@ -1040,8 +1005,8 @@ async def case_edit_page(case_id: int, platforms: str = "trabox,webkit",
   <form method="post" action="/cases/{case_id}/update" class="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5">
     <input type="hidden" name="platforms" value="{','.join(plats)}">
     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-      <div><label class="block text-sm font-medium mb-1">積み日</label><input type="date" name="pickup_date" value="{row[6]}" class="{I}" required></div>
-      <div><label class="block text-sm font-medium mb-1">積み時間</label><input type="time" name="pickup_time" value="{row[7] or ''}" class="{I}" required></div>
+      <div><label class="block text-sm font-medium mb-1">積み日</label><input type="date" name="pickup_date" value="{row.get('pickup_date','')}" class="{I}" required></div>
+      <div><label class="block text-sm font-medium mb-1">積み時間</label><input type="time" name="pickup_time" value="{row.get('pickup_time') or ''}" class="{I}" required></div>
       <div><label class="block text-sm font-medium mb-1">着日</label><input type="date" name="drop_date" value="{ex.get('drop_date','')}" class="{I}" required></div>
       <div><label class="block text-sm font-medium mb-1">卸し時間</label><input type="time" name="drop_time" value="{ex.get('drop_time','')}" class="{I}" required></div>
     </div>
@@ -1054,11 +1019,12 @@ async def case_edit_page(case_id: int, platforms: str = "trabox,webkit",
         <input type="text" name="drop_city" value="{drop_city}" placeholder="市区町村" class="{I}" required></div></div>
     </div>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-      <div><label class="block text-sm font-medium mb-1">荷物重量(kg)</label><input type="number" name="cargo_weight" value="{int(float(row[3]))}" class="{I}" required></div>
+      <div><label class="block text-sm font-medium mb-1">荷物重量(kg)</label><input type="number" name="cargo_weight" value="{int(float(row.get('cargo_weight') or 0))}" class="{I}" required></div>
       <div><label class="block text-sm font-medium mb-1">希望車両（トン数/形状）</label>
         <div class="flex gap-2"><select name="truck_weight" class="{I}">{weight_opts}</select><select name="vehicle_type" class="{I}">{shape_opts}</select></div></div>
       <div><label class="block text-sm font-medium mb-1">荷種</label><input type="text" name="cargo_type" value="{ex.get('cargo_type','鋼材')}" class="{I}"></div>
       <div><label class="block text-sm font-medium mb-1">運賃(円)</label><input type="number" name="freight_rate" value="{freight_val}" class="{I}"></div>
+      <div><label class="block text-sm font-medium mb-1">登録者名</label><input type="text" name="contact_name" value="{row.get('contact_name','') or ''}" class="{I}"></div>
     </div>
     <div class="flex gap-3 pt-2">
       <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2.5 rounded-lg">この内容で変更する</button>
@@ -1078,45 +1044,38 @@ async def case_update(case_id: int,
                       cargo_weight: float = Form(...), truck_weight: str = Form(None),
                       vehicle_type: str = Form("問わず"), cargo_type: str = Form("鋼材"),
                       freight_rate: Optional[float] = Form(None),
+                      contact_name: str = Form(None),
                       current_user: dict = Depends(get_current_user)):
     """案件を変更: cases を更新し、指定プラットフォームへ非同期で変更を反映"""
-    from app.db.database import add_posting_event
+    from app.db import store
     user_id = current_user["id"]
-    conn = get_db_connection()
-    try:
-        row = conn.execute("SELECT extras FROM cases WHERE id=? AND user_id=?",
-                           (case_id, user_id)).fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="案件が見つかりません")
-        plats = [p for p in platforms.split(",") if p in ("trabox", "webkit")]
-        if not plats:
-            raise HTTPException(status_code=400, detail="対象プラットフォームが不正です")
+    row = store.get_case(case_id, user_id)
+    if not row:
+        raise HTTPException(status_code=404, detail="案件が見つかりません")
+    plats = [p for p in platforms.split(",") if p in ("trabox", "webkit")]
+    if not plats:
+        raise HTTPException(status_code=400, detail="対象プラットフォームが不正です")
 
-        pick_location = f"{pick_pref}{pick_city}"
-        drop_location = f"{drop_pref}{drop_city}"
-        extras = json.loads(row[0]) if row[0] else {}
-        extras.update({
-            "truck_weight": truck_weight, "drop_date": drop_date, "drop_time": drop_time,
-            "cargo_type": cargo_type,
-        })
-        # cases を更新
-        conn.execute(
-            """UPDATE cases SET pick_location=?, drop_location=?, cargo_weight=?,
-                 vehicle_type=?, freight_rate=?, pickup_date=?, pickup_time=?, extras=?
-               WHERE id=? AND user_id=?""",
-            (pick_location, drop_location, cargo_weight, vehicle_type,
-             freight_rate or 0, pickup_date, pickup_time,
-             json.dumps(extras, ensure_ascii=False), case_id, user_id),
-        )
-        conn.commit()
-    except HTTPException:
-        conn.rollback(); raise
-    finally:
-        conn.close()
+    pick_location = f"{pick_pref}{pick_city}"
+    drop_location = f"{drop_pref}{drop_city}"
+    extras = dict(row.get("extras") or {})
+    extras.update({
+        "truck_weight": truck_weight, "drop_date": drop_date, "drop_time": drop_time,
+        "cargo_type": cargo_type,
+    })
+    fields = {
+        "pick_location": pick_location, "drop_location": drop_location,
+        "cargo_weight": cargo_weight, "vehicle_type": vehicle_type,
+        "freight_rate": freight_rate or 0, "pickup_date": pickup_date,
+        "pickup_time": pickup_time, "extras": extras,
+    }
+    if contact_name is not None:
+        fields["contact_name"] = contact_name  # 登録者名の変更も反映
+    store.update_case(case_id, user_id, fields)
 
     # 履歴に update を pending 追記 → 非同期タスク投入
     for p in plats:
-        add_posting_event(case_id, p, "update", "pending")
+        store.add_posting_event(case_id, p, "update", "pending")
     get_task_client().add_task({
         "action": "update", "user_id": user_id, "case_id": case_id, "platforms": plats,
     })

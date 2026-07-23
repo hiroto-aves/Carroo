@@ -186,29 +186,19 @@ def get_settings_html(
 @router.get("/settings/", response_class=HTMLResponse)
 async def settings_page(current_user: dict = Depends(get_current_user)):
     """設定ページ"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
     user_id = current_user["id"]
     username = current_user["username"]
 
-    cursor.execute(
-        """SELECT trabox_username, webkit_person_id,
-                  contact_name, contact_phone, contact_email
-           FROM user_credentials WHERE user_id = ?""",
-        (user_id,)
-    )
-    creds = cursor.fetchone()
-    trabox_username = creds[0] if creds and creds[0] else ""
-    webkit_person_id = creds[1] if creds and creds[1] else ""
-    contact_name = creds[2] if creds and creds[2] else ""
-    contact_phone = creds[3] if creds and creds[3] else ""
-    contact_email = creds[4] if creds and creds[4] else ""
-
-    conn.close()
+    from app.db import store
+    creds = store.get_credentials(user_id)
 
     return get_settings_html(
-        username, trabox_username, webkit_person_id,
-        contact_name, contact_phone, contact_email,
+        username,
+        creds.get("trabox_username", "") or "",
+        creds.get("webkit_person_id", "") or "",
+        creds.get("contact_name", "") or "",
+        creds.get("contact_phone", "") or "",
+        creds.get("contact_email", "") or "",
     )
 
 
@@ -218,107 +208,43 @@ async def save_credentials(
     current_user: dict = Depends(get_current_user)
 ):
     """認証情報を保存"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    from app.db import store
     user_id = current_user["id"]
 
-    try:
-        # メールアドレスは必須（投稿成否の通知先。未登録だと案件登録できない）
-        if not credentials.contact_email:
-            cursor.execute(
-                "SELECT contact_email FROM user_credentials WHERE user_id = ?",
-                (user_id,),
+    # メールアドレスは必須（投稿成否の通知先。未登録だと案件登録できない）
+    if not credentials.contact_email:
+        existing = store.get_credentials(user_id)
+        if not existing.get("contact_email"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="メールアドレスは必須です（投稿成否の通知先になります）",
             )
-            existing_email = cursor.fetchone()
-            if not existing_email or not existing_email[0]:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="メールアドレスは必須です（投稿成否の通知先になります）",
-                )
 
-        trabox_password_encrypted = (
-            encrypt_password(credentials.trabox_password)
-            if credentials.trabox_password
-            else None
-        )
-
-        cursor.execute(
-            "SELECT id FROM user_credentials WHERE user_id = ?",
-            (user_id,)
-        )
-        existing = cursor.fetchone()
-
-        if existing:
-            cursor.execute("""
-                UPDATE user_credentials
-                SET trabox_username = COALESCE(?, trabox_username),
-                    trabox_password_encrypted = COALESCE(?, trabox_password_encrypted),
-                    webkit_person_id = COALESCE(?, webkit_person_id),
-                    contact_name = COALESCE(?, contact_name),
-                    contact_phone = COALESCE(?, contact_phone),
-                    contact_email = COALESCE(?, contact_email),
-                    updated_at = ?
-                WHERE user_id = ?
-            """, (
-                credentials.trabox_username,
-                trabox_password_encrypted,
-                credentials.webkit_person_id,
-                credentials.contact_name,
-                credentials.contact_phone,
-                credentials.contact_email,
-                datetime.utcnow().isoformat(),
-                user_id
-            ))
-        else:
-            cursor.execute("""
-                INSERT INTO user_credentials
-                (user_id, trabox_username, trabox_password_encrypted, webkit_person_id,
-                 contact_name, contact_phone, contact_email, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                user_id,
-                credentials.trabox_username,
-                trabox_password_encrypted,
-                credentials.webkit_person_id,
-                credentials.contact_name,
-                credentials.contact_phone,
-                credentials.contact_email,
-                datetime.utcnow().isoformat()
-            ))
-
-        conn.commit()
-
-        return {
-            "status": "success",
-            "message": "認証情報を保存しました"
-        }
-
-    except HTTPException:
-        conn.rollback()
-        raise
-    except Exception as e:
-        conn.rollback()
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"保存に失敗しました: {str(e)}"
-        )
-    finally:
-        conn.close()
+    trabox_password_encrypted = (
+        encrypt_password(credentials.trabox_password)
+        if credentials.trabox_password
+        else None
+    )
+    # None のフィールドは upsert_credentials 側で無視され既存値を維持
+    store.upsert_credentials(user_id, {
+        "trabox_username": credentials.trabox_username,
+        "trabox_password_encrypted": trabox_password_encrypted,
+        "webkit_person_id": credentials.webkit_person_id,
+        "contact_name": credentials.contact_name,
+        "contact_phone": credentials.contact_phone,
+        "contact_email": credentials.contact_email,
+        "updated_at": datetime.utcnow().isoformat(),
+    })
+    return {"status": "success", "message": "認証情報を保存しました"}
 
 
 @router.get("/api/settings/credentials/")
 async def get_credentials(current_user: dict = Depends(get_current_user)):
     """認証情報を取得（パスワードはマスク）"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    from app.db import store
     user_id = current_user["id"]
-
-    cursor.execute(
-        """SELECT trabox_username, webkit_person_id FROM user_credentials WHERE user_id = ?""",
-        (user_id,)
-    )
-    creds = cursor.fetchone()
-    conn.close()
+    _c = store.get_credentials(user_id)
+    creds = (_c.get("trabox_username"), _c.get("webkit_person_id"))
 
     if not creds:
         return {

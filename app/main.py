@@ -99,31 +99,12 @@ app.include_router(admin.router)
 
 @app.on_event("startup")
 async def startup_event():
-    init_db()
-
-    # デフォルトユーザーを作成（存在しない場合）
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
+    # データストアは Firestore。管理者アカウントが無ければ作成。
+    from app.db import store
     try:
-        cursor.execute("SELECT id FROM users WHERE username = ?", ("管理者",))
-        existing_user = cursor.fetchone()
-
-        if not existing_user:
-            hashed_pw = hash_password("12341234@")
-            cursor.execute(
-                "INSERT INTO users (username, email, hashed_password) VALUES (?, ?, ?)",
-                ("管理者", "hrt_takeuchi@takeuchiunso.com", hashed_pw)
-            )
-            conn.commit()
-            logging.info("✅ デフォルトユーザー（管理者）を作成しました")
-        else:
-            logging.info("✅ デフォルトユーザー（管理者）は既に存在します")
+        store.ensure_seed_admin(hash_password)
     except Exception as e:
-        logging.error(f"❌ デフォルトユーザー作成エラー: {e}")
-        conn.rollback()
-    finally:
-        conn.close()
+        logging.error(f"❌ 起動時の管理者シード確認エラー: {e}")
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():

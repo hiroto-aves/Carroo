@@ -284,18 +284,10 @@ async def login(username: str = Form(...), password: str = Form(...),
     if response is None:
         response = Response()
 
-    conn = get_db_connection()
-    cursor = conn.cursor()
+    from app.db import store
+    user = store.get_user_by_username(username)
 
-    cursor.execute(
-        "SELECT id, username, email, hashed_password FROM users WHERE username = ?",
-        (username,)
-    )
-
-    user = cursor.fetchone()
-    conn.close()
-
-    if not user or not verify_password(password, user[3]):
+    if not user or not verify_password(password, user["hashed_password"]):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password"
@@ -305,15 +297,15 @@ async def login(username: str = Form(...), password: str = Form(...),
     # スライディング更新と併せて、使い続ける限りログアウトされない。
     # セキュリティは「端末紛失＝アカウント削除」で担保（削除で即ログイン不能になる）。
     from app.utils.security import issue_access_token, set_auth_cookie, clear_auth_cookie
-    access_token, max_age = issue_access_token(user[0], remember=True)
+    access_token, max_age = issue_access_token(user["id"], remember=True)
     set_auth_cookie(response, access_token, max_age)
 
     return {
         "status": "success",
         "user": {
-            "id": user[0],
-            "username": user[1],
-            "email": user[2]
+            "id": user["id"],
+            "username": user["username"],
+            "email": user.get("email"),
         },
         "message": "Login successful"
     }
@@ -347,15 +339,12 @@ async def profile_page(access_token: str = Cookie(None)):
     if not user_id:
         return RedirectResponse(url="/auth/login", status_code=302)
 
-    conn = get_db_connection()
-    user = conn.execute(
-        "SELECT username, email, created_at FROM users WHERE id = ?", (user_id,)
-    ).fetchone()
-    conn.close()
+    from app.db import store
+    user = store.get_user_by_id(user_id)
     if not user:
         return RedirectResponse(url="/auth/login", status_code=302)
 
-    username, email, created_at = user[0], user[1], user[2]
+    username, email, created_at = user["username"], user.get("email"), user.get("created_at")
     return f"""<!DOCTYPE html>
 <html lang="ja">
 <head>

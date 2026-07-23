@@ -44,13 +44,12 @@ def _nav(username: str) -> str:
 async def users_page(current_user: dict = Depends(get_current_user)):
     """ユーザー管理画面（一覧＋新規発行フォーム）。管理者のみ。"""
     _require_admin(current_user)
-    conn = get_db_connection()
-    users = conn.execute(
-        """SELECT u.id, u.username, u.email, COALESCE(u.is_admin,0), u.created_at,
-                  (SELECT COUNT(*) FROM cases c WHERE c.user_id = u.id)
-           FROM users u ORDER BY u.id"""
-    ).fetchall()
-    conn.close()
+    from app.db import store
+    users = [
+        (u["id"], u["username"], u.get("email"), u.get("is_admin"),
+         u.get("created_at"), store.count_user_cases(u["id"]))
+        for u in store.list_users()
+    ]
 
     rows = ""
     for uid, uname, email, is_admin, created, ncases in users:
@@ -122,26 +121,13 @@ async def create_user(
     _require_admin(current_user)
     if len(password) < 4:
         raise HTTPException(status_code=400, detail="パスワードは4文字以上にしてください")
-    conn = get_db_connection()
-    try:
-        exists = conn.execute(
-            "SELECT 1 FROM users WHERE username = ? OR email = ?", (username, email)
-        ).fetchone()
-        if exists:
-            raise HTTPException(
-                status_code=400,
-                detail="同じユーザー名またはメールが既に存在します",
-            )
-        conn.execute(
-            "INSERT INTO users (username, email, hashed_password, is_admin) "
-            "VALUES (?, ?, ?, ?)",
-            (username, email, hash_password(password), 1 if is_admin == "yes" else 0),
+    from app.db import store
+    if store.user_exists(username, email):
+        raise HTTPException(
+            status_code=400,
+            detail="同じユーザー名またはメールが既に存在します",
         )
-        conn.commit()
-        logger.info(f"[Admin] ユーザー発行: {username} (by {current_user['username']})")
-    except HTTPException:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    store.create_user(username, email, hash_password(password),
+                      is_admin=(is_admin == "yes"))
+    logger.info(f"[Admin] ユーザー発行: {username} (by {current_user['username']})")
     return RedirectResponse(url="/admin/users", status_code=302)

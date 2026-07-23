@@ -15,7 +15,8 @@ import logging
 import os
 from typing import Any, Dict
 
-from app.db.database import get_db_connection, update_posting_result
+from app.db import store
+from app.db.store import update_posting_result
 
 logger = logging.getLogger(__name__)
 
@@ -25,18 +26,11 @@ def _get_trabox_credentials(user_id: int) -> tuple:
 
     優先順: ユーザーの初期設定（user_credentials・暗号化保存）→ .env のテストアカウント
     """
-    conn = get_db_connection()
-    row = conn.execute(
-        """SELECT trabox_username, trabox_password_encrypted
-           FROM user_credentials WHERE user_id = ?""",
-        (user_id,),
-    ).fetchone()
-    conn.close()
-
-    if row and row[0] and row[1]:
+    creds = store.get_credentials(user_id)
+    if creds.get("trabox_username") and creds.get("trabox_password_encrypted"):
         try:
             from app.utils.encryption import decrypt_password
-            return row[0], decrypt_password(row[1])
+            return creds["trabox_username"], decrypt_password(creds["trabox_password_encrypted"])
         except Exception as e:
             logger.warning(f"[Poster] 認証情報の復号失敗 → .env にフォールバック: {e}")
 
@@ -149,24 +143,12 @@ async def execute_posting_task(payload: Dict[str, Any]) -> Dict[str, Any]:
 
 def _get_webkit_person_id(user_id: int) -> str:
     """ユーザーの WebKIT 担当者ID（初期設定で登録）を取得。未設定なら env にフォールバック"""
-    conn = get_db_connection()
-    row = conn.execute(
-        "SELECT webkit_person_id FROM user_credentials WHERE user_id = ?",
-        (user_id,),
-    ).fetchone()
-    conn.close()
-    return (row[0] or "") if row and row[0] else ""
+    return store.get_credentials(user_id).get("webkit_person_id", "") or ""
 
 
 def _get_notification_email(user_id: int) -> str:
     """通知先メールアドレス（初期設定画面で登録した連絡先メール）を取得"""
-    conn = get_db_connection()
-    row = conn.execute(
-        "SELECT contact_email FROM user_credentials WHERE user_id = ?",
-        (user_id,),
-    ).fetchone()
-    conn.close()
-    return (row[0] or "") if row else ""
+    return store.get_credentials(user_id).get("contact_email", "") or ""
 
 
 def build_result_email(case_data: Dict[str, Any], results: Dict[str, Any],
@@ -248,35 +230,26 @@ def _send_result_email(
 
 def _load_case_data(case_id: int, user_id: int) -> Dict[str, Any]:
     """cases から case_data を組み立て（extras をフラットにマージ）"""
-    import json as _json
-    conn = get_db_connection()
-    row = conn.execute(
-        """SELECT id, pick_location, drop_location, cargo_weight, vehicle_type,
-                  freight_rate, pickup_date, pickup_time, contact_name,
-                  contact_phone, contact_email, extras
-           FROM cases WHERE id = ? AND user_id = ?""",
-        (case_id, user_id),
-    ).fetchone()
-    conn.close()
-    if not row:
+    c = store.get_case(case_id, user_id)
+    if not c:
         return {}
     cd = {
-        "case_id": row[0], "pick_location": row[1], "drop_location": row[2],
-        "cargo_weight": row[3], "vehicle_type": row[4], "freight_rate": row[5],
-        "pickup_date": row[6], "pickup_time": row[7], "contact_name": row[8],
-        "contact_phone": row[9], "contact_email": row[10],
+        "case_id": c["id"], "pick_location": c.get("pick_location"),
+        "drop_location": c.get("drop_location"), "cargo_weight": c.get("cargo_weight"),
+        "vehicle_type": c.get("vehicle_type"), "freight_rate": c.get("freight_rate"),
+        "pickup_date": c.get("pickup_date"), "pickup_time": c.get("pickup_time"),
+        "contact_name": c.get("contact_name"), "contact_phone": c.get("contact_phone"),
+        "contact_email": c.get("contact_email"),
     }
-    if row[11]:
-        try:
-            cd.update(_json.loads(row[11]))
-        except (ValueError, TypeError):
-            pass
+    extras = c.get("extras") or {}
+    if isinstance(extras, dict):
+        cd.update(extras)
     return cd
 
 
 async def execute_update_task(payload: Dict[str, Any]) -> Dict[str, Any]:
     """変更タスク: 指定プラットフォームの掲載を更新し、履歴に update を追記"""
-    from app.db.database import get_active_baggage_no, update_posting_result
+    from app.db.store import get_active_baggage_no, update_posting_result
 
     user_id = payload["user_id"]
     case_id = payload["case_id"]
@@ -332,7 +305,7 @@ async def execute_delete_task(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     削除しても register の履歴行は残る（追記式）。
     """
-    from app.db.database import get_active_baggage_no, update_posting_result
+    from app.db.store import get_active_baggage_no, update_posting_result
 
     user_id = payload["user_id"]
     case_id = payload["case_id"]

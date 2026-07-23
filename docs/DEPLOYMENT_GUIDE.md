@@ -17,25 +17,17 @@
 
 ---
 
-## 1. 🔴 最重要の判断: データ永続化
+## 1. データ永続化: Firestore（実質¥0・データ消失なし）
 
-現在 Carroo は **SQLite（`carroo.db` ローカルファイル）** を使っています。
-Cloud Run はインスタンスが使い捨て（ephemeral）で、**再起動やスケールでファイルが消える**ため、
-このまま SQLite で本番運用すると**ユーザー・案件・認証情報が失われます**。
+Carroo は **Firestore（Nativeモード）** にデータを保存する。Cloud Run のインスタンスは
+使い捨てだが、Firestore は独立したマネージドDBのためデータは消えない。無料枠が大きく、
+社内数名・低頻度なら**実質 ¥0**（Cloud SQL のような最低月額が無い）。
 
-必ず以下のいずれかを選んでからデプロイします。
+- ローカル開発: Firestore エミュレータ（`FIRESTORE_EMULATOR_HOST` 設定時に自動接続）
+- 本番: Cloud Run のサービスアカウントで自動認証（ADC）
 
-| 方式 | データ耐久性 | 月額目安 | コード改修 | 備考 |
-|------|------------|---------|-----------|------|
-| **A. Cloud SQL (PostgreSQL)**（推奨） | ◎ 完全 | 約 ¥1,000〜1,500 | 中（SQLite→Postgres 移行） | 標準的で安全。複数インスタンス可 |
-| **B. SQLite＋GCSバックアップ同期** | ○ ほぼ（数秒の窓） | ほぼ ¥0 | 小（同期処理追加） | 単一インスタンス限定。低コスト重視 |
-| **C. SQLiteのまま（ephemeral）** | ✗ 消える | ¥0 | なし | ❌本番不可。デモ/検証のみ |
-
-**推奨は A（Cloud SQL）**。少人数・低コスト最優先なら B。C は不可。
-
-> この判断は課金とデータ安全性に直結するため、選択後に 2 以降へ進みます。
-
----
+初回起動時に管理者アカウント（ユーザー名「管理者」）が自動作成される。
+デプロイ後、管理者でログイン → 初期設定で Trabox/WebKit 認証情報・連絡先を登録する。
 
 ## 2. 事前準備（GCP API 有効化）
 
@@ -46,9 +38,11 @@ gcloud services enable \
   run.googleapis.com \
   cloudbuild.googleapis.com \
   cloudtasks.googleapis.com \
-  secretmanager.googleapis.com
-# 方式A採用時は追加
-gcloud services enable sqladmin.googleapis.com
+  secretmanager.googleapis.com \
+  firestore.googleapis.com
+
+# Firestore データベース作成（Nativeモード・初回のみ）
+gcloud firestore databases create --location=us-central1 2>/dev/null || true
 ```
 
 ---
@@ -88,7 +82,7 @@ gcloud run deploy carroo \
 
 ポイント:
 - `COOKIE_SECURE=true` … 本番HTTPSでCookieを暗号化通信限定に（**必須**）
-- `--min/max-instances 1` … 単一インスタンス（SQLite方式Bの前提／Trabox同時実行回避）
+- `--min/max-instances 1` … Trabox の同時実行回避（データは Firestore なので複数でも可だが順序実行のため1）
 - `--memory 2Gi --cpu 2` … Playwright(Chromium) 起動のため
 - `--timeout 3600` … 投稿は最大数十秒だが余裕を持たせる
 
@@ -143,9 +137,3 @@ gcloud run services update carroo --region us-central1 \
 - **再デプロイ**: コード更新後は `gcloud run deploy carroo --source . --region us-central1` を再実行
 
 ---
-
-## 付録: 方式B（SQLite＋GCS同期）を選ぶ場合の追加実装
-
-- 起動時に GCS から `carroo.db` をダウンロード、DB書込のたびに GCS へアップロード
-- `--min-instances 1 --max-instances 1` 必須（単一ライター）
-- 実装は別途対応（データ書込フックに同期処理を追加）
