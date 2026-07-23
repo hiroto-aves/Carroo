@@ -12,11 +12,10 @@ RUN pip install --no-cache-dir -r requirements.txt \
 
 # アプリケーション
 COPY . .
+RUN chmod +x /app/entrypoint.sh
 
 # Cloud Run は PORT 環境変数を渡す（デフォルト 8080）
 ENV PORT=8080
 
-# Web UI＋/tasks/execute（投稿ワーカー）を同一プロセスで提供
-# 🔴 Trabox は headless Chromium だと日付コンポーネントが確定せず投稿失敗する既知問題あり。
-#    対策として Xvfb 上で headed 実行する案を検討中（xvfb-run の起動調整が必要）。
-CMD exec uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1
+# Xvfb 上で headed Chromium を動かすため entrypoint.sh 経由で起動（Trabox headless 対策）
+CMD ["/app/entrypoint.sh"]
