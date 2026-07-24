@@ -323,3 +323,139 @@ def ensure_seed_admin(hash_password_fn) -> None:
         create_user("管理者", "hrt_takeuchi@takeuchiunso.com",
                     hash_password_fn("12341234@"), is_admin=True)
         logger.info("[Store] 既定の管理者アカウントを作成しました")
+
+
+# ============================================================
+# 空車（トラック空き）: 荷物と完全分離した並行データ層
+#   コレクション: truck_postings（1回分の空車）/ truck_posting_history（投稿履歴）
+#   ID は counters の "truck_postings" で採番（荷物 cases とは別系列）
+# ============================================================
+
+def create_truck(user_id: int, data: Dict[str, Any]) -> int:
+    tid = _next_id("truck_postings")
+    doc = dict(data)
+    doc["user_id"] = int(user_id)
+    doc["created_at"] = _now()
+    _db().collection("truck_postings").document(str(tid)).set(doc)
+    return tid
+
+
+def get_truck(truck_id: int, user_id: int = None) -> Optional[Dict[str, Any]]:
+    snap = _db().collection("truck_postings").document(str(truck_id)).get()
+    if not snap.exists:
+        return None
+    d = snap.to_dict()
+    if user_id is not None and int(d.get("user_id")) != int(user_id):
+        return None
+    d["id"] = int(snap.id)
+    return d
+
+
+def update_truck_doc(truck_id: int, user_id: int, fields: Dict[str, Any]) -> bool:
+    ref = _db().collection("truck_postings").document(str(truck_id))
+    snap = ref.get()
+    if not snap.exists or int(snap.to_dict().get("user_id")) != int(user_id):
+        return False
+    ref.set(fields, merge=True)
+    return True
+
+
+def search_trucks(is_admin: bool, user_id: int, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """空車検索。荷物 search_cases と同様に user_id で取得後 Python でフィルタ。
+    filters: q_user, date_from, date_to, vacant, dest, vehicle, registrant"""
+    col = _db().collection("truck_postings")
+    if is_admin:
+        docs = (col.where("user_id", "==", int(filters["q_user"])).stream()
+                if filters.get("q_user") else col.stream())
+    else:
+        docs = col.where("user_id", "==", int(user_id)).stream()
+    rows = []
+    for snap in docs:
+        d = snap.to_dict()
+        d["id"] = int(snap.id)
+        rows.append(d)
+    df, dt = filters.get("date_from"), filters.get("date_to")
+    vac, dst = filters.get("vacant"), filters.get("dest")
+    veh, reg = filters.get("vehicle"), filters.get("registrant")
+
+    def keep(c):
+        vd = c.get("vacant_date") or ""
+        if df and vd < df:
+            return False
+        if dt and vd > dt:
+            return False
+        if vac and not (c.get("vacant_pref") or "").startswith(vac):
+            return False
+        if dst and not (c.get("dest_pref") or "").startswith(dst):
+            return False
+        if veh and (c.get("vehicle_type") or "") != veh:
+            return False
+        if reg and reg not in (c.get("contact_name") or ""):
+            return False
+        return True
+
+    rows = [c for c in rows if keep(c)]
+    rows.sort(key=lambda c: c.get("created_at", ""), reverse=True)
+    return rows
+
+
+def add_truck_event(truck_id: int, platform: str, action: str,
+                    status: str = "pending") -> int:
+    hid = _next_id("truck_posting_history")
+    _db().collection("truck_posting_history").document(str(hid)).set({
+        "truck_id": int(truck_id), "platform": platform, "action": action,
+        "status": status, "baggage_no": None, "error_message": None,
+        "posted_at": _now(), "updated_at": None,
+    })
+    return hid
+
+
+def update_truck_result(truck_id: int, platform: str, status: str,
+                        baggage_no: str = None, error_message: str = None,
+                        action: str = None) -> None:
+    col = _db().collection("truck_posting_history")
+    q = col.where("truck_id", "==", int(truck_id)).where("platform", "==", platform)
+    if action:
+        q = q.where("action", "==", action)
+    rows = sorted(q.stream(), key=lambda s: int(s.id), reverse=True)
+    if not rows:
+        return
+    patch = {"status": status, "error_message": error_message, "updated_at": _now()}
+    if baggage_no is not None:
+        patch["baggage_no"] = baggage_no
+    rows[0].reference.set(patch, merge=True)
+
+
+def get_truck_active_baggage_no(truck_id: int, platform: str) -> str:
+    col = _db().collection("truck_posting_history")
+    rows = [s.to_dict() for s in col.where("truck_id", "==", int(truck_id))
+            .where("platform", "==", platform).where("status", "==", "success").stream()]
+    rows = [r for r in rows if r.get("action") in ("register", "update") and r.get("baggage_no")]
+    rows.sort(key=lambda r: r.get("posted_at", ""), reverse=True)
+    return rows[0]["baggage_no"] if rows else ""
+
+
+def get_truck_platform_state(truck_id: int, platform: str) -> str:
+    col = _db().collection("truck_posting_history")
+    rows = sorted(
+        col.where("truck_id", "==", int(truck_id)).where("platform", "==", platform).stream(),
+        key=lambda s: int(s.id), reverse=True)
+    if not rows:
+        return "none"
+    d = rows[0].to_dict()
+    if d.get("status") == "pending":
+        return "working"
+    if d.get("status") == "error":
+        return "error"
+    return "deleted" if d.get("action") == "delete" else "live"
+
+
+def list_truck_history(truck_id: int) -> List[Dict[str, Any]]:
+    col = _db().collection("truck_posting_history")
+    rows = []
+    for s in col.where("truck_id", "==", int(truck_id)).stream():
+        d = s.to_dict()
+        d["id"] = int(s.id)
+        rows.append(d)
+    rows.sort(key=lambda r: r["id"], reverse=True)
+    return rows

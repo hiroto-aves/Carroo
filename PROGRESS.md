@@ -41,7 +41,22 @@
 - テスト用ダミー案件(ID 1〜10)の整理（実掲載は全て削除済み。Firestore の案件レコードのみ残存）。
 - Jamf Now での Web Clip 配信（本番URL/dashboard/・アイコン static/icons/icon-192.png）。
 
-### 🆕 次期機能：空車（トラック空き）投稿＋繰り返し登録
+### 🆕 空車（トラック空き）機能 — Phase 1（単発登録）実装完了 ✅（feature/truck-availability）
+- WebKit `CarInfo` クライアント（webkit_truck.py）: 登録→削除の**実API E2E成功**（reg_number必須を反映）。
+- Trabox 空車自動化（trabox_truck.py, /truck/register）: **登録→削除の実E2E成功**（2026-07-25）。
+  - 原因だった「担当者(必須)未入力」を解決（空車フォームは変更チェックが無く、担当者
+    AutoComplete に直接入力）。送信成功判定も /truck/register からの遷移で厳密化。
+  - delete_truck: /truck/list を全ページ走査＋内容一致(空車地/行先地/空車日)で特定し、
+    data-row-key で JSクリック削除（sticky header 回避）。一致1件のみ削除で誤削除防止。
+- Firestore store: truck_postings / truck_posting_history（荷物と完全分離）。
+- poster: kind=="truck" で execute_truck_task（登録/削除）＋空車専用の結果メール。
+- ルーター/UI: /trucks/register（フォーム）・/trucks/（一覧）・/trucks/{id}/manage（管理・掲載終了）。
+- **Phase 1 完了 ✅**: WebKit空車・Trabox空車とも 登録→削除の実E2E成功。
+  データ層・poster・ルーターUI(/trucks/*)・両プラットフォーム自動化すべて動作。
+- 次: feature/truck-availability を main へマージ → 本番デプロイ（ブラウザで /trucks/register を利用可能に）
+  → Phase 2（繰り返し登録＝Cloud Scheduler 日次マテリアライズ）。
+
+### 次期機能：空車（トラック空き）投稿＋繰り返し登録
 - 設計書: `docs/空車機能設計_ver1.0.md`（調査結果・確定仕様・段階計画）
 - 調査済み: WebKit `CarInfo` API（荷物と並行構造）/ Trabox `/truck/register`（同 .tbx-form-item 構造）
 - 確定仕様: 繰り返し=毎週(複数曜日)/隔週/毎日/毎月、lead_days で事前投稿、dest_able 複数行先、

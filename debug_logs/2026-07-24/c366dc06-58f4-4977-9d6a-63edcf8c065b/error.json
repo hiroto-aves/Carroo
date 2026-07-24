@@ -1,0 +1,20 @@
+{
+  "trace_id": "c366dc06-58f4-4977-9d6a-63edcf8c065b",
+  "error_category": "UNEXPECTED",
+  "error_code": "UNEXPECTED_ERROR",
+  "error_message": "予期しないエラーが発生しました: DIAG_DONE",
+  "user_id": 1,
+  "case_id": 9004,
+  "platform": "trabox",
+  "screenshots": [
+    "screenshot_0.png",
+    "screenshot_1.png",
+    "screenshot_2.png",
+    "screenshot_3.png",
+    "screenshot_4.png",
+    "screenshot_5.png",
+    "screenshot_6.png",
+    "screenshot_7.png"
+  ],
+  "dom_snapshot": true
+}

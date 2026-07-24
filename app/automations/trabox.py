@@ -987,19 +987,24 @@ class TraboxAutomation:
         )
 
     async def _select_prefecture(
-        self, page: Page, row_label: str, pref_short: str, root=None
+        self, page: Page, row_label: str, pref_short: str, root=None, row_locator=None
     ) -> None:
         """発地/着地の都道府県を日本地図型ドロップダウンから選択
 
         地図ボタンは「東京」「大阪」等の短縮表記（北海道のみフル表記）
+
+        row_locator: 行を直接指定する場合に渡す（ラベルが重複する空車フォームの
+        「都道府県」行を nth で特定するため）。指定時は row_label/root を無視。
         """
         from app.automations.trabox_form_mapper import TraboxFormMapper as M
         import re as _re
 
-        base = root if root is not None else page
-        select = base.locator(
-            f"{M.row_selector(row_label)} .ant-select"
-        ).first
+        if row_locator is not None:
+            row = row_locator
+        else:
+            base = root if root is not None else page
+            row = base.locator(M.row_selector(row_label))
+        select = row.locator(".ant-select").first
         await select.click(timeout=TRABOX_TIMEOUTS["action"])
 
         panel = page.locator(
@@ -1016,19 +1021,23 @@ class TraboxAutomation:
         await page.wait_for_timeout(300)
 
     async def _select_city(
-        self, page: Page, row_label: str, city: str, root=None
+        self, page: Page, row_label: str, city: str, root=None, row_locator=None
     ) -> None:
         """発地/着地の市区町村を検索型ドロップダウンから選択【必須】
 
         行内2つ目の .ant-select をクリック → 市区町村名をタイプして絞り込み
         → title 完全一致のオプションをクリック（例: title="港区"）
+
+        row_locator: 行を直接指定する場合に渡す（空車フォームの重複ラベル対策）。
         """
         from app.automations.trabox_form_mapper import TraboxFormMapper as M
 
-        base = root if root is not None else page
-        select = base.locator(
-            f"{M.row_selector(row_label)} .ant-select"
-        ).nth(1)
+        if row_locator is not None:
+            row = row_locator
+        else:
+            base = root if root is not None else page
+            row = base.locator(M.row_selector(row_label))
+        select = row.locator(".ant-select").nth(1)
         await select.click(timeout=TRABOX_TIMEOUTS["action"])
 
         dropdown = page.locator(M.VISIBLE_SELECT_DROPDOWN).last

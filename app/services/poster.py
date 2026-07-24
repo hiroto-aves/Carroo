@@ -53,6 +53,10 @@ async def execute_task(payload: Dict[str, Any]) -> Dict[str, Any]:
       delete  : {"action":"delete", "user_id", "case_id", "platforms":[...]}
     action 省略時は register（後方互換）。
     """
+    # 空車（トラック空き）タスクは kind=="truck" で分岐
+    if payload.get("kind") == "truck":
+        return await execute_truck_task(payload)
+
     action = payload.get("action", "register")
     if action == "update":
         return await execute_update_task(payload)
@@ -354,3 +358,166 @@ async def execute_delete_task(payload: Dict[str, Any]) -> Dict[str, Any]:
     if results:
         _send_result_email(user_id, case_data, results, action_label="削除")
     return results
+
+
+# ============================================================
+# 空車（トラック空き）タスク: kind=="truck"
+#   payload:
+#     register: {"kind":"truck","action":"register","user_id","truck_data"}
+#     delete  : {"kind":"truck","action":"delete","user_id","truck_id","platforms":[...]}
+# ============================================================
+
+async def execute_truck_task(payload: Dict[str, Any]) -> Dict[str, Any]:
+    action = payload.get("action", "register")
+    if action == "delete":
+        return await execute_truck_delete_task(payload)
+    return await execute_truck_posting_task(payload)
+
+
+def _load_truck_data(truck_id: int, user_id: int) -> Dict[str, Any]:
+    t = store.get_truck(truck_id, user_id)
+    if not t:
+        return {}
+    td = dict(t)
+    td["truck_id"] = t["id"]
+    return td
+
+
+async def execute_truck_posting_task(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """空車を Trabox / WebKit に登録し、truck_posting_history を結果で更新。"""
+    user_id = payload["user_id"]
+    td = payload["truck_data"]
+    truck_id = td.get("truck_id")
+    results: Dict[str, Any] = {}
+    logger.info(f"[Poster空車] 登録タスク開始: truck_id={truck_id}")
+
+    # --- Trabox ---
+    if td.get("post_to_trabox"):
+        try:
+            from app.automations.trabox_truck import TraboxTruckAutomation
+            username, password = _get_trabox_credentials(user_id)
+            auto = TraboxTruckAutomation(user_id=user_id, case_id=truck_id,
+                                         username=username, password=password)
+            result = await auto.post_truck(td)
+            store.update_truck_result(truck_id, "trabox", "success",
+                                      baggage_no=result.get("baggage_no"))
+            results["trabox"] = result
+            logger.info(f"[Poster空車] Trabox 登録成功: truck_id={truck_id}")
+        except Exception as e:
+            msg = str(e)[:500]
+            store.update_truck_result(truck_id, "trabox", "error", error_message=msg)
+            results["trabox"] = {"status": "error", "message": msg}
+            logger.error(f"[Poster空車] Trabox 登録失敗: truck_id={truck_id} {msg}")
+
+    # --- WebKit ---
+    if td.get("post_to_webkit"):
+        try:
+            from app.automations.webkit_truck import WebkitTruckAutomation
+            auto = WebkitTruckAutomation(person_id=_get_webkit_person_id(user_id))
+            result = await auto.post_truck(td)
+            status = result.get("status", "success")
+            store.update_truck_result(
+                truck_id, "webkit", "success" if status == "success" else "error",
+                baggage_no=result.get("baggage_no"),
+                error_message=None if status == "success" else result.get("message"))
+            results["webkit"] = result
+            logger.info(f"[Poster空車] WebKit 登録結果: truck_id={truck_id} {status}")
+        except Exception as e:
+            msg = str(e)[:500]
+            store.update_truck_result(truck_id, "webkit", "error", error_message=msg)
+            results["webkit"] = {"status": "error", "message": msg}
+            logger.error(f"[Poster空車] WebKit 登録失敗: truck_id={truck_id} {msg}")
+
+    if results:
+        _send_truck_result_email(user_id, td, results, "登録")
+    logger.info(f"[Poster空車] 登録タスク完了: truck_id={truck_id}")
+    return results
+
+
+async def execute_truck_delete_task(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """空車掲載を削除（WebKit のみ API 削除。Trabox は掲載終了扱いで履歴のみ）。"""
+    user_id = payload["user_id"]
+    truck_id = payload["truck_id"]
+    platforms = payload.get("platforms", [])
+    td = _load_truck_data(truck_id, user_id)
+    results: Dict[str, Any] = {}
+    logger.info(f"[Poster空車] 削除タスク: truck_id={truck_id} platforms={platforms}")
+
+    for platform in platforms:
+        slipno = store.get_truck_active_baggage_no(truck_id, platform)
+        try:
+            if platform == "webkit":
+                if not slipno:
+                    raise Exception("有効な伝票番号がありません")
+                from app.automations.webkit_truck import WebkitTruckAutomation
+                auto = WebkitTruckAutomation(person_id=_get_webkit_person_id(user_id))
+                result = await auto.delete_truck(slipno)
+            else:
+                # Trabox 空車は /truck/list から内容一致で削除
+                from app.automations.trabox_truck import TraboxTruckAutomation
+                username, password = _get_trabox_credentials(user_id)
+                auto = TraboxTruckAutomation(user_id=user_id, case_id=truck_id,
+                                             username=username, password=password)
+                result = await auto.delete_truck(td)
+            ok = result.get("status") == "success"
+            store.update_truck_result(truck_id, platform,
+                                      "success" if ok else "error",
+                                      error_message=None if ok else result.get("message"),
+                                      action="delete")
+            results[platform] = result
+        except Exception as e:
+            msg = str(e)[:500]
+            store.update_truck_result(truck_id, platform, "error",
+                                      error_message=msg, action="delete")
+            results[platform] = {"status": "error", "message": msg}
+
+    if results:
+        _send_truck_result_email(user_id, td, results, "削除")
+    return results
+
+
+def build_truck_result_email(td: Dict[str, Any], results: Dict[str, Any],
+                             action_label: str = "登録") -> tuple:
+    truck_id = td.get("truck_id")
+    platform_names = {"trabox": "トラボックス", "webkit": "WebKit"}
+    success = sum(1 for r in results.values() if r.get("status") == "success")
+    fail = len(results) - success
+    summary = ("すべて成功" if fail == 0 else
+               "すべて失敗" if success == 0 else f"成功 {success} 件・失敗 {fail} 件")
+    subject = f"【Carroo】空車{action_label}結果: {summary}（空車ID {truck_id}）"
+    lines = [
+        "Carroo 空車投稿システムからの自動通知です。", "",
+        "■ 空車内容",
+        f"  空車ID    : {truck_id}",
+        f"  空車地    : {td.get('vacant_pref', '')}{td.get('vacant_city', '')}",
+        f"  行先地    : {td.get('dest_pref', '')}{td.get('dest_city', '')}",
+        f"  空車日    : {td.get('vacant_date', '-')} {td.get('vacant_time') or ''}".rstrip(),
+        f"  車種      : {td.get('vehicle_type', '-')}",
+        "", f"■ {action_label}結果",
+    ]
+    for platform, result in results.items():
+        name = platform_names.get(platform, platform)
+        if result.get("status") == "success":
+            lines.append(f"  ✅ {name}: 成功")
+            if result.get("baggage_no"):
+                lines.append(f"      伝票番号: {result['baggage_no']}")
+        else:
+            lines.append(f"  ❌ {name}: 失敗")
+            if result.get("message"):
+                lines.append(f"      理由: {result['message'][:200]}")
+    lines += ["", "詳細はダッシュボードの空車管理画面でご確認ください。"]
+    return subject, "\n".join(lines)
+
+
+def _send_truck_result_email(user_id: int, td: Dict[str, Any],
+                             results: Dict[str, Any], action_label: str = "登録") -> None:
+    try:
+        from app.utils.mailer import send_email
+        to_address = _get_notification_email(user_id)
+        if not to_address:
+            logger.warning(f"[Poster空車] 通知先メール未登録: user_id={user_id}")
+            return
+        subject, body = build_truck_result_email(td, results, action_label)
+        send_email(to_address, subject, body)
+    except Exception as e:
+        logger.error(f"[Poster空車] 結果メール送信エラー（処理は完了済み）: {e}")
