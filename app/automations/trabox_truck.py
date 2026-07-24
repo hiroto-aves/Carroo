@@ -189,6 +189,84 @@ class TraboxTruckAutomation(TraboxAutomation):
             except Exception as e:
                 logger.warning(f"[Trabox空車] その他対応可能 {pref} 追加スキップ: {e}")
 
+    async def delete_truck(self, truck_data: Dict[str, Any]) -> Dict[str, Any]:
+        """空車掲載を /truck/list から削除する。
+
+        🔴 Trabox 空車投稿は伝票番号を返さないため、掲載を「内容一致」で特定する。
+        空車地/行先地の市区町村・県と空車日で一致する行が **ちょうど1件** の時だけ
+        削除する（他社/他案件の誤削除を防ぐ安全策）。
+        """
+        vacant_city = truck_data.get("vacant_city") or ""
+        dest_city = truck_data.get("dest_city") or ""
+        vacant_pref = M.normalize_prefecture(truck_data.get("vacant_pref", "")) or ""
+        dest_pref = M.normalize_prefecture(truck_data.get("dest_pref", "")) or ""
+        vdate = M.parse_date(truck_data.get("vacant_date")) or ""
+        # 一覧表示の日付断片（例 2026-09-28 → "9/28"）
+        md = ""
+        if vdate:
+            _, mo, dy = vdate.split("-")
+            md = f"{int(mo)}/{int(dy)}"
+        needles = [n for n in (vacant_city, dest_city, md) if n]
+
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=self.headless)
+            context = await browser.new_context(
+                viewport={"width": 1440, "height": 2600},
+                timezone_id="Asia/Tokyo", locale="ja-JP",
+            )
+            page = await context.new_page()
+            self.debug_capture = DebugCapture(page)
+            try:
+                await self._step_navigate_to_dashboard(page)
+                if await self._is_login_page(page):
+                    await self._step_login(page)
+                    await self._step_navigate_to_dashboard(page)
+                await page.goto("https://www.trabox.com/truck/list",
+                                wait_until="domcontentloaded",
+                                timeout=TRABOX_TIMEOUTS["navigation"])
+                await page.wait_for_selector("tr.ant-table-row",
+                                             timeout=TRABOX_TIMEOUTS["navigation"])
+                await page.wait_for_timeout(1500)
+
+                rows = page.locator("tr.ant-table-row")
+                n = await rows.count()
+                matches = []
+                for i in range(n):
+                    row = rows.nth(i)
+                    txt = (await row.inner_text()).replace("\n", " ")
+                    if all(nd in txt for nd in needles) and vacant_pref in txt and dest_pref in txt:
+                        matches.append(i)
+                logger.info(f"[Trabox空車削除] 一致行数={len(matches)} needles={needles}")
+                if len(matches) == 0:
+                    return {"status": "success", "platform": "trabox",
+                            "message": "該当掲載なし（既に削除済みとみなす）"}
+                if len(matches) > 1:
+                    return {"status": "error", "platform": "trabox",
+                            "message": f"一致が{len(matches)}件あり安全のため削除中止。手動で削除してください"}
+
+                row = rows.nth(matches[0])
+                await row.locator("button:has-text('削除')").first.click(
+                    timeout=TRABOX_TIMEOUTS["action"])
+                # 確認モーダル
+                try:
+                    await page.locator(
+                        ".ant-modal:visible button.ant-btn-primary, "
+                        ".ant-modal:visible button.ant-btn-dangerous"
+                    ).first.click(timeout=5000)
+                except Exception:
+                    pass
+                await page.wait_for_timeout(1500)
+                logger.info("[Trabox空車削除] 削除完了")
+                return {"status": "success", "platform": "trabox",
+                        "message": "Trabox の空車掲載を削除しました"}
+            except Exception as e:
+                logger.error(f"[Trabox空車削除] エラー: {e}")
+                return {"status": "error", "platform": "trabox",
+                        "message": f"{type(e).__name__}: {str(e)[:200]}"}
+            finally:
+                await context.close()
+                await browser.close()
+
     async def _submit_truck(self, page) -> None:
         """登録ボタン→確認モーダル→成功判定（荷物の送信ロジックを踏襲）。"""
         await self.debug_capture.capture_screenshot("truck_before_submit")

@@ -453,8 +453,12 @@ async def execute_truck_delete_task(payload: Dict[str, Any]) -> Dict[str, Any]:
                 auto = WebkitTruckAutomation(person_id=_get_webkit_person_id(user_id))
                 result = await auto.delete_truck(slipno)
             else:
-                # Trabox 空車は API 削除が無いため掲載終了扱い（履歴のみ）
-                result = {"status": "success", "message": "掲載終了（履歴のみ）"}
+                # Trabox 空車は /truck/list から内容一致で削除
+                from app.automations.trabox_truck import TraboxTruckAutomation
+                username, password = _get_trabox_credentials(user_id)
+                auto = TraboxTruckAutomation(user_id=user_id, case_id=truck_id,
+                                             username=username, password=password)
+                result = await auto.delete_truck(td)
             ok = result.get("status") == "success"
             store.update_truck_result(truck_id, platform,
                                       "success" if ok else "error",
