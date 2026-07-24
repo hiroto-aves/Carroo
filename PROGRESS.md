@@ -68,6 +68,19 @@
   - **本番E2E成功**: ルール作成→materialize(トークン認証)→自動生成空車→Trabox/WebKit登録成功
     →削除。冪等(再実行0件)・トークン無し403 も確認。設計メモ:
     `docs/設計メモ_オプション化とマルチテナント_ver1.0.md`。
+### 🆕 荷物の複数日程一括投稿（FEATURE_MULTIDATE）完了・本番稼働 ✅（2026-07-25, rev16）
+- 同じ荷物を日時だけ違う最大5日程で同時投稿（急ぎ・日程柔軟なとき）。空車=繰り返し／荷物=複数バリアント、と役割分担。
+- store: create_case に group_id/tenant_id、next_group_id/list_group_cases。
+- 登録POST: date_variants(JSON) があれば group_id で束ねて N 件 fan-out 生成・投稿（無ければ従来単発）。
+- UI: 登録フォーム日時欄に「複数日程で一括登録」オプション(FEATURE_MULTIDATE有効時のみ)。行追加/削除→JSでdate_variants化。
+- グループ管理 /cases/group/{id}: 各日程の掲載状態＋『これで成約→他を取下げ』(keep指定)／全取下げ。二重成約防止。
+- 本番E2E成功: UI表示→2日程fan-out(案件11/12)→WebKit両方成功→keep=11で12のみ取下げ→全取下げ。掲載クリーン。
+- オプション課金想定でフラグ化（recurring と同じ枠組み、Stage0基盤に相乗り）。
+
+### 課金候補オプション（フラグで付け外し可能）
+- FEATURE_RECURRING: 空車の繰り返し登録
+- FEATURE_MULTIDATE: 荷物の複数日程一括投稿
+
 - 次（Stage 1・販売判断時）: テナント管理コンソール＋2階層ロール＋WebKit apikeyのテナント別化。
 
 ### 次期機能：空車（トラック空き）投稿＋繰り返し登録
