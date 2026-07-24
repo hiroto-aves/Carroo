@@ -1,0 +1,20 @@
+{
+  "trace_id": "8ab23f23-19ac-4a94-8962-14a03208ae12",
+  "error_category": "TIMEOUT",
+  "error_code": "TIMEOUT_ACTION",
+  "error_message": "アクションのタイムアウト: アクションのタイムアウト: Timeout 5000ms exceeded.\n=========================== logs ===========================\nwaiting for locator(\".tbx-form-item:has(:is(.label-wrapper:text-matches(\\\"^\\\\s*都\\\\s*道\\\\s*府\\\\s*県\\\\s*$\\\"), .label-wrapper .label:text-matches(\\\"^\\\\s*都\\\\s*道\\\\s*府\\\\s*県\\\\s*$\\\")))\").first.locator(\".ant-select\").first\n============================================================",
+  "user_id": 1,
+  "case_id": 9001,
+  "platform": "trabox",
+  "screenshots": [
+    "screenshot_0.png",
+    "screenshot_1.png",
+    "screenshot_2.png",
+    "screenshot_3.png",
+    "screenshot_4.png",
+    "screenshot_5.png",
+    "screenshot_6.png",
+    "screenshot_7.png"
+  ],
+  "dom_snapshot": true
+}
