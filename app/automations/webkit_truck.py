@@ -182,6 +182,9 @@ class WebkitTruckAutomation:
         # --- 情報公開（1:すべて 5:指定）【必須】 ---
         add("opentype", "5" if td.get("visibility") == "限定" else "1")
 
+        # --- 登録件数（必須。既定1台） ---
+        add("reg_number", str(td.get("truck_count") or 1))
+
         # --- その他対応可能：積地可能県 load_able1..10 / 卸地可能県 dest_able1..10 ---
         for i, pref in enumerate((td.get("vacant_able_prefs") or [])[:10], start=1):
             code = get_prefecture_code(pref)
