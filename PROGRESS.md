@@ -53,9 +53,17 @@
 - Firestore store: truck_postings / truck_posting_history（荷物と完全分離）。
 - poster: kind=="truck" で execute_truck_task（登録/削除）＋空車専用の結果メール。
 - ルーター/UI: /trucks/register（フォーム）・/trucks/（一覧）・/trucks/{id}/manage（管理・掲載終了）。
-- **未決の論点**: Trabox 空車は API 削除が無く、実投稿するとマーケットに実掲載が残る。
-  実Trabox投稿テストの可否、または Trabox 空車の削除フロー実装を要判断。
-- 次: Phase 2（繰り返し登録＝Cloud Scheduler 日次マテリアライズ）。
+- **次セッションの再開ポイント（Trabox 空車の実投稿を通す）**:
+  - 症状: 登録ボタン押下後も URL が /truck/register のまま遷移せず、確認モーダル/has-error 無し
+    → 送信が確定していない。掲載は作成されず（残留なし）。
+  - 最有力仮説: **担当者(行 index 8) が必須で空欄**。荷物フォームの「担当者を変更する」
+    チェックが空車フォームには無く、_set_contact_person が失敗（ドライランで「担当者設定スキップ」）。
+    → 空車フォーム用に担当者(ant-select autocomplete)を直接入力する処理を実装して再検証。
+  - 併せて _submit_truck の成功判定を「/truck/list への遷移 or 掲載出現」で厳密化する
+    （現在は generic テキスト一致で誤検知しうる）。
+  - 検証手順: 実投稿 → /truck/list を JSクリックでページ送りしながら内容一致で掲載確認
+    → delete_truck で削除（内容一致・1件のみ）。
+- 次: 上記が通ったら本番デプロイ → Phase 2（繰り返し登録＝Cloud Scheduler 日次マテリアライズ）。
 
 ### 次期機能：空車（トラック空き）投稿＋繰り返し登録
 - 設計書: `docs/空車機能設計_ver1.0.md`（調査結果・確定仕様・段階計画）
