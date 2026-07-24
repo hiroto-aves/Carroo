@@ -43,27 +43,18 @@
 
 ### 🆕 空車（トラック空き）機能 — Phase 1（単発登録）実装完了 ✅（feature/truck-availability）
 - WebKit `CarInfo` クライアント（webkit_truck.py）: 登録→削除の**実API E2E成功**（reg_number必須を反映）。
-- Trabox 空車自動化（trabox_truck.py, /truck/register）: TZ・位置(nth)指定で**送信直前まで充填成功**を確認
-  （空車地9/28 9時・行先地9/29 7時が確定）。
-  ⚠️ **実投稿は要調査**: 実送信すると成功判定は通るが /truck/list 全ページ走査で掲載が
-  見つからず＝**成功の誤検知**（実際には登録されていない）。送信時の必須項目不足
-  （担当者等）or 成功判定ロジックが truck フォームに合っていない可能性。残留掲載は無し。
-- Trabox 空車削除（delete_truck）: /truck/list を内容一致で特定し削除。ページャは
-  JSクリックで送る必要あり（sticky header 対策）。実削除の検証は登録が通ってから。
+- Trabox 空車自動化（trabox_truck.py, /truck/register）: **登録→削除の実E2E成功**（2026-07-25）。
+  - 原因だった「担当者(必須)未入力」を解決（空車フォームは変更チェックが無く、担当者
+    AutoComplete に直接入力）。送信成功判定も /truck/register からの遷移で厳密化。
+  - delete_truck: /truck/list を全ページ走査＋内容一致(空車地/行先地/空車日)で特定し、
+    data-row-key で JSクリック削除（sticky header 回避）。一致1件のみ削除で誤削除防止。
 - Firestore store: truck_postings / truck_posting_history（荷物と完全分離）。
 - poster: kind=="truck" で execute_truck_task（登録/削除）＋空車専用の結果メール。
 - ルーター/UI: /trucks/register（フォーム）・/trucks/（一覧）・/trucks/{id}/manage（管理・掲載終了）。
-- **次セッションの再開ポイント（Trabox 空車の実投稿を通す）**:
-  - 症状: 登録ボタン押下後も URL が /truck/register のまま遷移せず、確認モーダル/has-error 無し
-    → 送信が確定していない。掲載は作成されず（残留なし）。
-  - 最有力仮説: **担当者(行 index 8) が必須で空欄**。荷物フォームの「担当者を変更する」
-    チェックが空車フォームには無く、_set_contact_person が失敗（ドライランで「担当者設定スキップ」）。
-    → 空車フォーム用に担当者(ant-select autocomplete)を直接入力する処理を実装して再検証。
-  - 併せて _submit_truck の成功判定を「/truck/list への遷移 or 掲載出現」で厳密化する
-    （現在は generic テキスト一致で誤検知しうる）。
-  - 検証手順: 実投稿 → /truck/list を JSクリックでページ送りしながら内容一致で掲載確認
-    → delete_truck で削除（内容一致・1件のみ）。
-- 次: 上記が通ったら本番デプロイ → Phase 2（繰り返し登録＝Cloud Scheduler 日次マテリアライズ）。
+- **Phase 1 完了 ✅**: WebKit空車・Trabox空車とも 登録→削除の実E2E成功。
+  データ層・poster・ルーターUI(/trucks/*)・両プラットフォーム自動化すべて動作。
+- 次: feature/truck-availability を main へマージ → 本番デプロイ（ブラウザで /trucks/register を利用可能に）
+  → Phase 2（繰り返し登録＝Cloud Scheduler 日次マテリアライズ）。
 
 ### 次期機能：空車（トラック空き）投稿＋繰り返し登録
 - 設計書: `docs/空車機能設計_ver1.0.md`（調査結果・確定仕様・段階計画）
