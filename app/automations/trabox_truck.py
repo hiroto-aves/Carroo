@@ -151,12 +151,25 @@ class TraboxTruckAutomation(TraboxAutomation):
                 await prow.locator("input.ant-input").first.fill(
                     freight, timeout=TRABOX_TIMEOUTS["action"])
 
-            # --- 9. 担当者（任意） ---
-            if td.get("contact_name"):
-                try:
-                    await self._set_contact_person(page, str(td["contact_name"]))
-                except Exception as ce:
-                    logger.warning(f"[Trabox空車] 担当者設定スキップ: {ce}")
+            # --- 9. 担当者（必須）: 行 index 8 の AutoComplete に直接入力 ---
+            #    🔴 空車フォームは荷物と違い「担当者を変更する」チェックが無く、担当者名が
+            #    未入力だと「担当者名を入力してください」で送信できない。必ず入力する。
+            contact = str(td.get("contact_name") or "担当").strip()
+            crow = rows.nth(8)
+            cinput = crow.locator("input[type='search'], input.ant-input, input").first
+            await cinput.click(timeout=TRABOX_TIMEOUTS["action"])
+            await cinput.fill(contact, timeout=TRABOX_TIMEOUTS["action"])
+            await page.wait_for_timeout(300)
+            await page.keyboard.press("Tab")
+            await page.wait_for_timeout(300)
+            if not (await cinput.input_value()):
+                # AutoComplete がブラーで消える場合は Enter 確定
+                await cinput.click(timeout=TRABOX_TIMEOUTS["action"])
+                await cinput.fill(contact, timeout=TRABOX_TIMEOUTS["action"])
+                await page.wait_for_timeout(300)
+                await page.keyboard.press("Enter")
+                await page.wait_for_timeout(300)
+            logger.info(f"[Trabox空車] 担当者入力: {contact}")
 
             # --- 10. 備考（任意。行 index 9） ---
             if td.get("remarks"):
@@ -228,25 +241,49 @@ class TraboxTruckAutomation(TraboxAutomation):
                                              timeout=TRABOX_TIMEOUTS["navigation"])
                 await page.wait_for_timeout(1500)
 
-                rows = page.locator("tr.ant-table-row")
-                n = await rows.count()
-                matches = []
-                for i in range(n):
-                    row = rows.nth(i)
-                    txt = (await row.inner_text()).replace("\n", " ")
-                    if all(nd in txt for nd in needles) and vacant_pref in txt and dest_pref in txt:
-                        matches.append(i)
-                logger.info(f"[Trabox空車削除] 一致行数={len(matches)} needles={needles}")
-                if len(matches) == 0:
+                # 🔴 一覧はページネーションあり＋sticky header がクリックを阻む。
+                #    全ページを走査し、内容一致の行を探す。一致は 1 件のみで削除（誤削除防止）。
+                match_key = None
+                total_matches = 0
+                for _pg in range(1, 15):
+                    rows = page.locator("tr.ant-table-row")
+                    n = await rows.count()
+                    for i in range(n):
+                        txt = (await rows.nth(i).inner_text()).replace("\n", " ")
+                        if (all(nd in txt for nd in needles)
+                                and vacant_pref in txt and dest_pref in txt):
+                            total_matches += 1
+                            match_key = await rows.nth(i).get_attribute("data-row-key")
+                    # 次ページへ（JSクリックで sticky header を回避）
+                    moved = await page.evaluate(
+                        "() => {const ns=[...document.querySelectorAll('li.ant-pagination-next')];"
+                        "const nx=ns[ns.length-1];"
+                        "if(!nx||nx.classList.contains('ant-pagination-disabled'))return false;"
+                        "(nx.querySelector('button')||nx).click();return true;}"
+                    )
+                    if not moved:
+                        break
+                    await page.wait_for_timeout(1500)
+
+                logger.info(f"[Trabox空車削除] 一致件数={total_matches} needles={needles} key={match_key}")
+                if total_matches == 0:
                     return {"status": "success", "platform": "trabox",
                             "message": "該当掲載なし（既に削除済みとみなす）"}
-                if len(matches) > 1:
+                if total_matches > 1:
                     return {"status": "error", "platform": "trabox",
-                            "message": f"一致が{len(matches)}件あり安全のため削除中止。手動で削除してください"}
+                            "message": f"一致が{total_matches}件あり安全のため削除中止。手動で削除してください"}
 
-                row = rows.nth(matches[0])
-                await row.locator("button:has-text('削除')").first.click(
-                    timeout=TRABOX_TIMEOUTS["action"])
+                # 該当行を data-row-key で特定して削除（JSクリックで sticky header 回避）
+                await page.evaluate(
+                    """(key) => {
+                      const row=document.querySelector(`tr[data-row-key="${key}"]`);
+                      if(!row) return false;
+                      const btns=[...row.querySelectorAll('button')];
+                      const del=btns.find(b=>(b.textContent||'').includes('削除'));
+                      if(del){del.click();return true;}
+                      return false;
+                    }""", match_key)
+                await page.wait_for_timeout(800)
                 # 確認モーダル
                 try:
                     await page.locator(
@@ -255,7 +292,7 @@ class TraboxTruckAutomation(TraboxAutomation):
                     ).first.click(timeout=5000)
                 except Exception:
                     pass
-                await page.wait_for_timeout(1500)
+                await page.wait_for_timeout(1800)
                 logger.info("[Trabox空車削除] 削除完了")
                 return {"status": "success", "platform": "trabox",
                         "message": "Trabox の空車掲載を削除しました"}
@@ -268,20 +305,46 @@ class TraboxTruckAutomation(TraboxAutomation):
                 await browser.close()
 
     async def _submit_truck(self, page) -> None:
-        """登録ボタン→確認モーダル→成功判定（荷物の送信ロジックを踏襲）。"""
+        """登録ボタン→確認モーダル→成功判定。
+        🔴 成功判定は「/truck/register から遷移したか」で厳密に行う（generic テキスト
+        一致は誤検知しうる）。遷移しない場合はバリデーションエラーを収集して例外にする。"""
         await self.debug_capture.capture_screenshot("truck_before_submit")
         await page.click(M.SUBMIT_BUTTON_SELECTOR, timeout=TRABOX_TIMEOUTS["action"])
+        # 確認モーダルがあれば確定
         try:
-            confirm = page.locator(".ant-modal:visible button.ant-btn-primary").first
+            confirm = page.locator(
+                ".ant-modal:visible button.ant-btn-primary, "
+                ".ant-modal:visible button.ant-btn-dangerous"
+            ).first
             await confirm.click(timeout=5000)
             logger.info("[Trabox空車] 確認モーダルで確定")
         except Exception:
             pass
+        # 遷移待ち（/truck/register から離れれば成功）
         try:
-            await page.wait_for_load_state("domcontentloaded",
-                                           timeout=TRABOX_TIMEOUTS["navigation"])
+            await page.wait_for_url(
+                lambda url: "/truck/register" not in url,
+                timeout=TRABOX_TIMEOUTS["navigation"],
+            )
         except Exception:
-            await page.wait_for_timeout(2000)
-        if not await self._check_submission_success(page):
-            await self.debug_capture.capture_screenshot("truck_submit_uncertain")
-            raise Exception("Trabox 空車の送信に失敗（成功メッセージ/遷移なし）")
+            pass
+        await page.wait_for_timeout(1000)
+
+        if "/truck/register" not in page.url:
+            logger.info(f"[Trabox空車] 送信成功（遷移先={page.url}）")
+            return
+
+        # まだ登録ページ = 送信不成立。バリデーションエラーを収集して報告
+        errs = []
+        try:
+            rows = page.locator(".tbx-form-item.has-validation-error, "
+                                ".tbx-form-item:has(.ant-form-item-explain-error)")
+            for i in range(min(await rows.count(), 6)):
+                t = (await rows.nth(i).inner_text()).replace("\n", " ").strip()
+                if t:
+                    errs.append(t[:60])
+        except Exception:
+            pass
+        await self.debug_capture.capture_screenshot("truck_submit_failed")
+        detail = " / ".join(errs) if errs else "原因不明（遷移せず）"
+        raise Exception(f"Trabox 空車の送信に失敗：{detail}")
