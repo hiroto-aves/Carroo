@@ -331,10 +331,11 @@ def ensure_seed_admin(hash_password_fn) -> None:
 #   ID は counters の "truck_postings" で採番（荷物 cases とは別系列）
 # ============================================================
 
-def create_truck(user_id: int, data: Dict[str, Any]) -> int:
+def create_truck(user_id: int, data: Dict[str, Any], tenant_id: str = "takeuchi") -> int:
     tid = _next_id("truck_postings")
     doc = dict(data)
     doc["user_id"] = int(user_id)
+    doc["tenant_id"] = tenant_id   # Stage 0: マルチテナント対応レディ
     doc["created_at"] = _now()
     _db().collection("truck_postings").document(str(tid)).set(doc)
     return tid
@@ -459,3 +460,86 @@ def list_truck_history(truck_id: int) -> List[Dict[str, Any]]:
         rows.append(d)
     rows.sort(key=lambda r: r["id"], reverse=True)
     return rows
+
+
+# ============================================================
+# 繰り返しルール（truck_schedules）＋ マテリアライズ重複防止
+#   Phase 2。Stage 0 として tenant_id を全書き込みに保持する。
+# ============================================================
+
+def create_schedule(user_id: int, data: Dict[str, Any], tenant_id: str = "takeuchi") -> int:
+    sid = _next_id("truck_schedules")
+    doc = dict(data)
+    doc["user_id"] = int(user_id)
+    doc["tenant_id"] = tenant_id
+    doc["status"] = data.get("status", "active")
+    doc["created_at"] = _now()
+    _db().collection("truck_schedules").document(str(sid)).set(doc)
+    return sid
+
+
+def get_schedule(schedule_id: int, user_id: int = None) -> Optional[Dict[str, Any]]:
+    snap = _db().collection("truck_schedules").document(str(schedule_id)).get()
+    if not snap.exists:
+        return None
+    d = snap.to_dict()
+    if user_id is not None and int(d.get("user_id")) != int(user_id):
+        return None
+    d["id"] = int(snap.id)
+    return d
+
+
+def update_schedule(schedule_id: int, user_id: int, fields: Dict[str, Any]) -> bool:
+    ref = _db().collection("truck_schedules").document(str(schedule_id))
+    snap = ref.get()
+    if not snap.exists or int(snap.to_dict().get("user_id")) != int(user_id):
+        return False
+    ref.set(fields, merge=True)
+    return True
+
+
+def delete_schedule(schedule_id: int, user_id: int) -> bool:
+    ref = _db().collection("truck_schedules").document(str(schedule_id))
+    snap = ref.get()
+    if not snap.exists or int(snap.to_dict().get("user_id")) != int(user_id):
+        return False
+    ref.delete()
+    return True
+
+
+def list_schedules(is_admin: bool, user_id: int) -> List[Dict[str, Any]]:
+    col = _db().collection("truck_schedules")
+    docs = col.stream() if is_admin else col.where("user_id", "==", int(user_id)).stream()
+    rows = []
+    for s in docs:
+        d = s.to_dict()
+        d["id"] = int(s.id)
+        rows.append(d)
+    rows.sort(key=lambda r: r.get("created_at", ""), reverse=True)
+    return rows
+
+
+def list_active_schedules(tenant_id: str = None) -> List[Dict[str, Any]]:
+    """マテリアライズ対象＝status==active のルール（任意で tenant で絞る）。"""
+    col = _db().collection("truck_schedules").where("status", "==", "active")
+    if tenant_id:
+        col = col.where("tenant_id", "==", tenant_id)
+    rows = []
+    for s in col.stream():
+        d = s.to_dict()
+        d["id"] = int(s.id)
+        rows.append(d)
+    return rows
+
+
+def mark_materialized(schedule_id: int, vacant_date: str) -> bool:
+    """(schedule_id, vacant_date) を「生成済み」として記録。
+    まだ未生成なら True（今回生成すべき）、既に生成済みなら False を返す。
+    doc id を一意キーにし、存在チェック→作成で冪等にする（日次・単一実行前提）。"""
+    doc_id = f"{schedule_id}_{vacant_date}"
+    ref = _db().collection("schedule_materialized").document(doc_id)
+    if ref.get().exists:
+        return False
+    ref.set({"schedule_id": int(schedule_id), "vacant_date": vacant_date,
+             "created_at": _now()})
+    return True
