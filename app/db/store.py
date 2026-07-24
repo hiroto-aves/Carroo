@@ -140,13 +140,36 @@ def upsert_credentials(user_id: int, fields: Dict[str, Any]) -> None:
 
 # ============ cases ============
 
-def create_case(user_id: int, data: Dict[str, Any]) -> int:
+def create_case(user_id: int, data: Dict[str, Any], group_id: int = None,
+                tenant_id: str = "takeuchi") -> int:
     cid = _next_id("cases")
     doc = dict(data)
     doc["user_id"] = int(user_id)
+    doc["tenant_id"] = tenant_id   # Stage 0: マルチテナント対応レディ
+    if group_id is not None:
+        doc["group_id"] = int(group_id)  # 複数日程一括投稿のグループ束ね
     doc["created_at"] = _now()
     _db().collection("cases").document(str(cid)).set(doc)
     return cid
+
+
+def next_group_id() -> int:
+    """複数日程一括投稿のグループID採番。"""
+    return _next_id("case_groups")
+
+
+def list_group_cases(group_id: int, user_id: int = None) -> List[Dict[str, Any]]:
+    """同一グループ（複数日程）の案件一覧。"""
+    col = _db().collection("cases").where("group_id", "==", int(group_id))
+    rows = []
+    for s in col.stream():
+        d = s.to_dict()
+        if user_id is not None and int(d.get("user_id")) != int(user_id):
+            continue
+        d["id"] = int(s.id)
+        rows.append(d)
+    rows.sort(key=lambda c: c.get("pickup_date", ""))
+    return rows
 
 
 def get_case(case_id: int, user_id: int = None) -> Optional[Dict[str, Any]]:

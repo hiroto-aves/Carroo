@@ -249,6 +249,7 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
                                     </div>
                                 </div>
                             </div>
+                            MULTIDATE_UI
 
                             <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
                                 <div>
@@ -530,14 +531,105 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
     </body>
     </html>
     """
+    # 複数日程一括投稿（FEATURE_MULTIDATE 有効時のみ UI を差し込む。オプション機能）
+    from app.tenancy import feature_enabled
+    multidate_ui = _MULTIDATE_UI if feature_enabled("multidate") else ""
     return (
-        html.replace("PREF_OPTIONS", pref_options)
+        html.replace("MULTIDATE_UI", multidate_ui)
+        .replace("PREF_OPTIONS", pref_options)
         .replace("WEIGHT_OPTIONS", weight_options)
         .replace("SHAPE_OPTIONS", shape_options)
         .replace("CONTACT_NAME_VALUE", contact["name"])
         .replace("CONTACT_PHONE_VALUE", contact["phone"])
         .replace("CONTACT_EMAIL_VALUE", contact["email"])
     )
+
+
+# 複数日程一括投稿 UI（FEATURE_MULTIDATE）。上の積み/着 日時が「1本目」、
+# 追加行が別日程。送信時に JS が date_variants(JSON) にまとめる。
+_MULTIDATE_UI = """
+<div class="mb-6 border border-purple-200 rounded-lg p-4 bg-purple-50">
+  <label class="flex items-center gap-2 font-medium text-purple-800">
+    <input type="checkbox" id="md_toggle"> 複数日程で一括登録する（急ぎ・日程が柔軟なとき）
+  </label>
+  <p class="text-xs text-purple-700 mt-1 ml-6">上の「積み日時・着日時」が1本目です。別日程を追加すると、同じ荷物を各日程で同時に投稿します。1件決まったら残りを一括で取り下げできます（最大5日程）。</p>
+  <div id="md_area" class="hidden mt-3">
+    <div id="md_rows" class="space-y-2"></div>
+    <button type="button" id="md_add" class="mt-2 text-sm text-purple-700 border border-purple-300 rounded px-3 py-1 hover:bg-purple-100">＋ 日程を追加</button>
+  </div>
+  <input type="hidden" name="date_variants" id="date_variants">
+</div>
+<script>
+(function(){
+  const toggle=document.getElementById('md_toggle');
+  const area=document.getElementById('md_area'), rowsEl=document.getElementById('md_rows');
+  const addBtn=document.getElementById('md_add'), hidden=document.getElementById('date_variants');
+  const form=document.querySelector('form[action="/cases/register"]');
+  if(!toggle||!form) return;
+  function addRow(){
+    const el=document.createElement('div');
+    el.className='md-row flex flex-wrap items-center gap-2 bg-white p-2 rounded border';
+    el.innerHTML='<input type="date" class="md-pd border rounded px-2 py-1">'+
+      '<input type="time" class="md-pt border rounded px-2 py-1">'+
+      '<span class="text-gray-400">積 →</span>'+
+      '<input type="date" class="md-dd border rounded px-2 py-1">'+
+      '<input type="time" class="md-dt border rounded px-2 py-1"><span class="text-gray-400">卸</span>'+
+      '<button type="button" class="md-del text-red-500 ml-1 px-2">×</button>';
+    el.querySelector('.md-del').addEventListener('click',()=>el.remove());
+    rowsEl.appendChild(el);
+  }
+  toggle.addEventListener('change',()=>{ area.classList.toggle('hidden',!toggle.checked);
+    if(toggle.checked && rowsEl.children.length===0) addRow(); });
+  addBtn.addEventListener('click',addRow);
+  form.addEventListener('submit',()=>{
+    if(!toggle.checked){ hidden.value=''; return; }
+    const g=(n)=>{const el=form.querySelector('[name="'+n+'"]'); return el?el.value:'';};
+    const arr=[{pickup_date:g('pickup_date'),pickup_time:g('pickup_time'),drop_date:g('drop_date'),drop_time:g('drop_time')}];
+    rowsEl.querySelectorAll('.md-row').forEach(r=>{
+      const pd=r.querySelector('.md-pd').value,pt=r.querySelector('.md-pt').value,
+            dd=r.querySelector('.md-dd').value,dt=r.querySelector('.md-dt').value;
+      if(pd&&pt&&dd&&dt) arr.push({pickup_date:pd,pickup_time:pt,drop_date:dd,drop_time:dt});
+    });
+    hidden.value=JSON.stringify(arr);
+  });
+})();
+</script>
+"""
+
+def _batch_result_page(case_ids, group_id, pick_location, drop_location,
+                        variants, want_trabox, want_webkit) -> HTMLResponse:
+    """複数日程一括登録の結果ページ（各日程の案件IDとグループ管理導線）。"""
+    plats = "・".join([p for p, w in (("トラボックス", want_trabox), ("WebKit", want_webkit)) if w]) or "なし"
+    rows = ""
+    for cid, v in zip(case_ids, variants):
+        rows += (f'<tr class="border-b"><td class="px-3 py-2 font-mono">{cid}</td>'
+                 f'<td class="px-3 py-2">{v["pickup_date"]} {v["pickup_time"]} 積 → '
+                 f'{v["drop_date"]} {v["drop_time"]} 卸</td>'
+                 f'<td class="px-3 py-2"><a href="/cases/{cid}/manage" class="text-blue-600 hover:underline">状況</a></td></tr>')
+    return HTMLResponse(f"""<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Carroo - 一括登録完了</title>
+<script src="https://cdn.tailwindcss.com"></script></head><body class="bg-gray-50">
+<nav class="bg-white shadow-sm border-b"><div class="max-w-7xl mx-auto px-4 flex justify-between h-16 items-center">
+<a href="/dashboard/" class="text-2xl font-bold text-blue-600">📦 Carroo</a>
+<a href="/auth/logout" class="text-red-600">ログアウト</a></div></nav>
+<div class="max-w-2xl mx-auto px-4 py-10">
+  <div class="bg-white rounded-2xl shadow p-8">
+    <div class="text-center mb-6"><div class="text-5xl mb-2">✅</div>
+      <h1 class="text-2xl font-bold">{len(case_ids)}件の日程で一括登録しました</h1>
+      <p class="text-gray-600 mt-1">{pick_location} → {drop_location}／投稿先 {plats}</p></div>
+    <table class="w-full text-sm mb-6"><thead class="bg-gray-100 text-left text-gray-600">
+      <tr><th class="px-3 py-2">案件ID</th><th class="px-3 py-2">日程</th><th class="px-3 py-2"></th></tr></thead>
+      <tbody>{rows}</tbody></table>
+    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800 mb-6">
+      💡 1件が成約したら、<b>グループ管理画面から残りをまとめて取り下げ</b>できます（二重成約防止）。
+    </div>
+    <div class="flex gap-3 justify-center">
+      <a href="/cases/group/{group_id}" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-lg">グループを管理</a>
+      <a href="/cases/register" class="bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold py-2.5 px-6 rounded-lg">続けて登録</a>
+    </div>
+  </div>
+</div></body></html>""")
+
 
 @router.post("/register")
 async def register_case(
@@ -576,6 +668,9 @@ async def register_case(
     contact_method: Optional[str] = Form(None),
     visibility: Optional[str] = Form(None),
     remarks: Optional[str] = Form(None),
+    # --- 複数日程一括投稿（FEATURE_MULTIDATE）: JSON配列
+    #     [{"pickup_date","pickup_time","drop_date","drop_time"}, ...] ---
+    date_variants: Optional[str] = Form(None),
     current_user: dict = Depends(get_current_user),
 ):
     """
@@ -678,45 +773,71 @@ async def register_case(
             }.items() if v not in (None, "")
         }
 
-        # Step 1: 案件データを Firestore に保存（extras は map で保持。contact_name=登録者名）
-        case_id = store.create_case(user_id, {
-            "pick_location": pick_location, "drop_location": drop_location,
-            "cargo_weight": cargo_weight, "vehicle_type": vehicle_type,
-            "freight_rate": freight_rate, "pickup_date": pickup_date,
-            "pickup_time": pickup_time, "contact_name": contact_name,
-            "contact_phone": contact_phone, "contact_email": contact_email,
-            "extras": extras,
-        })
+        # --- 複数日程一括投稿（FEATURE_MULTIDATE）: date_variants があれば
+        #     日時だけ違う N 件を group_id で束ねて生成・投稿する。
+        #     無ければ従来どおり単発（フォームの pickup/drop 日時 1本）。---
+        from app.tenancy import feature_enabled, current_tenant_id
+        import json as _json
 
-        # Step 2: 投稿用データを構築（拡張キーはフラットにマージ）
-        case_data = {
-            "case_id": case_id,
-            "user_id": user_id,
-            "pick_location": pick_location,
-            "drop_location": drop_location,
-            "cargo_weight": cargo_weight,
-            "vehicle_type": vehicle_type,
-            "freight_rate": freight_rate,
-            "pickup_date": pickup_date,
-            "pickup_time": pickup_time,
-            "contact_name": contact_name,
-            "contact_phone": contact_phone,
-            "contact_email": contact_email,
-            "post_to_trabox": want_trabox,
-            "post_to_webkit": want_webkit,
-            **extras,
-        }
+        variants = [{"pickup_date": pickup_date, "pickup_time": pickup_time,
+                     "drop_date": drop_date, "drop_time": drop_time}]
+        if date_variants and feature_enabled("multidate", current_user):
+            try:
+                parsed = _json.loads(date_variants)
+                cleaned = []
+                for v in parsed:
+                    if v.get("pickup_date") and v.get("pickup_time") \
+                            and v.get("drop_date") and v.get("drop_time"):
+                        cleaned.append({
+                            "pickup_date": v["pickup_date"], "pickup_time": v["pickup_time"],
+                            "drop_date": v["drop_date"], "drop_time": v["drop_time"]})
+                if cleaned:
+                    variants = cleaned[:5]  # 上限5日程（スパム/コスト防止）
+            except Exception as e:
+                logger.warning(f"date_variants 解析失敗（単発として続行）: {e}")
 
-        # Step 3: Cloud Tasks にタスク追加（0.1秒で返す）
+        tenant_id = current_tenant_id(current_user)
+        group_id = store.next_group_id() if len(variants) > 1 else None
         task_client = get_task_client()
-        task_name = task_client.add_posting_task(case_data, user_id)
-        logger.info(f"✅ タスク追加: Case ID {case_id} → {task_name}")
 
-        # Step 4: posting_history に「pending」状態で記録（追記式）
-        if want_trabox:
-            store.add_posting_event(case_id, "trabox", "register", "pending")
-        if want_webkit:
-            store.add_posting_event(case_id, "webkit", "register", "pending")
+        def _create_and_enqueue(v: dict) -> int:
+            extras_v = dict(extras)
+            extras_v["drop_date"] = v["drop_date"]
+            extras_v["drop_time"] = v["drop_time"]
+            cid = store.create_case(user_id, {
+                "pick_location": pick_location, "drop_location": drop_location,
+                "cargo_weight": cargo_weight, "vehicle_type": vehicle_type,
+                "freight_rate": freight_rate, "pickup_date": v["pickup_date"],
+                "pickup_time": v["pickup_time"], "contact_name": contact_name,
+                "contact_phone": contact_phone, "contact_email": contact_email,
+                "extras": extras_v,
+            }, group_id=group_id, tenant_id=tenant_id)
+            case_data = {
+                "case_id": cid, "user_id": user_id,
+                "pick_location": pick_location, "drop_location": drop_location,
+                "cargo_weight": cargo_weight, "vehicle_type": vehicle_type,
+                "freight_rate": freight_rate,
+                "pickup_date": v["pickup_date"], "pickup_time": v["pickup_time"],
+                "contact_name": contact_name, "contact_phone": contact_phone,
+                "contact_email": contact_email,
+                "post_to_trabox": want_trabox, "post_to_webkit": want_webkit,
+                **extras_v,
+            }
+            task_client.add_posting_task(case_data, user_id)
+            if want_trabox:
+                store.add_posting_event(cid, "trabox", "register", "pending")
+            if want_webkit:
+                store.add_posting_event(cid, "webkit", "register", "pending")
+            logger.info(f"✅ タスク追加: Case ID {cid} (group={group_id})")
+            return cid
+
+        case_ids = [_create_and_enqueue(v) for v in variants]
+        case_id = case_ids[0]
+
+        # 複数日程の場合は一括結果ページを返す
+        if len(case_ids) > 1:
+            return _batch_result_page(case_ids, group_id, pick_location,
+                                      drop_location, variants, want_trabox, want_webkit)
 
         # Step 5: 結果画面を返す（投稿処理は背景で実行される）
         platforms = []
@@ -957,6 +1078,87 @@ async def case_delete(case_id: int, platforms: str = Form(...),
         "action": "delete", "user_id": user_id, "case_id": case_id, "platforms": plats,
     })
     return HTMLResponse(f'<meta http-equiv="refresh" content="0; url=/cases/{case_id}/manage">')
+
+
+@router.get("/group/{group_id}", response_class=HTMLResponse)
+async def case_group_page(group_id: int, current_user: dict = Depends(get_current_user)):
+    """複数日程一括投稿グループの管理（各日程の状態＋一括取り下げ）。"""
+    from app.db import store
+    user_id = current_user["id"]
+    is_admin = current_user.get("is_admin")
+    cases = store.list_group_cases(group_id, None if is_admin else user_id)
+    if not cases:
+        raise HTTPException(status_code=404, detail="グループが見つかりません")
+
+    _badge = {"live": ("掲載中", "text-green-700 bg-green-50"),
+              "working": ("処理中", "text-blue-700 bg-blue-50"),
+              "error": ("エラー", "text-red-700 bg-red-50"),
+              "deleted": ("取下げ", "text-gray-500 bg-gray-100"),
+              "none": ("—", "text-gray-400 bg-gray-50")}
+    rows = ""
+    for c in cases:
+        cid = c["id"]
+        tb = _badge[store.get_platform_state(cid, "trabox")]
+        wk = _badge[store.get_platform_state(cid, "webkit")]
+        ex = c.get("extras") or {}
+        rows += (f'<tr class="border-b"><td class="px-3 py-2 font-mono">{cid}</td>'
+                 f'<td class="px-3 py-2">{c.get("pickup_date","")} {c.get("pickup_time","")} 積 → '
+                 f'{ex.get("drop_date","")} {ex.get("drop_time","")} 卸</td>'
+                 f'<td class="px-3 py-2"><span class="text-xs px-2 py-0.5 rounded {tb[1]}">トラボックス {tb[0]}</span> '
+                 f'<span class="text-xs px-2 py-0.5 rounded {wk[1]}">WebKit {wk[0]}</span></td>'
+                 f'<td class="px-3 py-2 text-sm"><a href="/cases/{cid}/manage" class="text-blue-600 hover:underline">個別</a>'
+                 f' <button onclick="keepOne({cid})" class="ml-2 text-amber-700 hover:underline">これで成約→他を取下げ</button></td></tr>')
+    c0 = cases[0]
+    return HTMLResponse(f"""<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>グループ #{group_id}</title>
+<script src="https://cdn.tailwindcss.com"></script></head><body class="bg-gray-50">
+<nav class="bg-white shadow-sm border-b"><div class="max-w-7xl mx-auto px-4 flex justify-between h-16 items-center">
+<a href="/dashboard/" class="text-2xl font-bold text-blue-600">📦 Carroo</a>
+<a href="/auth/logout" class="text-red-600">ログアウト</a></div></nav>
+<div class="max-w-4xl mx-auto px-4 py-8">
+  <h1 class="text-2xl font-bold mb-1">複数日程グループ #{group_id}</h1>
+  <p class="text-gray-600 mb-4">{c0.get('pick_location','')} → {c0.get('drop_location','')}／{len(cases)}日程</p>
+  <div class="bg-white rounded-lg shadow overflow-x-auto mb-4">
+    <table class="w-full text-sm"><thead class="bg-gray-100 text-left text-gray-600">
+      <tr><th class="px-3 py-2">案件ID</th><th class="px-3 py-2">日程</th><th class="px-3 py-2">掲載状態</th><th class="px-3 py-2"></th></tr>
+    </thead><tbody>{rows}</tbody></table>
+  </div>
+  <button onclick="cancelAll()" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 px-6 rounded-lg">全ての日程を取り下げる</button>
+</div>
+<script>
+async function keepOne(keep){{ if(!confirm('この日程で成約とし、他の日程の掲載を取り下げますか？'))return;
+  await fetch('/cases/group/{group_id}/cancel',{{method:'POST',body:new URLSearchParams({{keep}})}}); location.reload(); }}
+async function cancelAll(){{ if(!confirm('このグループの全ての掲載を取り下げますか？'))return;
+  await fetch('/cases/group/{group_id}/cancel',{{method:'POST'}}); location.reload(); }}
+</script></body></html>""")
+
+
+@router.post("/group/{group_id}/cancel")
+async def case_group_cancel(group_id: int, keep: Optional[int] = Form(None),
+                            current_user: dict = Depends(get_current_user)):
+    """グループの掲載を一括取り下げ。keep 指定時はその案件を残して他を取り下げる。"""
+    from app.db import store
+    user_id = current_user["id"]
+    cases = store.list_group_cases(group_id, None if current_user.get("is_admin") else user_id)
+    if not cases:
+        raise HTTPException(status_code=404, detail="グループが見つかりません")
+    cancelled = 0
+    for c in cases:
+        cid = c["id"]
+        if keep is not None and int(cid) == int(keep):
+            continue
+        # 現在 live/error のプラットフォームだけ取り下げる
+        plats = [p for p in ("trabox", "webkit")
+                 if store.get_platform_state(cid, p) in ("live", "error")]
+        if not plats:
+            continue
+        for p in plats:
+            store.add_posting_event(cid, p, "delete", "pending")
+        get_task_client().add_task({
+            "action": "delete", "user_id": c["user_id"], "case_id": cid, "platforms": plats,
+        })
+        cancelled += 1
+    return {"status": "ok", "cancelled": cancelled}
 
 
 @router.get("/{case_id}/edit", response_class=HTMLResponse)
