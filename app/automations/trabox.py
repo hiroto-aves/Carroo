@@ -719,7 +719,8 @@ class TraboxAutomation:
             # --- 8. 総重量（任意・kg）: 実際の荷物重量を記載 ---
             if case_data.get("cargo_weight"):
                 try:
-                    weight_input = modal.locator(
+                    # 🔴 登録フローは page 直下（編集フローの modal スコープではない）
+                    weight_input = page.locator(
                         f"{M.row_selector('総重量')} input.ant-input"
                     ).first
                     await weight_input.fill(
@@ -845,104 +846,131 @@ class TraboxAutomation:
         trigger = base.locator(
             f"{M.row_selector(row_label)} .ui-datetime-select"
         ).first
-        try:
-            await trigger.click(timeout=TRABOX_TIMEOUTS["action"])
-        except Exception:
-            # お知らせモーダル等に被られた場合はイベント直接ディスパッチで開く
-            logger.warning(f"[Trabox] {row_label} 通常クリック失敗 → dispatch_event")
-            await trigger.dispatch_event("click")
 
-        # 表示中のカレンダードロップダウンを特定
-        dropdown = page.locator(
-            f"{M.VISIBLE_DROPDOWN}:has(.datetime-container)"
-        ).first
-        await dropdown.wait_for(state="visible", timeout=TRABOX_TIMEOUTS["action"])
-
-        # 表示月が違う場合は矢印ボタンで移動（最大12回 = 1年分で打ち切り）
+        # 確定検証用: 期待する「月/日」断片（例 2026-09-20 → "9/20"）。
+        # トリガー表示は '9/20(日) 9時00分' のような形式なので、この断片が含まれ、
+        # かつ "選択" 文言が無ければ確定成功とみなす。
+        _y, _m, _d = date_str.split("-")
+        expected_md = f"{int(_m)}/{int(_d)}"
         target_title = M.month_title(date_str)
-        for _ in range(12):
-            title = (
-                await dropdown.locator(".calendar-header__title__text").inner_text()
-            ).strip()
-            if title == target_title:
-                break
-            cur = _re.match(r"(\d+)年\s*(\d+)月", title)
-            tgt = _re.match(r"(\d+)年\s*(\d+)月", target_title)
-            if not cur or not tgt:
-                break
-            go_next = (int(tgt.group(1)), int(tgt.group(2))) > (
-                int(cur.group(1)), int(cur.group(2))
-            )
-            buttons = dropdown.locator(".calendar-header__button button")
-            await buttons.nth(1 if go_next else 0).click()
-            await page.wait_for_timeout(200)
 
-        # 日付セルをクリック（過去日等は disabled でクリック不可）
-        cell = dropdown.locator(
-            f"td.ant-picker-cell[title='{date_str}']"
-            ":not(.ant-picker-cell-disabled)"
-        )
-        await cell.first.click(timeout=TRABOX_TIMEOUTS["action"])
-        logger.info(f"[Trabox] {row_label} 日付選択: {date_str}")
-        # 🔴 日付クリックが Vue コンポーネントのモデルに反映されるのを待つ。
-        #    待機せず直後に時刻メニューを押すと、time handler が未確定の日付
-        #    （dateValue undefined）を読んで例外を投げ、日付が空のまま送信されて
-        #    バリデーション失敗になる（headless で顕著なレース）。
-        await page.wait_for_timeout(500)
+        async def _committed() -> bool:
+            try:
+                txt = (await trigger.inner_text()).strip()
+            except Exception:
+                return False
+            return expected_md in txt and "選択" not in txt
 
-        # 時刻メニュー（「9時」「00分」または「午前」「午後」等）
-        if time_labels:
-            for label in time_labels:
-                item = dropdown.locator(
-                    ".time-dropdown-menu-item", has_text=_re.compile(f"^{label}$")
-                )
-                try:
-                    await item.first.click(timeout=TRABOX_TIMEOUTS["action"])
-                    logger.info(f"[Trabox] {row_label} 時刻選択: {label}")
-                except Exception as te:
-                    logger.warning(f"[Trabox] {row_label} 時刻選択失敗（{label}）: {te}")
+        async def _attempt() -> None:
+            # 🔴 前の日時ドロップダウンが DOM に残っていると誤って掴む（遅い環境で顕著な
+            #    競合）。開く前に既存の表示中ドロップダウンが消えるのを待つ。
+            try:
+                stale = page.locator(f"{M.VISIBLE_DROPDOWN}:has(.datetime-container)")
+                if await stale.count():
+                    await page.mouse.click(3, 3)
+                    await stale.first.wait_for(state="hidden", timeout=3000)
+            except Exception:
+                pass
 
-        # ドロップダウンを閉じる
-        # 🔴 編集ドロワーのカレンダーは「確定」ボタン付きインライン表示。
-        #    確定ボタンがあればクリックして確定する。
-        # 🔴 登録ページのカレンダーには確定ボタンが無い。以前は Escape で閉じていたが、
-        #    ant-design の date picker は Escape で「選択中の日付をキャンセル」してしまい、
-        #    headless 環境では日付が未確定のまま（"日時を選択してください" のバリデーション
-        #    エラー）になり送信に失敗していた。そのため Escape ではなく
-        #    「ドロップダウン外の中立な領域をクリック」して blur で値を確定させる。
-        confirm_btn = dropdown.locator("button:has-text('確定')")
-        if await confirm_btn.count() and await confirm_btn.first.is_visible():
-            await confirm_btn.first.click(timeout=TRABOX_TIMEOUTS["action"])
-            logger.info(f"[Trabox] {row_label} カレンダー確定")
-        else:
-            # 外側クリックで確定（左上余白。ナビ等に当たらない安全な座標）
-            await page.mouse.click(3, 3)
-            await page.wait_for_timeout(200)
-            # 念のため、まだ開いていれば trigger 再クリックで閉じる
-            if await dropdown.is_visible():
+            try:
                 await trigger.click(timeout=TRABOX_TIMEOUTS["action"])
-        await page.wait_for_timeout(300)
+            except Exception:
+                logger.warning(f"[Trabox] {row_label} 通常クリック失敗 → dispatch_event")
+                await trigger.dispatch_event("click")
 
-        # 日付が確定されたか検証（placeholder のままなら未確定＝失敗の前兆）
-        try:
-            picked = (await trigger.inner_text()).strip()
-            if not picked or "選択" in picked:
-                logger.warning(
-                    f"[Trabox] {row_label} 日付が未確定の可能性: '{picked}'"
+            dropdown = page.locator(
+                f"{M.VISIBLE_DROPDOWN}:has(.datetime-container)"
+            ).first
+            await dropdown.wait_for(state="visible", timeout=TRABOX_TIMEOUTS["action"])
+
+            # 表示月を合わせる（最大12回 = 1年分）
+            for _ in range(12):
+                title = (
+                    await dropdown.locator(".calendar-header__title__text").inner_text()
+                ).strip()
+                if title == target_title:
+                    break
+                cur = _re.match(r"(\d+)年\s*(\d+)月", title)
+                tgt = _re.match(r"(\d+)年\s*(\d+)月", target_title)
+                if not cur or not tgt:
+                    break
+                go_next = (int(tgt.group(1)), int(tgt.group(2))) > (
+                    int(cur.group(1)), int(cur.group(2))
                 )
-            else:
-                logger.info(f"[Trabox] {row_label} 日時確定: {picked}")
-        except Exception:
-            pass
+                await dropdown.locator(".calendar-header__button button").nth(
+                    1 if go_next else 0
+                ).click()
+                await page.wait_for_timeout(200)
 
-        # 万一「入力途中の項目があります」警告が出た場合は「編集を続ける」で復帰
-        warn_continue = page.locator(
-            ".ant-modal-wrap:visible button:has-text('編集を続ける')"
-        )
-        if await warn_continue.count():
-            await warn_continue.first.click(timeout=TRABOX_TIMEOUTS["action"])
-            logger.info(f"[Trabox] 入力途中警告 → 編集を続けるで復帰")
+            # 日付セルをクリック（過去日等は disabled）
+            cell = dropdown.locator(
+                f"td.ant-picker-cell[title='{date_str}']"
+                ":not(.ant-picker-cell-disabled)"
+            )
+            await cell.first.scroll_into_view_if_needed(timeout=TRABOX_TIMEOUTS["action"])
+            await cell.first.click(timeout=TRABOX_TIMEOUTS["action"])
+            logger.info(f"[Trabox] {row_label} 日付選択: {date_str}")
+            # 日付クリックが Vue モデルに反映されるのを待つ（未反映で時刻を押すと
+            # time handler が dateValue undefined で落ちる）。
+            await page.wait_for_timeout(500)
+
+            # 時刻メニュー（「9時」「00分」/「午前」等）。遅い環境ではメニュー描画待ちが必要。
+            if time_labels:
+                for label in time_labels:
+                    item = dropdown.locator(
+                        ".time-dropdown-menu-item", has_text=_re.compile(f"^{label}$")
+                    ).first
+                    try:
+                        await item.wait_for(state="visible", timeout=TRABOX_TIMEOUTS["action"])
+                        await item.scroll_into_view_if_needed(timeout=TRABOX_TIMEOUTS["action"])
+                        await item.click(timeout=TRABOX_TIMEOUTS["action"])
+                        logger.info(f"[Trabox] {row_label} 時刻選択: {label}")
+                        await page.wait_for_timeout(150)
+                    except Exception as te:
+                        logger.warning(f"[Trabox] {row_label} 時刻選択失敗（{label}）: {te}")
+
+            # 閉じて確定。編集ドロワーは「確定」ボタン、登録ページは外側クリックで blur 確定。
+            # （Escape は ant-design が選択中日付をキャンセルするため使わない）
+            confirm_btn = dropdown.locator("button:has-text('確定')")
+            if await confirm_btn.count() and await confirm_btn.first.is_visible():
+                await confirm_btn.first.click(timeout=TRABOX_TIMEOUTS["action"])
+                logger.info(f"[Trabox] {row_label} カレンダー確定")
+            else:
+                await page.mouse.click(3, 3)
+                await page.wait_for_timeout(200)
+                if await dropdown.is_visible():
+                    await trigger.click(timeout=TRABOX_TIMEOUTS["action"])
             await page.wait_for_timeout(300)
+
+            # 「入力途中の項目があります」警告が出たら「編集を続ける」で復帰
+            warn_continue = page.locator(
+                ".ant-modal-wrap:visible button:has-text('編集を続ける')"
+            )
+            if await warn_continue.count():
+                await warn_continue.first.click(timeout=TRABOX_TIMEOUTS["action"])
+                logger.info("[Trabox] 入力途中警告 → 編集を続けるで復帰")
+                await page.wait_for_timeout(300)
+
+        # 🔴 確定検証つきリトライ（最大3回）。Cloud Run 等の遅い環境で日付が未確定の
+        #    まま送信されバリデーション失敗になる問題を、確定できるまで再試行して自己修復する。
+        for attempt in range(3):
+            await _attempt()
+            if await _committed():
+                logger.info(
+                    f"[Trabox] {row_label} 日時確定OK: "
+                    f"'{(await trigger.inner_text()).strip()}'"
+                )
+                return
+            logger.warning(
+                f"[Trabox] {row_label} 日時が未確定（{attempt + 1}/3回目）"
+                f" 表示='{(await trigger.inner_text()).strip()}' → 再試行"
+            )
+            await page.wait_for_timeout(400)
+
+        logger.error(
+            f"[Trabox] {row_label} 日時の確定に3回失敗。未確定のまま続行"
+            f"（送信時にバリデーションで検出される）"
+        )
 
     async def _select_prefecture(
         self, page: Page, row_label: str, pref_short: str, root=None
@@ -1057,21 +1085,39 @@ class TraboxAutomation:
         exact = wrappers.filter(
             has_text=_re.compile(rf"^\s*{_re.escape(option_label)}\s*$")
         )
+        partial = wrappers.filter(has_text=option_label)
+        target = exact if await exact.count() else partial
+
+        # 🔴 既に選択済み（ant-radio-wrapper-checked）ならクリック不要でスキップ。
+        #    公開範囲「すべて」等の既定値はデフォルトで checked のため、無駄クリックで
+        #    タイムアウトさせない。
         try:
-            await exact.first.click(timeout=TRABOX_TIMEOUTS["action"])
+            await target.first.wait_for(state="attached", timeout=TRABOX_TIMEOUTS["action"])
+            cls = await target.first.get_attribute("class") or ""
+            if "ant-radio-wrapper-checked" in cls:
+                logger.info(f"[Trabox] {row_label} 既に選択済み（{option_label}）→ スキップ")
+                return
         except Exception:
-            partial = wrappers.filter(has_text=option_label)
+            logger.warning(f"[Trabox] {row_label} ラジオ検出失敗（{option_label}）→ クリック試行")
+
+        # 1) 通常クリック → 2) force クリック（notice 等のオーバーレイ/actionability を回避）
+        # → 3) wrapper に直接 click イベントを dispatch、の順にフォールバック。
+        # 🔴 以前は隠し input(.ant-radio-input) に dispatch していたが、視覚的に隠れており
+        #    ロケータ解決やイベント発火が不安定だったため wrapper 自体を対象にする。
+        try:
+            await target.first.click(timeout=TRABOX_TIMEOUTS["action"])
+        except Exception:
             try:
-                await partial.first.click(timeout=TRABOX_TIMEOUTS["action"])
-            except Exception:
-                # スティッキーヘッダー等に被られた場合は input に直接イベント送信
-                logger.warning(
-                    f"[Trabox] {row_label} 通常クリック失敗 → dispatch_event"
+                await target.first.scroll_into_view_if_needed(
+                    timeout=TRABOX_TIMEOUTS["action"]
                 )
-                target = exact if await exact.count() else partial
-                await target.first.locator(
-                    "input.ant-radio-input"
-                ).dispatch_event("click")
+                await target.first.click(timeout=TRABOX_TIMEOUTS["action"], force=True)
+                logger.info(f"[Trabox] {row_label} force クリックで選択")
+            except Exception:
+                logger.warning(
+                    f"[Trabox] {row_label} クリック失敗 → dispatch_event(wrapper)"
+                )
+                await target.first.dispatch_event("click")
         logger.info(f"[Trabox] {row_label} ラジオ選択: {option_label}")
 
     async def _set_contact_person(self, page: Page, name: str) -> None:
