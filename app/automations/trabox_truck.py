@@ -97,13 +97,19 @@ class TraboxTruckAutomation(TraboxAutomation):
             if not vacant_pref or not dest_pref:
                 raise ValueError("空車県・行先県が不正です")
 
-            # --- 1. 空車地 日時 ---
+            # 🔴 場所/車両/運賃/備考の行はラベルが .label-wrapper に無い（重複or単位付き）
+            #    ため row_selector では取れない。フォームは固定順なので位置(nth)で特定する。
+            #    0:空車地日時 1:空車地場所 2:行先地日時 3:行先地場所
+            #    4:他空車地 5:他行先地 6:車両 7:最低運賃 8:担当者 9:備考
+            rows = page.locator(".tbx-form-item")
+
+            # --- 1. 空車地 日時（ラベルは有効） ---
             await self._select_datetime(
                 page, "空車地", vacant_date,
                 list(vacant_time) if vacant_time else None,
             )
-            # --- 2. 空車地 都道府県+市区町村（1つ目の「都道府県」行） ---
-            loc0 = page.locator(M.row_selector("都道府県")).nth(0)
+            # --- 2. 空車地 都道府県+市区町村（行 index 1） ---
+            loc0 = rows.nth(1)
             await self._select_prefecture(page, "都道府県", vacant_pref, row_locator=loc0)
             if vacant_city:
                 await self._select_city(page, "都道府県", vacant_city, row_locator=loc0)
@@ -113,35 +119,37 @@ class TraboxTruckAutomation(TraboxAutomation):
                 page, "行先地", dest_date,
                 list(dest_time) if dest_time else None,
             )
-            # --- 4. 行先地 都道府県+市区町村（2つ目の「都道府県」行） ---
-            loc1 = page.locator(M.row_selector("都道府県")).nth(1)
+            # --- 4. 行先地 都道府県+市区町村（行 index 3） ---
+            loc1 = rows.nth(3)
             await self._select_prefecture(page, "都道府県", dest_pref, row_locator=loc1)
             if dest_city:
                 await self._select_city(page, "都道府県", dest_city, row_locator=loc1)
 
-            # --- 5/6. その他対応可能 空車地/行先地（任意・複数県） ---
-            await self._select_able_prefs(page, "その他対応可能空車地",
+            # --- 5/6. その他対応可能 空車地/行先地（任意・複数県。行 index 4/5） ---
+            await self._select_able_prefs(page, rows.nth(4),
                                           td.get("vacant_able_prefs") or [])
-            await self._select_able_prefs(page, "その他対応可能行先地",
+            await self._select_able_prefs(page, rows.nth(5),
                                           td.get("dest_able_prefs") or [])
+            # 複数選択ドロップダウンが開いたままだと次行に被るので閉じる
+            await page.mouse.click(3, 3)
+            await page.wait_for_timeout(300)
 
-            # --- 7. 車両（重量クラス + 車種）: 荷物と同じ2セレクト ---
-            vrow = page.locator(M.row_selector("車両重量")).first
+            # --- 7. 車両（重量クラス + 車種）: 行 index 6, 2セレクト ---
+            vrow = rows.nth(6)
+            await vrow.scroll_into_view_if_needed(timeout=TRABOX_TIMEOUTS["action"])
             await self._select_ant_option(page, vrow.locator(".ant-select").nth(0), weight_class)
             await self._select_ant_option(page, vrow.locator(".ant-select").nth(1), vehicle_option)
 
-            # --- 8. 最低運賃（税別）: 応談ならチェック、それ以外は金額 ---
+            # --- 8. 最低運賃（税別。行 index 7）: 応談ならチェック、それ以外は金額 ---
+            prow = rows.nth(7)
             if freight_negotiable or not freight:
-                nego = page.locator(
-                    f"{M.row_selector('最低運賃')} .ant-checkbox-wrapper"
-                ).first
+                nego = prow.locator(".ant-checkbox-wrapper").first
                 if await nego.count():
                     await nego.click(timeout=TRABOX_TIMEOUTS["action"])
                     logger.info("[Trabox空車] 最低運賃: 応談にチェック")
             else:
-                await page.locator(
-                    f"{M.row_selector('最低運賃')} input.ant-input"
-                ).first.fill(freight, timeout=TRABOX_TIMEOUTS["action"])
+                await prow.locator("input.ant-input").first.fill(
+                    freight, timeout=TRABOX_TIMEOUTS["action"])
 
             # --- 9. 担当者（任意） ---
             if td.get("contact_name"):
@@ -150,11 +158,10 @@ class TraboxTruckAutomation(TraboxAutomation):
                 except Exception as ce:
                     logger.warning(f"[Trabox空車] 担当者設定スキップ: {ce}")
 
-            # --- 10. 備考（任意） ---
+            # --- 10. 備考（任意。行 index 9） ---
             if td.get("remarks"):
-                await page.locator(
-                    f"{M.row_selector('備考')} textarea"
-                ).first.fill(str(td["remarks"]), timeout=TRABOX_TIMEOUTS["action"])
+                await rows.nth(9).locator("textarea").first.fill(
+                    str(td["remarks"]), timeout=TRABOX_TIMEOUTS["action"])
 
             structured_logger.log_event(
                 "trabox_truck_fill", self.user_id, self.case_id, "trabox",
@@ -169,21 +176,18 @@ class TraboxTruckAutomation(TraboxAutomation):
                 screenshots=self._get_screenshot_paths(),
             )
 
-    async def _select_able_prefs(self, page, row_label: str, prefs) -> None:
-        """「その他対応可能◯◯」の複数県 select に県を追加（任意）。"""
-        if not prefs:
-            return
-        row = page.locator(M.row_selector(row_label)).first
-        if not await row.count():
+    async def _select_able_prefs(self, page, row, prefs) -> None:
+        """「その他対応可能◯◯」の複数県 select に県を追加（任意）。row は行ロケータ。"""
+        if not prefs or not await row.count():
             return
         for pref in prefs:
             short = M.normalize_prefecture(pref)
             if not short:
                 continue
             try:
-                await self._select_prefecture(page, row_label, short, row_locator=row)
+                await self._select_prefecture(page, "", short, row_locator=row)
             except Exception as e:
-                logger.warning(f"[Trabox空車] {row_label} {pref} 追加スキップ: {e}")
+                logger.warning(f"[Trabox空車] その他対応可能 {pref} 追加スキップ: {e}")
 
     async def _submit_truck(self, page) -> None:
         """登録ボタン→確認モーダル→成功判定（荷物の送信ロジックを踏襲）。"""
