@@ -24,6 +24,7 @@
        差出人 `Carroo 投稿システム <carroo@takeuchiunso.com>`。
      - RESEND_API_KEY を Secret Manager 登録、Cloud Run(rev8) デプロイ。
      - **本番E2E: 案件登録→WebKit投稿成功→結果通知メールが Gmail のメインタブに着信**を確認。
+     - **削除フローも E2E 確認済み**（案件削除→WebKit取下げ成功→「削除結果」通知メール着信）。
 2. **Trabox 投稿が失敗（保留）**: 当初 headless 起因と推定し close方式変更/
    networkidle→domcontentloaded/日付後待機/Xvfb headed(entrypoint.sh で Xvfb直起動、rev7で稼働)
    を試行したが解消せず。ログで **時刻メニュー「00分」が not found、登録ページに以前無かった
