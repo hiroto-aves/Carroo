@@ -25,15 +25,21 @@
      - RESEND_API_KEY を Secret Manager 登録、Cloud Run(rev8) デプロイ。
      - **本番E2E: 案件登録→WebKit投稿成功→結果通知メールが Gmail のメインタブに着信**を確認。
      - **削除フローも E2E 確認済み**（案件削除→WebKit取下げ成功→「削除結果」通知メール着信）。
-2. **Trabox 投稿が失敗（保留）**: 当初 headless 起因と推定し close方式変更/
-   networkidle→domcontentloaded/日付後待機/Xvfb headed(entrypoint.sh で Xvfb直起動、rev7で稼働)
-   を試行したが解消せず。ログで **時刻メニュー「00分」が not found、登録ページに以前無かった
-   「確定」ボタンが出現、日付が未確定** を確認 → **Trabox 側の日付/時刻ピッカー UI 変更が濃厚**。
-   「昨日は投稿成功していた」との証言とも整合。セレクタ張り替えが必要。**ユーザー指示により保留**。
+2. **Trabox 投稿失敗 → 解決（2026-07-24）✅ 根本原因はタイムゾーン**
+   - 症状: Cloud Run で日付が確定せず時刻メニューもクリック不能→「日時を選択してください」で
+     送信失敗。ローカル(JST)では成功、Cloud Run(UTC)でのみ失敗。
+   - 切り分け: セレクタは現行維持・headless/headed 無関係・バージョン同一。`TZ=UTC` で
+     ローカル完全再現 → **Trabox の日付/時刻ピッカー(Vue)はブラウザTZが UTC だと壊れる**。
+   - 修正: 全 new_context に **timezone_id="Asia/Tokyo", locale="ja-JP"** を付与（rev11）。
+     TZ=UTC でも '9/20(日) 9時00分' と確定することを確認。
+   - **本番E2E: Cloud Run から Trabox 登録成功（荷物番号 27532260）→ 削除も成功。**
+   - 併せて修正した副次バグ: 日時ドロップダウンの重複残存(全閉処理追加)・確定検証つき
+     リトライ・総重量入力の modal 未定義バグ・ラジオ選択の堅牢化(既選択スキップ/force)。
 
 ### 次にやるべきこと
-- Trabox: 現行サイトの日付/時刻ピッカー DOM を確認しセレクタ更新（保留中）
-- テスト用ダミー案件(ID 1〜7)の整理（実掲載は全て削除済み。Firestore の案件レコードのみ残存）
+- 主要機能はすべて本番E2E完了（WebKit/Trabox とも登録・更新・削除、メール通知）。
+- テスト用ダミー案件(ID 1〜10)の整理（実掲載は全て削除済み。Firestore の案件レコードのみ残存）。
+- Jamf Now での Web Clip 配信（本番URL/dashboard/・アイコン static/icons/icon-192.png）。
 
 ---
 
