@@ -44,7 +44,12 @@
 ### 🆕 空車（トラック空き）機能 — Phase 1（単発登録）実装完了 ✅（feature/truck-availability）
 - WebKit `CarInfo` クライアント（webkit_truck.py）: 登録→削除の**実API E2E成功**（reg_number必須を反映）。
 - Trabox 空車自動化（trabox_truck.py, /truck/register）: TZ・位置(nth)指定で**送信直前まで充填成功**を確認
-  （空車地9/28 9時・行先地9/29 7時が確定）。実サイトへの本投稿は未実施（下記論点）。
+  （空車地9/28 9時・行先地9/29 7時が確定）。
+  ⚠️ **実投稿は要調査**: 実送信すると成功判定は通るが /truck/list 全ページ走査で掲載が
+  見つからず＝**成功の誤検知**（実際には登録されていない）。送信時の必須項目不足
+  （担当者等）or 成功判定ロジックが truck フォームに合っていない可能性。残留掲載は無し。
+- Trabox 空車削除（delete_truck）: /truck/list を内容一致で特定し削除。ページャは
+  JSクリックで送る必要あり（sticky header 対策）。実削除の検証は登録が通ってから。
 - Firestore store: truck_postings / truck_posting_history（荷物と完全分離）。
 - poster: kind=="truck" で execute_truck_task（登録/削除）＋空車専用の結果メール。
 - ルーター/UI: /trucks/register（フォーム）・/trucks/（一覧）・/trucks/{id}/manage（管理・掲載終了）。
