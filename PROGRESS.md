@@ -51,10 +51,12 @@
 - Firestore store: truck_postings / truck_posting_history（荷物と完全分離）。
 - poster: kind=="truck" で execute_truck_task（登録/削除）＋空車専用の結果メール。
 - ルーター/UI: /trucks/register（フォーム）・/trucks/（一覧）・/trucks/{id}/manage（管理・掲載終了）。
-- **Phase 1 完了 ✅**: WebKit空車・Trabox空車とも 登録→削除の実E2E成功。
-  データ層・poster・ルーターUI(/trucks/*)・両プラットフォーム自動化すべて動作。
-- 次: feature/truck-availability を main へマージ → 本番デプロイ（ブラウザで /trucks/register を利用可能に）
-  → Phase 2（繰り返し登録＝Cloud Scheduler 日次マテリアライズ）。
+- **Phase 1 完了・本番稼働 ✅（2026-07-25）**: main へマージ済み、Cloud Run rev14 稼働。
+  - 本番E2E成功: /trucks/register から登録 → **Trabox=成功・WebKit=成功** → 削除 → 残存ゼロ検証。
+  - 途中修正: WebKit `weight`(積載量)必須を truck_weight から導出 / Trabox削除の確認モーダルは
+    [キャンセル,削除]でテキスト指定が必要・見つけたページ上で削除・削除後の残存検証を追加。
+  - ブラウザで https://carroo-...run.app/trucks/register が利用可能。
+- 次: Phase 2（繰り返し登録＝Cloud Scheduler 日次マテリアライズ）。
 
 ### 次期機能：空車（トラック空き）投稿＋繰り返し登録
 - 設計書: `docs/空車機能設計_ver1.0.md`（調査結果・確定仕様・段階計画）
