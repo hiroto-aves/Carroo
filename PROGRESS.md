@@ -56,11 +56,19 @@
   - 途中修正: WebKit `weight`(積載量)必須を truck_weight から導出 / Trabox削除の確認モーダルは
     [キャンセル,削除]でテキスト指定が必要・見つけたページ上で削除・削除後の残存検証を追加。
   - ブラウザで https://carroo-...run.app/trucks/register が利用可能。
-- 次: Phase 2（繰り返し登録＝Cloud Scheduler 日次マテリアライズ）。
-  - 🔖 設計方針メモ: `docs/設計メモ_オプション化とマルチテナント_ver1.0.md`
-    （繰り返しはフィーチャーフラグでオプション化／マルチテナントは中規模改修・
-    Stage0=今回tenant_id仕込みのみ／テナント管理はStage1）。
-  - Phase 2 実装時に **Stage 0（全書き込みに tenant_id 固定値を埋める＋フラグ判定を集約）** も同時に入れる合意。
+- **Phase 2（繰り返し登録）完了・本番稼働 ✅（2026-07-25, rev15）**
+  - recurrence.py: 日/週/隔週/月・byday/bymonthday・祝日スキップ(jpholiday)・有効期間。
+  - scheduler_service.materialize: active ルールの今日〜+lead_days の未生成分を空車化→
+    キュー投入。冪等(mark_materialized)。
+  - routers/schedules: 作成フォーム/一覧/停止再開/削除、/materialize(トークン認証)。
+  - **Cloud Scheduler** `carroo-truck-materialize`（毎朝7:00 JST、asia-northeast1）で日次実行。
+  - **Stage 0**: tenancy.py で current_tenant_id(固定takeuchi)/feature_enabled(env FEATURE_*)を
+    一元化。create_truck/create_schedule に tenant_id 保持。繰り返しは FEATURE_RECURRING で
+    UI・ルート・materialize を一括ゲート（オプション化・将来テナント別へ拡張可）。
+  - **本番E2E成功**: ルール作成→materialize(トークン認証)→自動生成空車→Trabox/WebKit登録成功
+    →削除。冪等(再実行0件)・トークン無し403 も確認。設計メモ:
+    `docs/設計メモ_オプション化とマルチテナント_ver1.0.md`。
+- 次（Stage 1・販売判断時）: テナント管理コンソール＋2階層ロール＋WebKit apikeyのテナント別化。
 
 ### 次期機能：空車（トラック空き）投稿＋繰り返し登録
 - 設計書: `docs/空車機能設計_ver1.0.md`（調査結果・確定仕様・段階計画）
