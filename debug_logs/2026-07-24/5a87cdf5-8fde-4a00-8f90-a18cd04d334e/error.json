@@ -1,0 +1,30 @@
+{
+  "trace_id": "5a87cdf5-8fde-4a00-8f90-a18cd04d334e",
+  "error_category": "UNEXPECTED",
+  "error_code": "UNEXPECTED_ERROR",
+  "error_message": "予期しないエラーが発生しました: STOP_BEFORE_SUBMIT",
+  "user_id": 1,
+  "case_id": 999,
+  "platform": "trabox",
+  "screenshots": [
+    "screenshot_0.png",
+    "screenshot_1.png",
+    "screenshot_2.png",
+    "screenshot_3.png",
+    "screenshot_4.png",
+    "screenshot_5.png",
+    "screenshot_6.png",
+    "screenshot_7.png",
+    "screenshot_8.png",
+    "screenshot_9.png",
+    "screenshot_10.png",
+    "screenshot_11.png",
+    "screenshot_12.png",
+    "screenshot_13.png",
+    "screenshot_14.png",
+    "screenshot_15.png",
+    "screenshot_16.png",
+    "screenshot_17.png"
+  ],
+  "dom_snapshot": true
+}
