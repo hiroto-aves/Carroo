@@ -11,17 +11,19 @@
 - WebKit(API) 投稿 本番E2E成功（登録・削除とも）。テスト掲載は全て削除済み。
 - 初期設定（連絡先メール・WebKit担当者ID・Trabox認証）は本番Firestoreに保存済み。
 
-### 未解決の課題
-1. **メール通知が届かない → 送信API方式(Resend)で対応する方針に決定（2026-07-23）**
+### 解決済み
+1. **メール通知を Resend 送信APIに切替 → 本番E2E成功（2026-07-23）✅**
    - 原因: お名前.com SMTP が Google Cloud の IP を「海外(US)」として 554 拒否
      （`Incorrect country code US`）。東京リージョンでも Google IP は US 判定で不可。
-   - 検討: 「Googleの特定IPだけ許可」は、①Cloud Run に静的IP(VPC+Cloud NAT、月数百円)を
-     付与し、②お名前.com が IP 個別ホワイトリストに対応している場合のみ成立。
-     お名前.com 共用メールは国単位ON/OFFのみで個別IP許可は不可なことが多い。
-   - **結論: お名前.comの海外制限も静的IPも触らず、HPの防御を維持できる「送信API方式」を採用。**
-     - 採用: **Resend**（月3,000通無料、独自ドメイン `carroo@takeuchiunso.com` を SPF/DKIM 認証）
-     - 必要作業: ユーザーが resend.com でアカウント作成 → ドメイン認証 → API キー発行
-     - 実装は Claude 側。`app/utils/mailer.py` を SMTP から Resend API 送信に切替予定。
+     「特定IPだけ許可」は静的IP＋お名前側のIP個別許可対応が必要で成立困難。
+   - 対応: **Resend 送信API**採用。HP の海外制限も静的IPも触らず解決。
+     - ドメイン `takeuchiunso.com` を Resend で認証（DKIM/SPF/DMARC/return-path）。
+       DNS は **お名前.com Navi(dnsv.jp) ではなく、実際の権威NS = レンタルサーバー
+       (gmoserver.jp) 側**に登録して反映（ここが要注意ポイント）。
+     - `app/utils/mailer.py` を RESEND_API_KEY 優先・SMTP フォールバックに改修。
+       差出人 `Carroo 投稿システム <carroo@takeuchiunso.com>`。
+     - RESEND_API_KEY を Secret Manager 登録、Cloud Run(rev8) デプロイ。
+     - **本番E2E: 案件登録→WebKit投稿成功→結果通知メールが Gmail のメインタブに着信**を確認。
 2. **Trabox 投稿が失敗（保留）**: 当初 headless 起因と推定し close方式変更/
    networkidle→domcontentloaded/日付後待機/Xvfb headed(entrypoint.sh で Xvfb直起動、rev7で稼働)
    を試行したが解消せず。ログで **時刻メニュー「00分」が not found、登録ページに以前無かった
@@ -29,9 +31,8 @@
    「昨日は投稿成功していた」との証言とも整合。セレクタ張り替えが必要。**ユーザー指示により保留**。
 
 ### 次にやるべきこと
-- **メール: Resend 実装**（ユーザーの API キー発行待ち → mailer.py 切替 → 本番E2E再テスト）
 - Trabox: 現行サイトの日付/時刻ピッカー DOM を確認しセレクタ更新（保留中）
-- テスト用ダミー案件(ID 1〜6)の整理
+- テスト用ダミー案件(ID 1〜7)の整理（実掲載は全て削除済み。Firestore の案件レコードのみ残存）
 
 ---
 
