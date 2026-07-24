@@ -59,7 +59,7 @@ class TraboxAutomation:
             browser = await p.chromium.launch(headless=self.headless)
             # 🔴 ビューポートは縦長必須: 720px 等ではスクロール時にサイトの
             # スティッキーヘッダーがフォーム要素に被さりクリックが遮られる
-            context = await browser.new_context(viewport={"width": 1440, "height": 2400})
+            context = await browser.new_context(viewport={"width": 1440, "height": 2400}, timezone_id="Asia/Tokyo", locale="ja-JP")
             page = await context.new_page()
 
             # デバッグキャプチャを初期化
@@ -149,7 +149,7 @@ class TraboxAutomation:
 
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=self.headless)
-            context = await browser.new_context(viewport={"width": 1440, "height": 1400})
+            context = await browser.new_context(viewport={"width": 1440, "height": 1400}, timezone_id="Asia/Tokyo", locale="ja-JP")
             page = await context.new_page()
             self.debug_capture = DebugCapture(page)
 
@@ -336,7 +336,7 @@ class TraboxAutomation:
         """
         async with async_playwright() as p:
             browser = await p.chromium.launch(headless=self.headless)
-            context = await browser.new_context(viewport={"width": 1440, "height": 2400})
+            context = await browser.new_context(viewport={"width": 1440, "height": 2400}, timezone_id="Asia/Tokyo", locale="ja-JP")
             page = await context.new_page()
             self.debug_capture = DebugCapture(page)
 
