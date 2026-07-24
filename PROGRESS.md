@@ -41,6 +41,14 @@
 - テスト用ダミー案件(ID 1〜10)の整理（実掲載は全て削除済み。Firestore の案件レコードのみ残存）。
 - Jamf Now での Web Clip 配信（本番URL/dashboard/・アイコン static/icons/icon-192.png）。
 
+### 🆕 次期機能：空車（トラック空き）投稿＋繰り返し登録
+- 設計書: `docs/空車機能設計_ver1.0.md`（調査結果・確定仕様・段階計画）
+- 調査済み: WebKit `CarInfo` API（荷物と並行構造）/ Trabox `/truck/register`（同 .tbx-form-item 構造）
+- 確定仕様: 繰り返し=毎週(複数曜日)/隔週/毎日/毎月、lead_days で事前投稿、dest_able 複数行先、
+  祝日スキップ・有効期限あり、荷物と別メニュー「空車」新設。
+- 進め方: Phase1 単発登録 → Phase2 繰り返し(Cloud Scheduler 日次マテリアライズ) → Phase3 UI仕上げ
+- 作業ブランチ: `feature/truck-availability`
+
 ---
 
 ## 🚀 本番環境 完全稼働 ✅
