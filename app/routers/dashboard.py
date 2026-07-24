@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import HTMLResponse
 from app.dependencies import get_current_user
+from app.ui_nav import main_nav
 from app.db.database import get_db_connection
 from datetime import datetime
 
@@ -38,28 +39,7 @@ async def dashboard(current_user: dict = Depends(get_current_user)):
         </head>
         <body class="bg-gray-50">
             <!-- ナビゲーションバー -->
-            <nav class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
-                <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div class="flex justify-between h-16 items-center">
-                        <div class="flex items-center">
-                            <a href="/dashboard" class="text-2xl font-bold text-blue-600">📦 Carroo</a>
-                        </div>
-                        <div class="flex items-center gap-6">
-                            <div class="text-right">
-                                <p class="text-sm text-gray-600">ログイン中:</p>
-                                <p class="font-semibold text-gray-900">{username}</p>
-                            </div>
-                            <div class="w-px h-8 bg-gray-300"></div>
-                            <a href="/cases/register" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">
-                                + 新規案件
-                            </a>
-                            {'<a href="/admin/users" class="text-gray-600 hover:text-blue-600 transition">👥 ユーザー管理</a>' if current_user.get('is_admin') else ''}
-                            <a href="/settings/" class="text-gray-600 hover:text-blue-600 transition">⚙️ 初期設定</a>
-                            <a href="/auth/logout" class="text-gray-600 hover:text-red-600 transition">ログアウト</a>
-                        </div>
-                    </div>
-                </div>
-            </nav>
+            {main_nav(username, current_user.get('is_admin'))}
 
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <!-- ページタイトル -->
@@ -313,12 +293,7 @@ async def cases_list(
 <html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Carroo - 案件一覧</title><script src="https://cdn.tailwindcss.com"></script></head>
 <body class="bg-gray-50">
-<nav class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50"><div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8"><div class="flex justify-between h-16 items-center">
-  <a href="/dashboard" class="text-2xl font-bold text-blue-600">📦 Carroo</a>
-  <div class="flex items-center gap-6">{admin_link}
-    <a href="/cases/register" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition">+ 新規案件</a>
-    <a href="/auth/logout" class="text-gray-600 hover:text-red-600 transition">ログアウト</a></div>
-</div></div></nav>
+{main_nav(current_user['username'], is_admin)}
 <div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
   <a href="/dashboard" class="text-blue-600 hover:text-blue-700 text-sm">← ダッシュボードに戻る</a>
   <h1 class="text-3xl font-bold text-gray-900 mt-2 mb-1">案件一覧</h1>

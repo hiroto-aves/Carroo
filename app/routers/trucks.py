@@ -36,26 +36,9 @@ _STATE_BADGE = {
 
 
 def _nav(username: str) -> str:
-    # 繰り返し登録はフィーチャーフラグ有効時のみメニュー表示（オプション制御）
-    from app.tenancy import feature_enabled
-    recurring_link = (
-        '<a href="/schedules/" class="text-gray-600 hover:text-blue-600">繰り返し</a>'
-        if feature_enabled("recurring") else ""
-    )
-    return f"""<nav class="bg-white shadow-sm border-b sticky top-0 z-50">
-      <div class="max-w-7xl mx-auto px-4 flex justify-between h-16 items-center">
-        <a href="/dashboard/" class="text-2xl font-bold text-blue-600">📦 Carroo</a>
-        <div class="flex items-center gap-5 text-sm">
-          <a href="/dashboard/" class="text-gray-600 hover:text-blue-600">ダッシュボード</a>
-          <a href="/cases/register" class="text-gray-600 hover:text-blue-600">荷物登録</a>
-          <a href="/trucks/register" class="text-blue-600 font-semibold">空車登録</a>
-          <a href="/trucks/" class="text-gray-600 hover:text-blue-600">空車一覧</a>
-          {recurring_link}
-          <span class="text-gray-400">|</span>
-          <span class="text-gray-700">{username}</span>
-          <a href="/auth/logout" class="text-gray-600 hover:text-red-600">ログアウト</a>
-        </div>
-      </div></nav>"""
+    # 共通ナビに委譲（全ページで導線を統一）
+    from app.ui_nav import main_nav
+    return main_nav(username)
 
 
 def _opts(values, selected=None):

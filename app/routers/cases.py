@@ -155,20 +155,8 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
         <script src="https://cdn.tailwindcss.com"></script>
     </head>
     <body class="bg-gray-50">
-        <!-- ナビゲーションバー -->
-        <nav class="bg-white shadow-sm border-b border-gray-200">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex justify-between h-16 items-center">
-                    <div class="flex items-center">
-                        <a href="/dashboard/" class="text-2xl font-bold text-blue-600 hover:opacity-80 transition">📦 Carroo</a>
-                    </div>
-                    <div class="flex items-center gap-4">
-                        <a href="/auth/me" class="text-gray-600 hover:text-gray-900">プロフィール</a>
-                        <a href="/auth/logout" class="text-red-600 hover:text-red-700">ログアウト</a>
-                    </div>
-                </div>
-            </div>
-        </nav>
+        <!-- ナビゲーションバー（共通） -->
+        MAIN_NAV
 
         <div class="min-h-screen py-12 px-4">
             <div class="max-w-4xl mx-auto">
@@ -533,9 +521,11 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
     """
     # 複数日程一括投稿（FEATURE_MULTIDATE 有効時のみ UI を差し込む。オプション機能）
     from app.tenancy import feature_enabled
+    from app.ui_nav import main_nav
     multidate_ui = _MULTIDATE_UI if feature_enabled("multidate") else ""
     return (
-        html.replace("MULTIDATE_UI", multidate_ui)
+        html.replace("MAIN_NAV", main_nav())
+        .replace("MULTIDATE_UI", multidate_ui)
         .replace("PREF_OPTIONS", pref_options)
         .replace("WEIGHT_OPTIONS", weight_options)
         .replace("SHAPE_OPTIONS", shape_options)
