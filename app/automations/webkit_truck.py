@@ -33,6 +33,19 @@ def _looks_like_hhmm(value: str) -> bool:
     return bool(re.match(r"^\d{1,2}:\d{2}", str(value or "")))
 
 
+def _weight_from_class(truck_weight) -> str:
+    """トラック重量クラス（例 "2t","10t","軽","問わず"）→ 積載量トン(4.1形式)。
+    数値付きはその数値、"軽"は0.35、それ以外/不明は1.0 を既定とする。"""
+    import re
+    s = str(truck_weight or "").strip()
+    if "軽" in s:
+        return "0.35"
+    m = re.search(r"(\d+(?:\.\d+)?)", s)
+    if m:
+        return f"{float(m.group(1)):.1f}"
+    return "1.0"
+
+
 def _fmt_datetime(date_str: str, time_str: str) -> str:
     """"2026-09-22", "09:00" → "2026-09-22 09:00:00"（秒まで。CarInfo 仕様）"""
     t = time_str if _looks_like_hhmm(time_str) else "09:00"
@@ -167,8 +180,12 @@ class WebkitTruckAutomation:
 
         # --- 車種・積載量 ---
         add("carkindtype", get_webkit_car_code(td.get("vehicle_type", "")))  # 【必須】
-        if td.get("load_weight") not in (None, ""):
-            add("weight", td["load_weight"])              # 積載量(t)
+        # 積載量(t): load_weight 明示 > truck_weight(例"2t")から導出 > 既定1.0。
+        # WebKit CarInfo は weight 未指定だと「入力エラー: weight」で弾くため必ず入れる。
+        weight = td.get("load_weight")
+        if weight in (None, ""):
+            weight = _weight_from_class(td.get("truck_weight"))
+        add("weight", weight)                             # 積載量(t)
         if td.get("max_weight") not in (None, ""):
             add("maxweight", td["max_weight"])            # 最大積載量(t)
         if td.get("carplate"):
