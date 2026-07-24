@@ -861,16 +861,26 @@ class TraboxAutomation:
                 return False
             return expected_md in txt and "選択" not in txt
 
+        dd_selector = f"{M.VISIBLE_DROPDOWN}:has(.datetime-container)"
+
+        async def _close_all_dropdowns(max_tries: int = 6) -> int:
+            """開いている日時ドロップダウンを全て閉じる（外側クリックを繰り返す）。
+            🔴 Cloud Run 等の遅い環境では発/着の2画面が同時に開いたまま残り、
+               ロケータ誤爆・時刻クリックのタイムアウト・確定が空になる原因だった。
+               次の操作前後で必ず0枚にする。戻り値は最終的な開いている枚数。"""
+            for _ in range(max_tries):
+                cnt = await page.locator(dd_selector).count()
+                if cnt == 0:
+                    return 0
+                await page.mouse.click(3, 3)
+                await page.wait_for_timeout(250)
+            return await page.locator(dd_selector).count()
+
         async def _attempt() -> None:
-            # 🔴 前の日時ドロップダウンが DOM に残っていると誤って掴む（遅い環境で顕著な
-            #    競合）。開く前に既存の表示中ドロップダウンが消えるのを待つ。
-            try:
-                stale = page.locator(f"{M.VISIBLE_DROPDOWN}:has(.datetime-container)")
-                if await stale.count():
-                    await page.mouse.click(3, 3)
-                    await stale.first.wait_for(state="hidden", timeout=3000)
-            except Exception:
-                pass
+            # 開く前に既存の日時ドロップダウンを全閉（重複防止）
+            left = await _close_all_dropdowns()
+            if left:
+                logger.warning(f"[Trabox] {row_label} 事前クローズ後も {left} 枚残存")
 
             try:
                 await trigger.click(timeout=TRABOX_TIMEOUTS["action"])
@@ -878,9 +888,8 @@ class TraboxAutomation:
                 logger.warning(f"[Trabox] {row_label} 通常クリック失敗 → dispatch_event")
                 await trigger.dispatch_event("click")
 
-            dropdown = page.locator(
-                f"{M.VISIBLE_DROPDOWN}:has(.datetime-container)"
-            ).first
+            # 🔴 いま開いた最新の1枚だけを対象にする（.last）。複数開いても誤爆しない。
+            dropdown = page.locator(dd_selector).last
             await dropdown.wait_for(state="visible", timeout=TRABOX_TIMEOUTS["action"])
 
             # 表示月を合わせる（最大12回 = 1年分）
@@ -929,18 +938,23 @@ class TraboxAutomation:
                     except Exception as te:
                         logger.warning(f"[Trabox] {row_label} 時刻選択失敗（{label}）: {te}")
 
-            # 閉じて確定。編集ドロワーは「確定」ボタン、登録ページは外側クリックで blur 確定。
+            # 閉じて確定。確定ボタンがあればクリック（このドロップダウン内の確定のみ対象）。
             # （Escape は ant-design が選択中日付をキャンセルするため使わない）
             confirm_btn = dropdown.locator("button:has-text('確定')")
-            if await confirm_btn.count() and await confirm_btn.first.is_visible():
-                await confirm_btn.first.click(timeout=TRABOX_TIMEOUTS["action"])
-                logger.info(f"[Trabox] {row_label} カレンダー確定")
-            else:
-                await page.mouse.click(3, 3)
-                await page.wait_for_timeout(200)
-                if await dropdown.is_visible():
-                    await trigger.click(timeout=TRABOX_TIMEOUTS["action"])
-            await page.wait_for_timeout(300)
+            try:
+                if await confirm_btn.count() and await confirm_btn.first.is_visible():
+                    await confirm_btn.first.click(timeout=TRABOX_TIMEOUTS["action"])
+                    logger.info(f"[Trabox] {row_label} カレンダー確定")
+            except Exception as ce:
+                logger.warning(f"[Trabox] {row_label} 確定クリック失敗: {ce}")
+            await page.wait_for_timeout(200)
+
+            # 🔴 確定後にドロップダウンが本当に閉じたか検証し、残っていれば全閉する。
+            #    閉じ残りが次の日時（着）の操作を壊すため必ず0枚にしてから抜ける。
+            left = await _close_all_dropdowns()
+            if left:
+                logger.warning(f"[Trabox] {row_label} クローズ後も {left} 枚残存")
+            await page.wait_for_timeout(200)
 
             # 「入力途中の項目があります」警告が出たら「編集を続ける」で復帰
             warn_continue = page.locator(
