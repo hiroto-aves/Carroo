@@ -697,3 +697,13 @@ curl -X POST https://your-domain.com/cases/register \
 **月額コスト**: ¥0（GCP 無料枠で充分）  
 **本番環境**: GCP Cloud Tasks + Cloud Run（非同期順序実行）  
 **テスト**: LocalTaskQueue + E2E テスト完備
+### 🆕 ダッシュボード刷新＋成約トラッキング（2026-07-25, rev20）
+- **成約の手動マーク（A）**: 案件管理に「成約/不成立/未決に戻す」ボタン、POST /cases/{id}/contract。
+  ダッシュボードを成約ベースに刷新（投稿数・成約数・成約率・未決）。
+- **WebKit成約 自動取込（B）**: webkit.list_contracts(荷物一覧取得で contracttype)→
+  成約済(1)/仮成約(4)→成約・不成立(2)→不成立を案件へ反映（未決のみ・手動優先）。
+  /schedules/sync-contracts(トークン認証)＋Cloud Scheduler `carroo-contract-sync`(6hごと)。
+- **期間セレクタ**: 今月/前月/過去1年/累計/カスタム(日付範囲)。登録日で期間フィルタ。
+- **掲載中件数**: 現在スナップショット(posting_history 走査で最新が register/update success かつ未成約)。
+- Cloud Scheduler: materialize(日次7:00) / contract-sync(6h)。
+- 補足: Trabox の成約は手動マーク運用（自動取込は将来C。閲覧/問い合わせ数も将来対応）。
