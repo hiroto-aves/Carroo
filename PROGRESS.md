@@ -707,3 +707,8 @@ curl -X POST https://your-domain.com/cases/register \
 - **掲載中件数**: 現在スナップショット(posting_history 走査で最新が register/update success かつ未成約)。
 - Cloud Scheduler: materialize(日次7:00) / contract-sync(6h)。
 - 補足: Trabox の成約は手動マーク運用（自動取込は将来C。閲覧/問い合わせ数も将来対応）。
+
+### 🔧 ファビコン/PWAアイコン修正（2026-07-25, rev21）
+- .gcloudignore の `*.png` で static/icons のアイコンもデプロイ除外され本番404だった問題を
+  `!static/icons/*.png` で修正。/favicon.ico ルート追加（icon-192.png を返す）。
+- 本番確認: /favicon.ico と /static/icons/icon-192.png が 200 image/png。
