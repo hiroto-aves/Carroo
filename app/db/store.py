@@ -596,3 +596,31 @@ def dashboard_stats(is_admin: bool, user_id: int) -> Dict[str, Any]:
     rate = round(contracted / total * 100) if total else 0
     return {"total": total, "month": month, "contracted": contracted,
             "failed": failed, "pending": pending, "rate": rate}
+
+
+def webkit_slip_to_case() -> Dict[str, int]:
+    """WebKit登録成功イベントから {伝票番号(slipno): case_id} を作る（成約同期用）。"""
+    col = _db().collection("posting_history")
+    out = {}
+    for s in col.where("platform", "==", "webkit").where("status", "==", "success").stream():
+        d = s.to_dict()
+        if d.get("action") in ("register", "update") and d.get("baggage_no"):
+            out[str(d["baggage_no"]).strip()] = int(d["case_id"])
+    return out
+
+
+def set_contract_status_system(case_id: int, contract_status: str,
+                               only_if_pending: bool = True) -> bool:
+    """システム（自動同期）から成約状況を更新。only_if_pending=True の場合、
+    既に手動/自動で成約・不成立が入っている案件は上書きしない（手動優先）。"""
+    ref = _db().collection("cases").document(str(case_id))
+    snap = ref.get()
+    if not snap.exists:
+        return False
+    cur = snap.to_dict().get("contract_status")
+    if only_if_pending and cur in ("成約", "不成立"):
+        return False
+    ref.set({"contract_status": contract_status or None,
+             "contract_updated_at": _now(),
+             "contract_source": "webkit"}, merge=True)
+    return True

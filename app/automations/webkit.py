@@ -480,3 +480,39 @@ class WebkitAutomation:
             pass
 
         logger.info("[WebKit] Login completed")
+
+
+    async def list_contracts(self) -> Dict[str, str]:
+        """自社が登録した荷物の {slipno(20桁): contracttype} を取得（荷物一覧取得）。
+
+        contracttype: 0未成約 1成約済 2不成立 3未該当 4仮成約 9削除。
+        apikey+personid のみ送れば自社の荷物一覧が返る。
+        """
+        if not self.api_key or not self.person_id:
+            return {}
+        webkit = Element('webkit')
+        SubElement(webkit, 'apikey').text = self.api_key
+        SubElement(webkit, 'personid').text = self.person_id
+        SubElement(webkit, 'load_data')  # フィルタ空 = 全件
+        xml_data = tostring(webkit, encoding='utf-8')
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                resp = await client.post(
+                    self.api_url, content=xml_data,
+                    headers={"Content-Type": "application/xml; charset=UTF-8"})
+            if resp.status_code != 200:
+                logger.error(f"[WebKit一覧] HTTP {resp.status_code}")
+                return {}
+            from xml.etree.ElementTree import fromstring
+            root = fromstring(resp.text)
+            out = {}
+            for ld in root.findall(".//load_data"):
+                sn = ld.findtext("slipno")
+                ct = ld.findtext("contracttype")
+                if sn and ct is not None:
+                    out[sn.strip()] = ct.strip()
+            logger.info(f"[WebKit一覧] {len(out)}件取得")
+            return out
+        except Exception as e:
+            logger.error(f"[WebKit一覧] 取得エラー: {e}")
+            return {}
