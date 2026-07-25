@@ -8,8 +8,43 @@ from datetime import datetime
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
+def _period_buttons(active: str) -> str:
+    opts = [("this_month", "今月"), ("last_month", "前月"),
+            ("year", "過去1年"), ("all", "累計")]
+    out = ""
+    for key, label in opts:
+        cls = ("bg-blue-600 text-white" if active == key
+               else "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50")
+        out += f'<a href="/dashboard/?period={key}" class="text-sm px-3 py-1 rounded-lg {cls}">{label}</a>'
+    return out
+
+
+def _period_range(period: str, date_from: str, date_to: str):
+    """期間指定 → (from, to, ラベル)。today は JST。"""
+    from datetime import datetime, timedelta, timezone
+    jst = timezone(timedelta(hours=9))
+    today = datetime.now(jst).date()
+    if period == "custom" and date_from and date_to:
+        return date_from, date_to, f"{date_from} 〜 {date_to}"
+    if period == "last_month":
+        first_this = today.replace(day=1)
+        last_prev = first_this - timedelta(days=1)
+        first_prev = last_prev.replace(day=1)
+        return first_prev.isoformat(), last_prev.isoformat(), "前月"
+    if period == "year":
+        start = (today - timedelta(days=364))
+        return start.isoformat(), today.isoformat(), "過去1年"
+    if period == "all":
+        return None, None, "累計"
+    # 既定: 今月
+    first = today.replace(day=1)
+    return first.isoformat(), today.isoformat(), "今月"
+
+
 @router.get("/", response_class=HTMLResponse)
-async def dashboard(current_user: dict = Depends(get_current_user)):
+async def dashboard(current_user: dict = Depends(get_current_user),
+                    period: str = "this_month",
+                    date_from: str = None, date_to: str = None):
     """ユーザーダッシュボード"""
     from app.db import store
 
@@ -17,7 +52,9 @@ async def dashboard(current_user: dict = Depends(get_current_user)):
         user_id = current_user["id"]
         username = current_user["username"]
 
-        st = store.dashboard_stats(current_user.get("is_admin", False), user_id)
+        d_from, d_to, period_label = _period_range(period, date_from, date_to)
+        st = store.dashboard_stats(current_user.get("is_admin", False), user_id,
+                                   date_from=d_from, date_to=d_to)
 
         # 最近の案件（新しい順に5件）: (id, pick, drop, pickup_date, created_at) タプル互換
         recent_cases = [
@@ -41,60 +78,50 @@ async def dashboard(current_user: dict = Depends(get_current_user)):
 
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <!-- ページタイトル -->
-                <div class="mb-8">
+                <div class="mb-4">
                     <h1 class="text-4xl font-bold text-gray-900">ダッシュボード</h1>
                     <p class="text-gray-600 mt-2">登録された案件と投稿履歴の確認</p>
                 </div>
 
+                <!-- 期間セレクタ -->
+                <div class="flex flex-wrap items-center gap-2 mb-4">
+                    {_period_buttons(period)}
+                    <form method="get" action="/dashboard/" class="flex items-center gap-1 ml-1">
+                        <input type="hidden" name="period" value="custom">
+                        <input type="date" name="date_from" value="{date_from or ''}" class="border rounded px-2 py-1 text-sm">
+                        <span class="text-gray-400">〜</span>
+                        <input type="date" name="date_to" value="{date_to or ''}" class="border rounded px-2 py-1 text-sm">
+                        <button class="bg-gray-800 text-white text-sm px-3 py-1 rounded">適用</button>
+                    </form>
+                    <span class="text-sm text-gray-500 ml-auto">対象期間: <b>{period_label}</b></span>
+                </div>
+
                 <!-- 統計カード（成約ベース） -->
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-4">
-                    <!-- 投稿数 -->
-                    <div class="bg-white rounded-lg shadow p-6 border-l-4 border-blue-600">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-gray-600 text-sm">投稿数（今月）</p>
-                                <p class="text-3xl font-bold text-gray-900">{st['month']}</p>
-                                <p class="text-xs text-gray-400 mt-1">累計 {st['total']}</p>
-                            </div>
-                            <div class="text-4xl">📦</div>
-                        </div>
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
+                    <div class="bg-white rounded-lg shadow p-5 border-l-4 border-blue-600">
+                        <p class="text-gray-600 text-sm">投稿数<span class="text-xs text-gray-400">（{period_label}）</span></p>
+                        <p class="text-3xl font-bold text-gray-900">{st['total']}</p>
                     </div>
-
-                    <!-- 成約数 -->
-                    <div class="bg-white rounded-lg shadow p-6 border-l-4 border-green-600">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-gray-600 text-sm">成約数</p>
-                                <p class="text-3xl font-bold text-green-600">{st['contracted']}</p>
-                            </div>
-                            <div class="text-4xl">🤝</div>
-                        </div>
+                    <div class="bg-white rounded-lg shadow p-5 border-l-4 border-teal-600">
+                        <p class="text-gray-600 text-sm">掲載中<span class="text-xs text-gray-400">（現在）</span></p>
+                        <p class="text-3xl font-bold text-teal-600">{st['live']}</p>
                     </div>
-
-                    <!-- 成約率 -->
-                    <div class="bg-white rounded-lg shadow p-6 border-l-4 border-purple-600">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-gray-600 text-sm">成約率</p>
-                                <p class="text-3xl font-bold text-purple-600">{st['rate']}%</p>
-                            </div>
-                            <div class="text-4xl">📊</div>
-                        </div>
+                    <div class="bg-white rounded-lg shadow p-5 border-l-4 border-green-600">
+                        <p class="text-gray-600 text-sm">成約数</p>
+                        <p class="text-3xl font-bold text-green-600">{st['contracted']}</p>
                     </div>
-
-                    <!-- 未決（結果待ち） -->
-                    <div class="bg-white rounded-lg shadow p-6 border-l-4 border-amber-500">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-gray-600 text-sm">未決</p>
-                                <p class="text-3xl font-bold text-amber-600">{st['pending']}</p>
-                            </div>
-                            <div class="text-4xl">⏳</div>
-                        </div>
+                    <div class="bg-white rounded-lg shadow p-5 border-l-4 border-purple-600">
+                        <p class="text-gray-600 text-sm">成約率</p>
+                        <p class="text-3xl font-bold text-purple-600">{st['rate']}%</p>
+                    </div>
+                    <div class="bg-white rounded-lg shadow p-5 border-l-4 border-amber-500">
+                        <p class="text-gray-600 text-sm">未決</p>
+                        <p class="text-3xl font-bold text-amber-600">{st['pending']}</p>
                     </div>
                 </div>
                 <!-- 内訳バッジ -->
                 <div class="flex flex-wrap gap-3 mb-8 text-sm">
+                    <span class="px-3 py-1 rounded-full bg-teal-50 text-teal-700">📢 掲載中 {st['live']}</span>
                     <span class="px-3 py-1 rounded-full bg-green-50 text-green-700">🤝 成約 {st['contracted']}</span>
                     <span class="px-3 py-1 rounded-full bg-amber-50 text-amber-700">⏳ 未決 {st['pending']}</span>
                     <span class="px-3 py-1 rounded-full bg-gray-100 text-gray-600">✕ 不成立 {st['failed']}</span>

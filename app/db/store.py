@@ -583,19 +583,58 @@ def set_contract_status(case_id: int, user_id: int, contract_status: str) -> boo
     return True
 
 
-def dashboard_stats(is_admin: bool, user_id: int) -> Dict[str, Any]:
-    """ダッシュボード用の統計（投稿数・成約数/率・内訳）を集計。"""
-    from datetime import datetime
+def _live_case_ids(case_ids: set) -> set:
+    """現在「掲載中」の case_id 集合。posting_history を1回走査し、各
+    (case_id, platform) の最新イベントが register/update の success なら掲載中とみなす。"""
+    if not case_ids:
+        return set()
+    latest = {}  # (case_id, platform) -> (history_id, action, status)
+    for s in _db().collection("posting_history").stream():
+        d = s.to_dict()
+        cid = d.get("case_id")
+        if cid not in case_ids:
+            continue
+        key = (cid, d.get("platform"))
+        hid = int(s.id)
+        if key not in latest or hid > latest[key][0]:
+            latest[key] = (hid, d.get("action"), d.get("status"))
+    live = set()
+    for (cid, _p), (_h, act, stt) in latest.items():
+        if act in ("register", "update") and stt == "success":
+            live.add(cid)
+    return live
+
+
+def dashboard_stats(is_admin: bool, user_id: int,
+                    date_from: str = None, date_to: str = None) -> Dict[str, Any]:
+    """ダッシュボード統計。date_from/date_to（YYYY-MM-DD）で登録日を期間フィルタ。
+    掲載中件数(live)は期間に関係ない現在スナップショット（未成約で掲載継続中）。"""
     cases = search_cases(is_admin, user_id, {})
-    total = len(cases)
-    ym = datetime.utcnow().strftime("%Y-%m")
-    month = sum(1 for c in cases if (c.get("created_at", "")[:7] == ym))
-    contracted = sum(1 for c in cases if c.get("contract_status") == "成約")
-    failed = sum(1 for c in cases if c.get("contract_status") == "不成立")
+
+    def _in_period(c):
+        d = (c.get("created_at", "") or "")[:10]
+        if date_from and d < date_from:
+            return False
+        if date_to and d > date_to:
+            return False
+        return True
+
+    period_cases = [c for c in cases if _in_period(c)]
+    total = len(period_cases)
+    contracted = sum(1 for c in period_cases if c.get("contract_status") == "成約")
+    failed = sum(1 for c in period_cases if c.get("contract_status") == "不成立")
     pending = total - contracted - failed
     rate = round(contracted / total * 100) if total else 0
-    return {"total": total, "month": month, "contracted": contracted,
-            "failed": failed, "pending": pending, "rate": rate}
+
+    # 掲載中（現在スナップショット）: 掲載継続中かつ未成約/未不成立
+    all_ids = {int(c["id"]) for c in cases}
+    live_ids = _live_case_ids(all_ids)
+    by_id = {int(c["id"]): c for c in cases}
+    live = sum(1 for cid in live_ids
+               if by_id.get(cid, {}).get("contract_status") not in ("成約", "不成立"))
+
+    return {"total": total, "contracted": contracted, "failed": failed,
+            "pending": pending, "rate": rate, "live": live}
 
 
 def webkit_slip_to_case() -> Dict[str, int]:
