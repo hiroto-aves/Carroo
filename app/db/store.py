@@ -566,3 +566,33 @@ def mark_materialized(schedule_id: int, vacant_date: str) -> bool:
     ref.set({"schedule_id": int(schedule_id), "vacant_date": vacant_date,
              "created_at": _now()})
     return True
+
+
+# ============================================================
+# 成約マーク（手動）＋ ダッシュボード統計
+# ============================================================
+
+def set_contract_status(case_id: int, user_id: int, contract_status: str) -> bool:
+    """案件の成約状況を記録（手動マーク）。'成約' / '不成立' / '' (未決に戻す)。"""
+    ref = _db().collection("cases").document(str(case_id))
+    snap = ref.get()
+    if not snap.exists or int(snap.to_dict().get("user_id")) != int(user_id):
+        return False
+    ref.set({"contract_status": contract_status or None,
+             "contract_updated_at": _now()}, merge=True)
+    return True
+
+
+def dashboard_stats(is_admin: bool, user_id: int) -> Dict[str, Any]:
+    """ダッシュボード用の統計（投稿数・成約数/率・内訳）を集計。"""
+    from datetime import datetime
+    cases = search_cases(is_admin, user_id, {})
+    total = len(cases)
+    ym = datetime.utcnow().strftime("%Y-%m")
+    month = sum(1 for c in cases if (c.get("created_at", "")[:7] == ym))
+    contracted = sum(1 for c in cases if c.get("contract_status") == "成約")
+    failed = sum(1 for c in cases if c.get("contract_status") == "不成立")
+    pending = total - contracted - failed
+    rate = round(contracted / total * 100) if total else 0
+    return {"total": total, "month": month, "contracted": contracted,
+            "failed": failed, "pending": pending, "rate": rate}

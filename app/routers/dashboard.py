@@ -17,9 +17,7 @@ async def dashboard(current_user: dict = Depends(get_current_user)):
         user_id = current_user["id"]
         username = current_user["username"]
 
-        case_count = store.count_user_cases(user_id)
-        success_count = store.count_posting_by_status(user_id, "success")
-        error_count = store.count_posting_by_status(user_id, "error")
+        st = store.dashboard_stats(current_user.get("is_admin", False), user_id)
 
         # 最近の案件（新しい順に5件）: (id, pick, drop, pickup_date, created_at) タプル互換
         recent_cases = [
@@ -48,53 +46,59 @@ async def dashboard(current_user: dict = Depends(get_current_user)):
                     <p class="text-gray-600 mt-2">登録された案件と投稿履歴の確認</p>
                 </div>
 
-                <!-- 統計カード -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                    <!-- 総案件数 -->
+                <!-- 統計カード（成約ベース） -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-4">
+                    <!-- 投稿数 -->
                     <div class="bg-white rounded-lg shadow p-6 border-l-4 border-blue-600">
                         <div class="flex items-center justify-between">
                             <div>
-                                <p class="text-gray-600 text-sm">総案件数</p>
-                                <p class="text-3xl font-bold text-gray-900">{case_count}</p>
+                                <p class="text-gray-600 text-sm">投稿数（今月）</p>
+                                <p class="text-3xl font-bold text-gray-900">{st['month']}</p>
+                                <p class="text-xs text-gray-400 mt-1">累計 {st['total']}</p>
                             </div>
                             <div class="text-4xl">📦</div>
                         </div>
                     </div>
 
-                    <!-- 投稿成功 -->
+                    <!-- 成約数 -->
                     <div class="bg-white rounded-lg shadow p-6 border-l-4 border-green-600">
                         <div class="flex items-center justify-between">
                             <div>
-                                <p class="text-gray-600 text-sm">投稿成功</p>
-                                <p class="text-3xl font-bold text-green-600">{success_count}</p>
+                                <p class="text-gray-600 text-sm">成約数</p>
+                                <p class="text-3xl font-bold text-green-600">{st['contracted']}</p>
                             </div>
-                            <div class="text-4xl">✓</div>
+                            <div class="text-4xl">🤝</div>
                         </div>
                     </div>
 
-                    <!-- 投稿失敗 -->
-                    <div class="bg-white rounded-lg shadow p-6 border-l-4 border-red-600">
-                        <div class="flex items-center justify-between">
-                            <div>
-                                <p class="text-gray-600 text-sm">投稿失敗</p>
-                                <p class="text-3xl font-bold text-red-600">{error_count}</p>
-                            </div>
-                            <div class="text-4xl">✗</div>
-                        </div>
-                    </div>
-
-                    <!-- 成功率 -->
+                    <!-- 成約率 -->
                     <div class="bg-white rounded-lg shadow p-6 border-l-4 border-purple-600">
                         <div class="flex items-center justify-between">
                             <div>
-                                <p class="text-gray-600 text-sm">成功率</p>
-                                <p class="text-3xl font-bold text-purple-600">
-                                    {(success_count / max((success_count + error_count), 1) * 100):.0f}%
-                                </p>
+                                <p class="text-gray-600 text-sm">成約率</p>
+                                <p class="text-3xl font-bold text-purple-600">{st['rate']}%</p>
                             </div>
                             <div class="text-4xl">📊</div>
                         </div>
                     </div>
+
+                    <!-- 未決（結果待ち） -->
+                    <div class="bg-white rounded-lg shadow p-6 border-l-4 border-amber-500">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <p class="text-gray-600 text-sm">未決</p>
+                                <p class="text-3xl font-bold text-amber-600">{st['pending']}</p>
+                            </div>
+                            <div class="text-4xl">⏳</div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 内訳バッジ -->
+                <div class="flex flex-wrap gap-3 mb-8 text-sm">
+                    <span class="px-3 py-1 rounded-full bg-green-50 text-green-700">🤝 成約 {st['contracted']}</span>
+                    <span class="px-3 py-1 rounded-full bg-amber-50 text-amber-700">⏳ 未決 {st['pending']}</span>
+                    <span class="px-3 py-1 rounded-full bg-gray-100 text-gray-600">✕ 不成立 {st['failed']}</span>
+                    <span class="px-3 py-1 rounded-full bg-blue-50 text-blue-500 ml-auto">閲覧・問い合わせ数は今後対応</span>
                 </div>
 
                 <!-- 最近の案件 -->

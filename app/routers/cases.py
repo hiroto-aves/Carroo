@@ -928,6 +928,12 @@ async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(No
     drop = f"{extras.get('drop_date','')} {extras.get('drop_time','')}".strip() or "翌日"
     freight = "要相談" if extras.get("freight_negotiable") else f"{int(float(row.get('freight_rate') or 0)):,}円（税別）"
 
+    # 成約ステータス（手動マーク）
+    _cs = row.get("contract_status")
+    _cs_map = {"成約": ("🤝 成約", "text-green-700 bg-green-50 border-green-200"),
+               "不成立": ("✕ 不成立", "text-gray-500 bg-gray-100 border-gray-200")}
+    cs_txt, cs_cls = _cs_map.get(_cs, ("⏳ 未決（結果待ち）", "text-amber-700 bg-amber-50 border-amber-200"))
+
     # プラットフォームカード
     STATE = {
         "live": ('● 掲載中', 'text-green-700 bg-green-50 border-green-200'),
@@ -1017,6 +1023,17 @@ async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(No
     </div>
   </div>
 
+  <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-4 mt-4 flex items-center gap-3 flex-wrap">
+    <span class="text-sm text-gray-500">成約:</span>
+    <span class="text-sm font-bold px-2.5 py-1 rounded-full border {cs_cls}">{cs_txt}</span>
+    <div class="flex gap-2 ml-auto">
+      <button onclick="setContract('成約')" class="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">🤝 成約にする</button>
+      <button onclick="setContract('不成立')" class="border border-gray-300 text-gray-700 text-sm font-semibold px-3 py-2 rounded-lg hover:bg-gray-50">✕ 不成立</button>
+      <button onclick="setContract('')" class="text-gray-400 text-sm px-2 hover:text-gray-600">未決に戻す</button>
+    </div>
+  </div>
+  <p class="text-xs text-gray-400 mt-1">※ 電話等で決まったらここで記録してください（ダッシュボードの成約数・成約率に反映されます）。</p>
+
   <div class="flex items-center gap-3 mt-5 mb-1 flex-wrap">
     <span class="text-sm text-gray-500">一括操作:</span>
     <button onclick="editCase('both')" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">両方を変更</button>
@@ -1044,8 +1061,25 @@ async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(No
     document.getElementById('fPlatforms').value = which === 'both' ? 'trabox,webkit' : which;
     f.submit();
   }}
+  async function setContract(s) {{
+    await fetch('/cases/' + CASE_ID + '/contract', {{method:'POST', body:new URLSearchParams({{status:s}})}});
+    location.reload();
+  }}
 </script>
 </body></html>""")
+
+
+@router.post("/{case_id}/contract")
+async def case_set_contract(case_id: int, status: str = Form(""),
+                            current_user: dict = Depends(get_current_user)):
+    """成約ステータスを手動記録（'成約' / '不成立' / '' = 未決）。"""
+    from app.db import store
+    valid = {"成約", "不成立", ""}
+    if status not in valid:
+        raise HTTPException(status_code=400, detail="不正なステータスです")
+    if not store.set_contract_status(case_id, current_user["id"], status):
+        raise HTTPException(status_code=404, detail="案件が見つかりません")
+    return {"status": "ok", "contract_status": status or None}
 
 
 @router.post("/{case_id}/delete")
