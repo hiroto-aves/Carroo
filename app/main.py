@@ -21,6 +21,13 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    """ブラウザが自動で叩く /favicon.ico にアプリアイコンを返す。"""
+    from fastapi.responses import FileResponse
+    return FileResponse("static/icons/icon-192.png", media_type="image/png")
+
+
 # PWA（ホーム画面に追加してアプリとして起動可能に）用の head 注入内容
 _PWA_HEAD = (
     '<link rel="manifest" href="/static/manifest.json">'

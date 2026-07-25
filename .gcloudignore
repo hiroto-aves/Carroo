@@ -12,6 +12,7 @@ trabox_fill_test/
 trabox_correct_flow/
 scripts/
 *.png
+!static/icons/*.png
 *.md
 main.py.bak
 functions/main.py.bak
