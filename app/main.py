@@ -31,13 +31,15 @@ async def favicon():
 # PWA（ホーム画面に追加してアプリとして起動可能に）用の head 注入内容
 _PWA_HEAD = (
     '<link rel="manifest" href="/static/manifest.json">'
-    '<meta name="theme-color" content="#2563eb">'
+    '<meta name="theme-color" content="#0FA36B">'
     '<meta name="apple-mobile-web-app-capable" content="yes">'
     '<meta name="mobile-web-app-capable" content="yes">'
     '<meta name="apple-mobile-web-app-status-bar-style" content="default">'
     '<meta name="apple-mobile-web-app-title" content="Carroo">'
+    # ホーム画面(PWA/iOS)は Route マーク、ブラウザタブ(favicon)は視認性優先の C モノグラム
     '<link rel="apple-touch-icon" href="/static/icons/icon-180.png">'
-    '<link rel="icon" type="image/png" href="/static/icons/icon-192.png">'
+    '<link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="any">'
+    '<link rel="icon" type="image/png" sizes="48x48" href="/static/icons/favicon-32.png">'
     '<script>if("serviceWorker"in navigator){navigator.serviceWorker.register("/static/sw.js").catch(function(){});}</script>'
 )
 
