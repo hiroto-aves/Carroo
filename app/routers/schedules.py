@@ -236,12 +236,25 @@ async def delete_schedule_route(schedule_id: int, current_user: dict = Depends(_
     return {"status": "deleted"}
 
 
-@router.post("/materialize")
-async def materialize_endpoint(request: Request):
-    """Cloud Scheduler が日次で叩く。X-Scheduler-Token で認証（ログイン不要）。"""
+def _check_scheduler_token(request: Request):
     token = request.headers.get("X-Scheduler-Token", "")
     expected = os.getenv("SCHEDULER_TOKEN", "")
     if not expected or token != expected:
         raise HTTPException(403, "invalid scheduler token")
+
+
+@router.post("/materialize")
+async def materialize_endpoint(request: Request):
+    """Cloud Scheduler が日次で叩く。X-Scheduler-Token で認証（ログイン不要）。"""
+    _check_scheduler_token(request)
     created = materialize()
     return {"status": "ok", "created": len(created), "items": created}
+
+
+@router.post("/sync-contracts")
+async def sync_contracts_endpoint(request: Request):
+    """WebKit の成約状況(contracttype)を案件へ自動反映。Cloud Scheduler が定期で叩く。"""
+    _check_scheduler_token(request)
+    from app.services.contract_sync import sync_webkit_contracts
+    result = await sync_webkit_contracts()
+    return {"status": "ok", **result}

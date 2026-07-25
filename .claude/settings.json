@@ -1,4 +1,32 @@
 {
+  "permissions": {
+    "allow": [
+      "Bash(git *)",
+      "Bash(gcloud *)",
+      "Bash(python3 *)",
+      "Bash(python *)",
+      "Bash(curl *)",
+      "Bash(pip *)",
+      "Bash(pip3 *)",
+      "Bash(grep *)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(sed *)",
+      "Bash(awk *)",
+      "Bash(dig *)",
+      "Bash(echo *)",
+      "Bash(chmod *)",
+      "Bash(pkill *)",
+      "Bash(mkdir *)",
+      "Bash(mv *)",
+      "Bash(cp *)",
+      "Bash(tail *)",
+      "Bash(head *)",
+      "Bash(find *)",
+      "Edit",
+      "Write"
+    ]
+  },
   "hooks": {
     "Stop": [
       {
