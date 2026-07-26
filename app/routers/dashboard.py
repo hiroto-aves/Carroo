@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import HTMLResponse
 from app.dependencies import get_current_user
 from app.ui_nav import main_nav
-from app.ui_shell import render_page
+from app.ui_shell import render_page, esc
 from app.db.database import get_db_connection
 from datetime import datetime, timedelta
 
@@ -94,8 +94,8 @@ def _truck_dashboard(current_user: dict, store):
         chip = ('<span class="chip live">◐ 掲載中</span>' if is_live
                 else '<span class="chip wait">待機</span>')
         trows += f"""<div class="rrow" style="grid-template-columns:1fr 150px 110px">
-          <div class="place">{t.get('vacant_pref','')}{t.get('vacant_city','')} → {t.get('dest_pref','')}{t.get('dest_city','')}
-            <small>{t.get('vacant_date','')} {t.get('vacant_time','')} 発 ／ {t.get('truck_weight','')}{t.get('vehicle_type','')}</small></div>
+          <div class="place">{esc(t.get('vacant_pref',''))}{esc(t.get('vacant_city',''))} → {esc(t.get('dest_pref',''))}{esc(t.get('dest_city',''))}
+            <small>{esc(t.get('vacant_date',''))} {esc(t.get('vacant_time',''))} 発 ／ {esc(t.get('truck_weight',''))}{esc(t.get('vehicle_type',''))}</small></div>
           <div style="text-align:right">{chip}</div>
           <div style="text-align:right"><a href="/trucks/{t['id']}/manage" style="color:var(--signal-ink);font-size:12px">管理 →</a></div>
         </div>"""
@@ -116,7 +116,7 @@ def _truck_dashboard(current_user: dict, store):
             chip = ('<span class="chip off">停止中</span>' if paused
                     else '<span class="chip live">稼働中</span>')
             srows += f"""<div class="rrow" style="grid-template-columns:1fr 150px 110px">
-              <div class="place">{s.get('vacant_pref','')}{s.get('vacant_city','')} → {s.get('dest_pref','')}{s.get('dest_city','')}
+              <div class="place">{esc(s.get('vacant_pref',''))}{esc(s.get('vacant_city',''))} → {esc(s.get('dest_pref',''))}{esc(s.get('dest_city',''))}
                 <small>{recurrence.describe(s)} ／ 次回 {nxt}</small></div>
               <div style="text-align:right">{chip}</div>
               <div style="text-align:right"><a href="/schedules/" style="color:var(--signal-ink);font-size:12px">一覧 →</a></div>
@@ -185,11 +185,11 @@ async def dashboard(current_user: dict = Depends(get_current_user),
                     + ('border-color:var(--amber);box-shadow:0 0 0 4px var(--amber-wash)' if amb else '')
                     + '"></span>') if w < 100 else ""
             rows_html += f"""<div class="rrow">
-              <div class="place">{c.get('pick_location','')}<small>{c.get('pickup_date','')} {c.get('pickup_time') or ''} 積</small></div>
+              <div class="place">{esc(c.get('pick_location',''))}<small>{esc(c.get('pickup_date',''))} {esc(c.get('pickup_time') or '')} 積</small></div>
               <div class="track"><div class="base"></div><div class="fill" style="width:{w}%;background:{fill}"></div>
                 <span class="o"></span>{node}<span class="d{dcls}"></span></div>
               <div style="text-align:right">
-                <div class="place" style="text-align:right">{c.get('drop_location','')}<small>{ex.get('drop_date','')} {ex.get('drop_time','')} 卸</small></div>
+                <div class="place" style="text-align:right">{esc(c.get('drop_location',''))}<small>{esc(ex.get('drop_date',''))} {esc(ex.get('drop_time',''))} 卸</small></div>
                 <div style="margin-top:4px"><a href="/cases/{cid}/manage">{chip}</a></div>
               </div>
             </div>"""
@@ -288,12 +288,12 @@ async def cases_list(
         if is_admin:
             for u in store.list_users():
                 sel = " selected" if str(u["id"]) == str(q_user) else ""
-                user_options += f'<option value="{u["id"]}"{sel}>{u["username"]}</option>'
+                user_options += f'<option value="{u["id"]}"{sel}>{esc(u["username"])}</option>'
 
         # 登録者名の候補（アカウント内 / 管理者は全件）
         reg_names = store.list_registrants(is_admin, user_id)
         registrant_opts = '<option value="">すべて</option>' + "".join(
-            f'<option value="{n}"{" selected" if n==registrant else ""}>{n}</option>' for n in reg_names)
+            f'<option value="{esc(n)}"{" selected" if n==registrant else ""}>{esc(n)}</option>' for n in reg_names)
 
         pref_opts_pick = '<option value="">すべて</option>' + "".join(
             f'<option value="{p}"{" selected" if p==pick else ""}>{p}</option>' for p in PREFECTURES)
@@ -338,7 +338,7 @@ async def cases_list(
         body = ""
         for case in cases:
             cid = case["id"]
-            tds = "".join(f'<td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{cell(case, k)}</td>' for k in visible)
+            tds = "".join(f'<td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{esc(cell(case, k))}</td>' for k in visible)
             body += f'<tr class="border-b border-gray-100 hover:bg-gray-50"><td class="px-4 py-3 text-sm font-semibold text-gray-900">#{cid}</td>{tds}<td class="px-4 py-3 text-sm whitespace-nowrap"><a href="/cases/{cid}/manage" class="text-blue-600 hover:text-blue-700 font-medium">管理</a></td></tr>'
         if not cases:
             body = f'<tr><td colspan="{len(visible)+2}" class="px-6 py-8 text-center text-gray-500">条件に一致する案件がありません</td></tr>'

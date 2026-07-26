@@ -16,6 +16,17 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-26 追補②：一時ページのシェル統合＋セキュリティ全面ハードニング（rev carroo-00033-lg6）
+- **一時ページ2つを左レール・シェルへ移植**（`cases.py`）：単発「登録完了」／「一括登録完了」。旧独自HTML廃止。
+- **セキュリティ強化（全項目実装・本番検証済み）**：
+  - パスワードを **bcrypt**（ソルト付・低速）へ移行。旧SHA-256はログイン成功時に透過的に再ハッシュ（`security.py`／`store.set_user_password`）。requirements に `bcrypt==4.1.2`。
+  - **XSS対策**：`ui_shell.esc()` を追加し、全ユーザー入力の出力箇所をエスケープ（サイドバー名・ダッシュ・荷物/空車一覧/管理/編集・グループ・登録完了・ユーザー管理・プロフィール・設定・検索options）。
+  - **ログインのレート制限**（IP+ユーザー名で失敗8回/5分→15分ロック、429）。max-instances=1 前提のプロセス内メモリ。
+  - **セキュリティヘッダー**（main.py middleware）：X-Frame-Options=DENY / CSP frame-ancestors 'none' / X-Content-Type-Options=nosniff / Referrer-Policy / HSTS(本番のみ)。本番で全て応答確認。
+  - **SCHEDULER_TOKEN を定数時間比較**（`hmac.compare_digest`、タイミング攻撃対策）。無token=403 も確認。
+  - **SECRET_KEY フェイルセーフ**：本番(COOKIE_SECURE)でデフォルト鍵なら起動時に停止。
+- 既存の強み（Secret Manager一元管理／httponly+secure+samesite Cookie／認証情報Fernet暗号化）は維持。
+
 ### 🆕 2026-07-26 追補：サイドバー折り畳み＋ユーザー管理をシェルに統合（rev carroo-00031-49f）
 - **サイドバー手動折り畳みトグル**（`ui_shell.py`）：ロゴ横の `‹` ボタンで 236px ⇄ 64px 切替、
   localStorage(`carroo_rail`)で状態記憶（先読みスクリプトでフラッシュ防止）。

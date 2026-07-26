@@ -127,6 +127,12 @@ def delete_user(user_id: int) -> None:
     _db().collection("users").document(str(user_id)).delete()
 
 
+def set_user_password(user_id: int, hashed_password: str) -> None:
+    """ハッシュ済みパスワードを更新（旧SHA-256→bcrypt 再ハッシュ移行に使用）。"""
+    _db().collection("users").document(str(user_id)).update(
+        {"hashed_password": hashed_password})
+
+
 def count_user_cases(user_id: int) -> int:
     return sum(1 for _ in _db().collection("cases")
                .where("user_id", "==", int(user_id)).stream())

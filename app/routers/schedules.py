@@ -231,9 +231,11 @@ async def delete_schedule_route(schedule_id: int, current_user: dict = Depends(_
 
 
 def _check_scheduler_token(request: Request):
+    import hmac
     token = request.headers.get("X-Scheduler-Token", "")
     expected = os.getenv("SCHEDULER_TOKEN", "")
-    if not expected or token != expected:
+    # 定数時間比較でタイミング攻撃を防ぐ（未設定時は常に拒否）
+    if not expected or not hmac.compare_digest(token, expected):
         raise HTTPException(403, "invalid scheduler token")
 
 

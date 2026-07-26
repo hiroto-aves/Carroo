@@ -2,14 +2,41 @@ from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from app.config import settings
 import hashlib
+import bcrypt
+
 
 def hash_password(password: str) -> str:
-    """パスワードをハッシュ化"""
-    return hashlib.sha256(password.encode()).hexdigest()
+    """パスワードをハッシュ化（bcrypt。ソルト付き・低速で総当り耐性）。
+
+    bcrypt は 72 バイト超を無視するため、先に SHA-256 で固定長化してから
+    bcrypt にかける（長いパスワードでも全体が反映される標準的な前処理）。
+    """
+    pre = hashlib.sha256(password.encode("utf-8")).digest()
+    return bcrypt.hashpw(pre, bcrypt.gensalt()).decode("ascii")
+
+
+def _is_bcrypt(h: str) -> bool:
+    return isinstance(h, str) and h.startswith(("$2a$", "$2b$", "$2y$"))
+
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """パスワード検証"""
-    return hash_password(plain_password) == hashed_password
+    """パスワード検証。bcrypt と 旧SHA-256(移行用) の両方を受け付ける。"""
+    if not hashed_password:
+        return False
+    if _is_bcrypt(hashed_password):
+        pre = hashlib.sha256(plain_password.encode("utf-8")).digest()
+        try:
+            return bcrypt.checkpw(pre, hashed_password.encode("ascii"))
+        except ValueError:
+            return False
+    # 旧形式（無ソルト SHA-256 hexdigest）: 移行期間のみ検証を許可
+    legacy = hashlib.sha256(plain_password.encode("utf-8")).hexdigest()
+    return legacy == hashed_password
+
+
+def needs_rehash(hashed_password: str) -> bool:
+    """旧SHA-256で保存されている＝ログイン成功時に bcrypt へ再ハッシュすべきか。"""
+    return not _is_bcrypt(hashed_password or "")
 
 def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     """JWT アクセストークン生成"""

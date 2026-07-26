@@ -31,7 +31,7 @@ async def users_page(current_user: dict = Depends(get_current_user)):
     """ユーザー管理画面（一覧＋新規発行フォーム）。管理者のみ。左レール・シェル。"""
     _require_admin(current_user)
     from app.db import store
-    from app.ui_shell import render_page
+    from app.ui_shell import render_page, esc
     users = [
         (u["id"], u["username"], u.get("email"), u.get("is_admin"),
          u.get("created_at"), store.count_user_cases(u["id"]))
@@ -45,10 +45,10 @@ async def users_page(current_user: dict = Depends(get_current_user)):
         rows += f"""
         <tr>
           <td class="mono" style="color:var(--faint)">{uid}</td>
-          <td style="font-weight:600">{uname}{badge}</td>
-          <td style="color:var(--muted)">{email or ''}</td>
+          <td style="font-weight:600">{esc(uname)}{badge}</td>
+          <td style="color:var(--muted)">{esc(email)}</td>
           <td class="num" style="text-align:right">{ncases} 件</td>
-          <td style="color:var(--faint)">{created or ''}</td>
+          <td style="color:var(--faint)">{esc(created)}</td>
         </tr>"""
 
     body = f"""

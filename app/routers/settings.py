@@ -31,7 +31,7 @@ def get_settings_html(
     user: dict = None,
 ) -> str:
     """設定ページHTMLを生成"""
-    from app.ui_shell import shell_open, SHELL_CLOSE
+    from app.ui_shell import shell_open, SHELL_CLOSE, esc
 
     def _sel(cur, val):
         return " selected" if cur == val else ""
@@ -119,15 +119,15 @@ def get_settings_html(
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">担当者名</label>
-                            <input type="text" name="contact_name" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="山田太郎" value="{contact_name}">
+                            <input type="text" name="contact_name" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="山田太郎" value="{esc(contact_name)}">
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">電話番号</label>
-                            <input type="tel" name="contact_phone" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="09012345678" value="{contact_phone}">
+                            <input type="tel" name="contact_phone" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="09012345678" value="{esc(contact_phone)}">
                         </div>
                         <div class="md:col-span-2">
                             <label class="block text-sm font-medium text-gray-700 mb-2">メールアドレス<span class="ml-1 px-1.5 py-0.5 text-xs font-semibold text-red-600 bg-red-50 rounded">必須</span></label>
-                            <input type="email" name="contact_email" required class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="example@domain.com" value="{contact_email}">
+                            <input type="email" name="contact_email" required class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="example@domain.com" value="{esc(contact_email)}">
                             <p class="text-xs text-gray-500 mt-1">投稿の成否通知がこのアドレスに届きます。未登録の場合は案件登録できません。</p>
                         </div>
                     </div>

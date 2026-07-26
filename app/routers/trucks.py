@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse
 from app.dependencies import get_current_user
 from app.db import store
 from app.services.cloud_tasks import get_task_client
-from app.ui_shell import render_page
+from app.ui_shell import render_page, esc
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/trucks", tags=["trucks"])
@@ -185,9 +185,9 @@ async def list_trucks(current_user: dict = Depends(get_current_user)):
         wk = _STATE_BADGE[store.get_truck_platform_state(t["id"], "webkit")]
         items += f"""<tr class="border-b hover:bg-gray-50">
           <td class="px-3 py-2 font-mono">{t['id']}</td>
-          <td class="px-3 py-2">{t.get('vacant_date','')} {t.get('vacant_time','')}</td>
-          <td class="px-3 py-2">{t.get('vacant_pref','')}{t.get('vacant_city','')} → {t.get('dest_pref','')}{t.get('dest_city','')}</td>
-          <td class="px-3 py-2">{t.get('truck_weight','')}{t.get('vehicle_type','')}</td>
+          <td class="px-3 py-2">{esc(t.get('vacant_date',''))} {esc(t.get('vacant_time',''))}</td>
+          <td class="px-3 py-2">{esc(t.get('vacant_pref',''))}{esc(t.get('vacant_city',''))} → {esc(t.get('dest_pref',''))}{esc(t.get('dest_city',''))}</td>
+          <td class="px-3 py-2">{esc(t.get('truck_weight',''))}{esc(t.get('vehicle_type',''))}</td>
           <td class="px-3 py-2"><span class="text-xs px-2 py-0.5 rounded border {tb[1]}">トラボックス {tb[0]}</span>
               <span class="text-xs px-2 py-0.5 rounded border {wk[1]}">WebKit {wk[0]}</span></td>
           <td class="px-3 py-2"><a href="/trucks/{t['id']}/manage" class="text-blue-600 hover:underline">管理</a></td>
@@ -234,8 +234,8 @@ async def manage_truck(truck_id: int, current_user: dict = Depends(get_current_u
     body = f"""
 <div class="max-w-3xl">
   <a href="/trucks/" class="hl" style="color:var(--signal-ink)">← 空車一覧</a>
-  <p class="hl" style="margin:8px 0 16px">{t.get('vacant_pref','')}{t.get('vacant_city','')} → {t.get('dest_pref','')}{t.get('dest_city','')}
-     ／ {t.get('vacant_date','')} {t.get('vacant_time','')} ／ {t.get('truck_weight','')}{t.get('vehicle_type','')}</p>
+  <p class="hl" style="margin:8px 0 16px">{esc(t.get('vacant_pref',''))}{esc(t.get('vacant_city',''))} → {esc(t.get('dest_pref',''))}{esc(t.get('dest_city',''))}
+     ／ {esc(t.get('vacant_date',''))} {esc(t.get('vacant_time',''))} ／ {esc(t.get('truck_weight',''))}{esc(t.get('vehicle_type',''))}</p>
   <div class="grid grid-cols-2 gap-4 mb-6">{_plat_block('trabox', tb)}{_plat_block('webkit', wk)}</div>
   <h2 class="font-semibold mb-2">投稿履歴</h2>
   <div class="card p-4" style="padding:16px">{hist or '<span class="text-gray-400">履歴なし</span>'}</div>

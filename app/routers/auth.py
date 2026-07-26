@@ -1,13 +1,51 @@
-from fastapi import APIRouter, HTTPException, status, Response, Depends, Form, Cookie
+import logging
+import time
+import threading
+
+from fastapi import APIRouter, HTTPException, status, Response, Depends, Form, Cookie, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from app.models.schemas import UserCreate, User
 from app.db.database import get_db_connection
 from app.config import settings
 from app.utils.security import hash_password, verify_password, create_access_token
 from app.dependencies import get_current_user
+from app.ui_shell import esc
 from datetime import timedelta
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# ---- ログイン・レート制限（プロセス内メモリ。Cloud Run は max-instances=1 なので有効） ----
+_LOGIN_MAX_FAILS = 8          # この回数まで失敗を許容
+_LOGIN_WINDOW = 300           # 失敗カウントの観測窓（秒）
+_LOGIN_LOCK = 900             # 上限到達後のロック時間（秒）
+_login_attempts: dict = {}    # key -> {"fails":[timestamps], "locked_until":ts}
+_login_lock = threading.Lock()
+
+
+def _login_rate_limit_check(key: str) -> None:
+    now = time.time()
+    with _login_lock:
+        rec = _login_attempts.get(key)
+        if rec and rec.get("locked_until", 0) > now:
+            wait = int(rec["locked_until"] - now)
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                                detail=f"試行回数が多すぎます。約{wait//60 + 1}分後に再度お試しください。")
+
+
+def _login_rate_limit_fail(key: str) -> None:
+    now = time.time()
+    with _login_lock:
+        rec = _login_attempts.setdefault(key, {"fails": [], "locked_until": 0})
+        rec["fails"] = [t for t in rec["fails"] if now - t < _LOGIN_WINDOW]
+        rec["fails"].append(now)
+        if len(rec["fails"]) >= _LOGIN_MAX_FAILS:
+            rec["locked_until"] = now + _LOGIN_LOCK
+            rec["fails"] = []
+
+
+def _login_rate_limit_reset(key: str) -> None:
+    with _login_lock:
+        _login_attempts.pop(key, None)
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page():
@@ -279,19 +317,35 @@ async def register_disabled():
     )
 
 @router.post("/login")
-async def login(username: str = Form(...), password: str = Form(...),
+async def login(request: Request, username: str = Form(...), password: str = Form(...),
                 remember_me: str = Form(None), response: Response = None):
     if response is None:
         response = Response()
+
+    # レート制限: 同一IP+ユーザー名の連続失敗をスロットル（総当り対策）
+    client_ip = (request.headers.get("x-forwarded-for", "").split(",")[0].strip()
+                 or (request.client.host if request.client else "unknown"))
+    _rl_key = f"{client_ip}|{username.lower()}"
+    _login_rate_limit_check(_rl_key)
 
     from app.db import store
     user = store.get_user_by_username(username)
 
     if not user or not verify_password(password, user["hashed_password"]):
+        _login_rate_limit_fail(_rl_key)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password"
         )
+
+    _login_rate_limit_reset(_rl_key)
+    # 旧SHA-256 で保存されていたら、この機会に bcrypt へ透過的に再ハッシュ
+    from app.utils.security import needs_rehash
+    if needs_rehash(user["hashed_password"]):
+        try:
+            store.set_user_password(user["id"], hash_password(password))
+        except Exception:
+            logging.getLogger(__name__).warning("password rehash failed for user %s", user["id"])
 
     # 🔴 一生ログイン方針: 管理端末(Jamf配信)での利用のため常に永続ログイン。
     # スライディング更新と併せて、使い続ける限りログアウトされない。
@@ -379,15 +433,15 @@ async def profile_page(access_token: str = Cookie(None)):
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                 <div class="p-4 bg-gray-50 rounded-lg">
                     <p class="text-gray-500 mb-1">ユーザー名</p>
-                    <p class="font-semibold text-gray-900">{username}</p>
+                    <p class="font-semibold text-gray-900">{esc(username)}</p>
                 </div>
                 <div class="p-4 bg-gray-50 rounded-lg">
                     <p class="text-gray-500 mb-1">メールアドレス</p>
-                    <p class="font-semibold text-gray-900">{email}</p>
+                    <p class="font-semibold text-gray-900">{esc(email)}</p>
                 </div>
                 <div class="p-4 bg-gray-50 rounded-lg md:col-span-2">
                     <p class="text-gray-500 mb-1">登録日</p>
-                    <p class="font-semibold text-gray-900">{created_at or "-"}</p>
+                    <p class="font-semibold text-gray-900">{esc(created_at) or "-"}</p>
                 </div>
             </div>
             <div class="flex gap-4 pt-4">

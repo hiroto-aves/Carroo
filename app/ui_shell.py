@@ -5,7 +5,19 @@
 - 右：トップバー（ページ名・中央ツール・右アクション）＋ 作業面
 - デザイントークン（墨レール＋紙面＋意味の緑/琥珀）、ライト/ダーク対応
 """
+import html as _html
+
 from app.tenancy import feature_enabled
+
+
+def esc(value) -> str:
+    """HTMLエスケープ。ユーザー入力を画面に埋め込む際は必ず通す（XSS対策）。
+
+    None は空文字、その他は文字列化してから & < > " ' をエスケープする。
+    """
+    if value is None:
+        return ""
+    return _html.escape(str(value), quote=True)
 
 # ---- SVG 定義（Cマーク＋ナビ line icons。currentColor 基準） ----
 SVG_DEFS = """
@@ -146,8 +158,8 @@ def _nav_item(active, key, href, icon, label, badge=None):
 
 def _sidebar(active, user):
     is_admin = user.get("is_admin") if user else False
-    uname = (user or {}).get("username", "") or "ゲスト"
-    initial = uname[0] if uname else "C"
+    uname = esc((user or {}).get("username", "") or "ゲスト")
+    initial = esc(((user or {}).get("username", "") or "C")[0])
     recurring = (_nav_item(active, "schedules", "/schedules/", "i-repeat", "空車定期登録")
                  if feature_enabled("recurring") else "")
     users = (_nav_item(active, "users", "/admin/users", "i-users", "ユーザー管理")

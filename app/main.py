@@ -21,6 +21,29 @@ app = FastAPI(
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
+@app.middleware("http")
+async def security_headers_middleware(request, call_next):
+    """全レスポンスに防御的セキュリティヘッダーを付与。
+
+    - X-Frame-Options / frame-ancestors: クリックジャッキング防止
+    - X-Content-Type-Options: MIMEスニッフィング防止
+    - Referrer-Policy: リファラ漏洩の抑制
+    - HSTS: 本番HTTPS(COOKIE_SECURE)時のみHTTPS強制
+    CSP は Tailwind CDN・インラインscript/style を使うため段階導入とし、
+    ここでは frame-ancestors のみ指定（既存UIを壊さない範囲）。
+    """
+    response = await call_next(request)
+    h = response.headers
+    h.setdefault("X-Frame-Options", "DENY")
+    h.setdefault("X-Content-Type-Options", "nosniff")
+    h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    h.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+    from app.config import settings as _st
+    if _st.COOKIE_SECURE:
+        h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    return response
+
+
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon():
     """ブラウザが自動で叩く /favicon.ico に Route マーク(.ico 16/32/48)を返す。"""
@@ -110,6 +133,13 @@ app.include_router(schedules.router)
 
 @app.on_event("startup")
 async def startup_event():
+    # フェイルセーフ: 本番(COOKIE_SECURE=True)でSECRET_KEYがデフォルトのままなら起動を止める。
+    # （デフォルト鍵のままだと誰でもJWTを偽造でき、なりすましログインが可能になるため）
+    from app.config import settings as _st
+    if _st.COOKIE_SECURE and _st.SECRET_KEY == "your-secret-key-change-this-in-production":
+        raise RuntimeError(
+            "SECRET_KEY が本番でデフォルト値のままです。Secret Manager 等で必ず上書きしてください。")
+
     # データストアは Firestore。管理者アカウントが無ければ作成。
     from app.db import store
     try:

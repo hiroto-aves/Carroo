@@ -606,19 +606,19 @@ def _user_from_token(access_token):
 def _batch_result_page(case_ids, group_id, pick_location, drop_location,
                         variants, want_trabox, want_webkit, user=None) -> HTMLResponse:
     """複数日程一括登録の結果ページ（各日程の案件IDとグループ管理導線）。左レール・シェル。"""
-    from app.ui_shell import render_page
+    from app.ui_shell import render_page, esc
     plats = "・".join([p for p, w in (("トラボックス", want_trabox), ("WebKit", want_webkit)) if w]) or "なし"
     rows = ""
     for cid, v in zip(case_ids, variants):
         rows += (f'<tr><td class="mono" style="color:var(--faint)">{cid}</td>'
-                 f'<td>{v["pickup_date"]} {v["pickup_time"]} 積 → {v["drop_date"]} {v["drop_time"]} 卸</td>'
+                 f'<td>{esc(v["pickup_date"])} {esc(v["pickup_time"])} 積 → {esc(v["drop_date"])} {esc(v["drop_time"])} 卸</td>'
                  f'<td><a href="/cases/{cid}/manage" style="color:var(--signal-ink);font-weight:600">状況</a></td></tr>')
     body = f"""
   <div class="card" style="max-width:640px;margin:8px auto;padding:28px">
     <div style="text-align:center;margin-bottom:20px">
       <div style="font-size:48px;line-height:1;margin-bottom:10px">✅</div>
       <h1 class="pt" style="margin-bottom:4px">{len(case_ids)}件の日程で一括登録しました</h1>
-      <p class="hl" style="margin:0">{pick_location} → {drop_location}／投稿先 {plats}</p>
+      <p class="hl" style="margin:0">{esc(pick_location)} → {esc(drop_location)}／投稿先 {plats}</p>
     </div>
     <div class="card" style="overflow:hidden;margin-bottom:18px;box-shadow:none">
       <table><thead><tr><th>案件ID</th><th>日程</th><th></th></tr></thead><tbody>{rows}</tbody></table>
@@ -853,16 +853,16 @@ async def register_case(
             platforms.append("WebKit")
         platforms_text = "・".join(platforms) if platforms else "なし（案件保存のみ）"
 
-        from app.ui_shell import render_page
+        from app.ui_shell import render_page, esc
         body = f"""
   <div class="card" style="max-width:560px;margin:8px auto;padding:32px;text-align:center">
     <div style="font-size:52px;line-height:1;margin-bottom:12px">✅</div>
     <h1 class="pt" style="margin-bottom:6px">案件を登録しました</h1>
     <p class="hl" style="margin:0 0 22px">案件ID: <span class="mono" style="font-weight:600">{case_id}</span></p>
     <div style="text-align:left;background:var(--raise);border:1px solid var(--line-soft);border-radius:12px;padding:16px;margin-bottom:20px;font-size:13.5px;display:grid;gap:8px">
-      <div><span class="hl">積地:</span> <b>{pick_location}</b></div>
-      <div><span class="hl">卸地:</span> <b>{drop_location}</b></div>
-      <div><span class="hl">積み日:</span> <b>{pickup_date}</b></div>
+      <div><span class="hl">積地:</span> <b>{esc(pick_location)}</b></div>
+      <div><span class="hl">卸地:</span> <b>{esc(drop_location)}</b></div>
+      <div><span class="hl">積み日:</span> <b>{esc(pickup_date)}</b></div>
       <div><span class="hl">投稿先:</span> <b>{platforms_text}</b></div>
     </div>
     <p class="hl" style="font-size:12.5px;margin:0 0 24px">投稿は背景で実行中です（1〜2分程度）。<br>結果（成功/失敗・荷物番号）はダッシュボードの案件詳細で確認できます。</p>
@@ -992,20 +992,20 @@ async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(No
     if not rows_html:
         rows_html = '<p class="text-gray-400 text-center py-8">履歴がありません</p>'
 
-    from app.ui_shell import shell_open, SHELL_CLOSE
+    from app.ui_shell import shell_open, SHELL_CLOSE, esc
     _u = store.get_user_by_id(user_id)
     return HTMLResponse(shell_open(title=f"荷物 #{case_id}", active="load_list",
                                    user=_u, crumb="Carroo / 荷物") + f"""
 <div class="max-w-4xl">
   <p class="text-sm text-gray-500 mb-3"><a href="/dashboard/cases" class="text-blue-600">荷物一覧</a> › 案件 #{case_id}</p>
   <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-    <div class="text-xs text-gray-500 font-mono">案件 ID {case_id} ・ {row.get('created_at','')} 登録 ・ 登録者: {row.get('contact_name','') or '-'}</div>
-    <h1 class="text-2xl font-bold mt-1">{row.get('pick_location','')} <span class="text-gray-400 font-normal mx-2">→</span> {row.get('drop_location','')}</h1>
+    <div class="text-xs text-gray-500 font-mono">案件 ID {case_id} ・ {esc(row.get('created_at',''))} 登録 ・ 登録者: {esc(row.get('contact_name','') or '-')}</div>
+    <h1 class="text-2xl font-bold mt-1">{esc(row.get('pick_location',''))} <span class="text-gray-400 font-normal mx-2">→</span> {esc(row.get('drop_location',''))}</h1>
     <div class="flex flex-wrap gap-x-6 gap-y-1 mt-4 text-sm text-gray-700">
       <span><span class="text-gray-400 mr-1">積み</span>{pickup}</span>
       <span><span class="text-gray-400 mr-1">着</span>{drop}</span>
-      <span><span class="text-gray-400 mr-1">車両</span>{extras.get('truck_weight','')} {row.get('vehicle_type','')}</span>
-      <span><span class="text-gray-400 mr-1">荷種</span>{extras.get('cargo_type','鋼材')}</span>
+      <span><span class="text-gray-400 mr-1">車両</span>{esc(extras.get('truck_weight',''))} {esc(row.get('vehicle_type',''))}</span>
+      <span><span class="text-gray-400 mr-1">荷種</span>{esc(extras.get('cargo_type','鋼材'))}</span>
       <span><span class="text-gray-400 mr-1">運賃</span>{freight}</span>
     </div>
   </div>
@@ -1113,18 +1113,18 @@ async def case_group_page(group_id: int, current_user: dict = Depends(get_curren
         wk = _badge[store.get_platform_state(cid, "webkit")]
         ex = c.get("extras") or {}
         rows += (f'<tr class="border-b"><td class="px-3 py-2 font-mono">{cid}</td>'
-                 f'<td class="px-3 py-2">{c.get("pickup_date","")} {c.get("pickup_time","")} 積 → '
-                 f'{ex.get("drop_date","")} {ex.get("drop_time","")} 卸</td>'
+                 f'<td class="px-3 py-2">{esc(c.get("pickup_date",""))} {esc(c.get("pickup_time",""))} 積 → '
+                 f'{esc(ex.get("drop_date",""))} {esc(ex.get("drop_time",""))} 卸</td>'
                  f'<td class="px-3 py-2"><span class="text-xs px-2 py-0.5 rounded {tb[1]}">トラボックス {tb[0]}</span> '
                  f'<span class="text-xs px-2 py-0.5 rounded {wk[1]}">WebKit {wk[0]}</span></td>'
                  f'<td class="px-3 py-2 text-sm"><a href="/cases/{cid}/manage" class="text-blue-600 hover:underline">個別</a>'
                  f' <button onclick="keepOne({cid})" class="ml-2 text-amber-700 hover:underline">これで成約→他を取下げ</button></td></tr>')
     c0 = cases[0]
-    from app.ui_shell import shell_open, SHELL_CLOSE
+    from app.ui_shell import shell_open, SHELL_CLOSE, esc
     return HTMLResponse(shell_open(title=f"複数日程グループ #{group_id}", active="load_list",
                                    user=current_user, crumb="Carroo / 荷物") + f"""
 <div class="max-w-4xl">
-  <p class="text-gray-600 mb-4">{c0.get('pick_location','')} → {c0.get('drop_location','')}／{len(cases)}日程</p>
+  <p class="text-gray-600 mb-4">{esc(c0.get('pick_location',''))} → {esc(c0.get('drop_location',''))}／{len(cases)}日程</p>
   <div class="bg-white rounded-lg shadow overflow-x-auto mb-4">
     <table class="w-full text-sm"><thead class="bg-gray-100 text-left text-gray-600">
       <tr><th class="px-3 py-2">案件ID</th><th class="px-3 py-2">日程</th><th class="px-3 py-2">掲載状態</th><th class="px-3 py-2"></th></tr>
@@ -1200,7 +1200,7 @@ async def case_edit_page(case_id: int, platforms: str = "trabox,webkit",
     freight_val = "" if ex.get("freight_negotiable") else int(float(row.get("freight_rate") or 0))
 
     I = 'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500'
-    from app.ui_shell import shell_open, SHELL_CLOSE
+    from app.ui_shell import shell_open, SHELL_CLOSE, esc
     return HTMLResponse(shell_open(title=f"変更 #{case_id}", active="load_list",
                                    user=_user_from_token(access_token), crumb="Carroo / 荷物") + f"""
 <div class="max-w-3xl">
@@ -1217,18 +1217,18 @@ async def case_edit_page(case_id: int, platforms: str = "trabox,webkit",
     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
       <div><label class="block text-sm font-medium mb-1">積地</label>
         <div class="flex gap-2"><select name="pick_pref" class="{I}" required>{pref_opts_pick}</select>
-        <input type="text" name="pick_city" value="{pick_city}" placeholder="市区町村" class="{I}" required></div></div>
+        <input type="text" name="pick_city" value="{esc(pick_city)}" placeholder="市区町村" class="{I}" required></div></div>
       <div><label class="block text-sm font-medium mb-1">卸地</label>
         <div class="flex gap-2"><select name="drop_pref" class="{I}" required>{pref_opts_drop}</select>
-        <input type="text" name="drop_city" value="{drop_city}" placeholder="市区町村" class="{I}" required></div></div>
+        <input type="text" name="drop_city" value="{esc(drop_city)}" placeholder="市区町村" class="{I}" required></div></div>
     </div>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
       <div><label class="block text-sm font-medium mb-1">荷物重量(kg)</label><input type="number" name="cargo_weight" value="{int(float(row.get('cargo_weight') or 0))}" class="{I}" required></div>
       <div><label class="block text-sm font-medium mb-1">希望車両（トン数/形状）</label>
         <div class="flex gap-2"><select name="truck_weight" class="{I}">{weight_opts}</select><select name="vehicle_type" class="{I}">{shape_opts}</select></div></div>
-      <div><label class="block text-sm font-medium mb-1">荷種</label><input type="text" name="cargo_type" value="{ex.get('cargo_type','鋼材')}" class="{I}"></div>
+      <div><label class="block text-sm font-medium mb-1">荷種</label><input type="text" name="cargo_type" value="{esc(ex.get('cargo_type','鋼材'))}" class="{I}"></div>
       <div><label class="block text-sm font-medium mb-1">運賃(円)</label><input type="number" name="freight_rate" value="{freight_val}" class="{I}"></div>
-      <div><label class="block text-sm font-medium mb-1">登録者名</label><input type="text" name="contact_name" value="{row.get('contact_name','') or ''}" class="{I}"></div>
+      <div><label class="block text-sm font-medium mb-1">登録者名</label><input type="text" name="contact_name" value="{esc(row.get('contact_name','') or '')}" class="{I}"></div>
     </div>
     <div class="flex gap-3 pt-2">
       <button type="submit" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2.5 rounded-lg">この内容で変更する</button>
