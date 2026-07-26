@@ -16,6 +16,14 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-26 追補④：空車フォーム改善＋定期登録バグ修正（rev carroo-00038-46k）
+- **市区町村を必須化**（定期登録・空車単発の両フォーム／client required＋server validation）。空だと Trabox/WebKit が
+  vacantarea 等で投稿失敗するため事前に弾く。原因: 市区町村空のルールで即投稿が silent fail していた。
+- **市区町村を連動ドロップダウン化**（「荷物を出す」画面と同じ `/cases/api/cities` を利用する setupCityLoader を移植）。
+  都道府県選択→市区町村を自動取得、既定都道府県でもページ表示時に自動ロード、API失敗時は手入力フォールバック。
+- **dest_offset_days のゼロ落ちバグ修正**（`recurrence.occurrence_to_posting`）：`int(x or 1)` だと到着0日後(同日着)が
+  翌日に化ける。None 判定に変更（0=同日 / 1=翌日 / 未指定=翌日）。検証済み。
+
 ### 🆕 2026-07-26 追補③：定期登録の即時投稿＋運用/監視/DLQ/監査/CSP（rev carroo-00035-w8w）
 - **空車定期登録バグ対応**：ルール作成しても即投稿されない体感を解消。`scheduler_service.materialize_schedule()` を追加し、
   作成直後に lead_days 窓内の空車日を即マテリアライズ（即キュー投入）。UIも「今すぐN件投稿」or「次回予定」を表示。
