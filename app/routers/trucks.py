@@ -65,7 +65,7 @@ def _page(user) -> str:
           <input type="time" name="vacant_time" value="09:00" class="border rounded px-3 py-2">
         </div>
         <select name="vacant_pref" class="border rounded px-3 py-2 w-full">{pref_opts}</select>
-        <input name="vacant_city" placeholder="市区町村（例: 練馬区）" class="border rounded px-3 py-2 w-full">
+        <input name="vacant_city" required placeholder="市区町村（例: 練馬区）※必須" class="border rounded px-3 py-2 w-full">
       </div>
       <div class="space-y-3">
         <h2 class="font-semibold text-gray-800 border-b pb-1">行先地</h2>
@@ -74,7 +74,7 @@ def _page(user) -> str:
           <input type="time" name="dest_time" value="09:00" class="border rounded px-3 py-2">
         </div>
         <select name="dest_pref" class="border rounded px-3 py-2 w-full">{dpref_opts}</select>
-        <input name="dest_city" placeholder="市区町村（例: 大阪市北区）" class="border rounded px-3 py-2 w-full">
+        <input name="dest_city" required placeholder="市区町村（例: 大阪市北区）※必須" class="border rounded px-3 py-2 w-full">
       </div>
     </div>
     <div class="grid md:grid-cols-2 gap-6">
@@ -145,6 +145,11 @@ async def register_truck(
     want_webkit = post_to_webkit is not None
     if not want_trabox and not want_webkit:
         raise HTTPException(400, "投稿先を1つ以上選択してください")
+    # 市区町村は Trabox/WebKit とも必須（空だと vacantarea 等で投稿失敗する）
+    if not (vacant_city or "").strip():
+        raise HTTPException(400, "空車地の市区町村は必須です（例: 練馬区）")
+    if not (dest_city or "").strip():
+        raise HTTPException(400, "行先地の市区町村は必須です（例: 大阪市北区）")
 
     def _prefs(s):
         return [p.strip() for p in (s or "").replace("、", ",").split(",") if p.strip()]
