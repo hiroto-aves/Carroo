@@ -47,6 +47,54 @@ def _now() -> str:
     return datetime.now(_JST).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def purge_case(case_id: int) -> Dict[str, int]:
+    """案件ドキュメント＋その posting_history を完全削除（テストデータ整理用）。
+
+    ⚠️ 不可逆。掲載中(live)の案件を消しても外部掲載は消えない点に注意
+    （呼び出し側で live 判定して弾くこと）。削除件数を返す。
+    """
+    db = _db()
+    n_hist = 0
+    for snap in db.collection("posting_history").where("case_id", "==", int(case_id)).stream():
+        snap.reference.delete()
+        n_hist += 1
+    db.collection("cases").document(str(case_id)).delete()
+    return {"case": 1, "history": n_hist}
+
+
+def purge_truck(truck_id: int) -> Dict[str, int]:
+    """空車ドキュメント＋その truck_posting_history を完全削除（不可逆）。"""
+    db = _db()
+    n_hist = 0
+    for snap in db.collection("truck_posting_history").where("truck_id", "==", int(truck_id)).stream():
+        snap.reference.delete()
+        n_hist += 1
+    db.collection("truck_postings").document(str(truck_id)).delete()
+    return {"truck": 1, "history": n_hist}
+
+
+def list_all_cases() -> List[Dict[str, Any]]:
+    """全案件（管理者メンテナンス用。ユーザー横断）。"""
+    out = []
+    for snap in _db().collection("cases").stream():
+        d = snap.to_dict() or {}
+        d["id"] = int(snap.id)
+        out.append(d)
+    out.sort(key=lambda c: c["id"])
+    return out
+
+
+def list_all_trucks() -> List[Dict[str, Any]]:
+    """全空車（管理者メンテナンス用）。"""
+    out = []
+    for snap in _db().collection("truck_postings").stream():
+        d = snap.to_dict() or {}
+        d["id"] = int(snap.id)
+        out.append(d)
+    out.sort(key=lambda c: c["id"])
+    return out
+
+
 def record_dead_letter(kind: str, action: str, payload: Dict[str, Any],
                        error: Any = None, retry_count: int = None) -> int:
     """リトライ上限を超えて確定失敗したタスクを dead_letter コレクションに記録。
