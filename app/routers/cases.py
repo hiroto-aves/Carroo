@@ -521,10 +521,10 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
     """
     # 複数日程一括投稿（FEATURE_MULTIDATE 有効時のみ UI を差し込む。オプション機能）
     from app.tenancy import feature_enabled
-    from app.ui_nav import main_nav
+    from app.ui_shell import shell_open, SHELL_CLOSE
     multidate_ui = _MULTIDATE_UI if feature_enabled("multidate") else ""
-    return (
-        html.replace("MAIN_NAV", main_nav())
+    built = (
+        html.replace("MAIN_NAV", "")
         .replace("MULTIDATE_UI", multidate_ui)
         .replace("PREF_OPTIONS", pref_options)
         .replace("WEIGHT_OPTIONS", weight_options)
@@ -533,6 +533,10 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
         .replace("CONTACT_PHONE_VALUE", contact["phone"])
         .replace("CONTACT_EMAIL_VALUE", contact["email"])
     )
+    # 既存テンプレの中身だけを取り出して左レール・シェルで包む
+    inner = built.split('<body class="bg-gray-50">', 1)[-1].rsplit("</body>", 1)[0]
+    return shell_open(title="荷物を出す", active="load_new",
+                      user=_user_from_token(access_token)) + inner + SHELL_CLOSE
 
 
 # 複数日程一括投稿 UI（FEATURE_MULTIDATE）。上の積み/着 日時が「1本目」、
@@ -585,6 +589,19 @@ _MULTIDATE_UI = """
 })();
 </script>
 """
+
+def _user_from_token(access_token):
+    """access_token(Cookie) からサイドバー表示用のユーザー dict を得る。"""
+    try:
+        from app.utils.security import decode_access_token
+        from app.db import store
+        td = decode_access_token(access_token) if access_token else None
+        if not td:
+            return None
+        return store.get_user_by_id(td.get("user_id"))
+    except Exception:
+        return None
+
 
 def _batch_result_page(case_ids, group_id, pick_location, drop_location,
                         variants, want_trabox, want_webkit) -> HTMLResponse:
@@ -1001,16 +1018,12 @@ async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(No
     if not rows_html:
         rows_html = '<p class="text-gray-400 text-center py-8">履歴がありません</p>'
 
-    return HTMLResponse(f"""<!DOCTYPE html>
-<html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Carroo - 案件管理 #{case_id}</title><script src="https://cdn.tailwindcss.com"></script></head>
-<body class="bg-gray-50">
-<nav class="bg-white shadow-sm border-b border-gray-200"><div class="max-w-4xl mx-auto px-4 py-3.5 flex items-center justify-between">
-  <a href="/dashboard/" class="text-2xl font-bold text-blue-600 hover:opacity-80">📦 Carroo</a>
-  <div class="flex gap-4 text-sm text-gray-600"><a href="/dashboard/" class="hover:text-blue-600">ダッシュボード</a><a href="/auth/logout" class="hover:text-red-600">ログアウト</a></div>
-</div></nav>
-<div class="max-w-4xl mx-auto px-4 py-8">
-  <p class="text-sm text-gray-500 mb-3"><a href="/dashboard/" class="text-blue-600">ダッシュボード</a> › 案件 #{case_id}</p>
+    from app.ui_shell import shell_open, SHELL_CLOSE
+    _u = store.get_user_by_id(user_id)
+    return HTMLResponse(shell_open(title=f"荷物 #{case_id}", active="load_list",
+                                   user=_u, crumb="Carroo / 荷物") + f"""
+<div class="max-w-4xl">
+  <p class="text-sm text-gray-500 mb-3"><a href="/dashboard/cases" class="text-blue-600">荷物一覧</a> › 案件 #{case_id}</p>
   <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
     <div class="text-xs text-gray-500 font-mono">案件 ID {case_id} ・ {row.get('created_at','')} 登録 ・ 登録者: {row.get('contact_name','') or '-'}</div>
     <h1 class="text-2xl font-bold mt-1">{row.get('pick_location','')} <span class="text-gray-400 font-normal mx-2">→</span> {row.get('drop_location','')}</h1>
@@ -1066,7 +1079,7 @@ async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(No
     location.reload();
   }}
 </script>
-</body></html>""")
+""" + SHELL_CLOSE)
 
 
 @router.post("/{case_id}/contract")
@@ -1133,14 +1146,10 @@ async def case_group_page(group_id: int, current_user: dict = Depends(get_curren
                  f'<td class="px-3 py-2 text-sm"><a href="/cases/{cid}/manage" class="text-blue-600 hover:underline">個別</a>'
                  f' <button onclick="keepOne({cid})" class="ml-2 text-amber-700 hover:underline">これで成約→他を取下げ</button></td></tr>')
     c0 = cases[0]
-    return HTMLResponse(f"""<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>グループ #{group_id}</title>
-<script src="https://cdn.tailwindcss.com"></script></head><body class="bg-gray-50">
-<nav class="bg-white shadow-sm border-b"><div class="max-w-7xl mx-auto px-4 flex justify-between h-16 items-center">
-<a href="/dashboard/" class="text-2xl font-bold text-blue-600">📦 Carroo</a>
-<a href="/auth/logout" class="text-red-600">ログアウト</a></div></nav>
-<div class="max-w-4xl mx-auto px-4 py-8">
-  <h1 class="text-2xl font-bold mb-1">複数日程グループ #{group_id}</h1>
+    from app.ui_shell import shell_open, SHELL_CLOSE
+    return HTMLResponse(shell_open(title=f"複数日程グループ #{group_id}", active="load_list",
+                                   user=current_user, crumb="Carroo / 荷物") + f"""
+<div class="max-w-4xl">
   <p class="text-gray-600 mb-4">{c0.get('pick_location','')} → {c0.get('drop_location','')}／{len(cases)}日程</p>
   <div class="bg-white rounded-lg shadow overflow-x-auto mb-4">
     <table class="w-full text-sm"><thead class="bg-gray-100 text-left text-gray-600">
@@ -1154,7 +1163,7 @@ async function keepOne(keep){{ if(!confirm('この日程で成約とし、他の
   await fetch('/cases/group/{group_id}/cancel',{{method:'POST',body:new URLSearchParams({{keep}})}}); location.reload(); }}
 async function cancelAll(){{ if(!confirm('このグループの全ての掲載を取り下げますか？'))return;
   await fetch('/cases/group/{group_id}/cancel',{{method:'POST'}}); location.reload(); }}
-</script></body></html>""")
+</script>""" + SHELL_CLOSE)
 
 
 @router.post("/group/{group_id}/cancel")

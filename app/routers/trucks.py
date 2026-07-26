@@ -10,6 +10,7 @@ from fastapi.responses import HTMLResponse
 from app.dependencies import get_current_user
 from app.db import store
 from app.services.cloud_tasks import get_task_client
+from app.ui_shell import render_page
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/trucks", tags=["trucks"])
@@ -48,16 +49,12 @@ def _opts(values, selected=None):
     )
 
 
-def _page(username: str) -> str:
+def _page(user) -> str:
     pref_opts = _opts(PREFS, "東京都")
     dpref_opts = _opts(PREFS, "大阪府")
-    return f"""<!DOCTYPE html><html lang="ja"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Carroo - 空車登録</title><script src="https://cdn.tailwindcss.com"></script></head>
-<body class="bg-gray-50">{_nav(username)}
-<div class="max-w-3xl mx-auto px-4 py-8">
-  <h1 class="text-3xl font-bold text-gray-900 mb-1">🚚 空車登録</h1>
-  <p class="text-gray-600 mb-6">空車情報を Trabox / WebKit に一括投稿します。</p>
+    body = f"""
+<div class="max-w-3xl">
+  <p class="hl" style="margin:-4px 0 18px">空車情報を Trabox / WebKit に一括投稿します。</p>
   <div id="msg" class="hidden mb-4 p-3 rounded-lg"></div>
   <form id="f" class="bg-white rounded-lg shadow p-6 space-y-6">
     <div class="grid md:grid-cols-2 gap-6">
@@ -122,12 +119,13 @@ document.getElementById('f').addEventListener('submit', async (e) => {{
   msg.classList.remove('hidden');
   if (r.ok) setTimeout(()=>location.href='/trucks/', 1500);
 }});
-</script></body></html>"""
+</script>"""
+    return render_page(title="空車を出す", active="truck_new", body=body, user=user)
 
 
 @router.get("/register", response_class=HTMLResponse)
 async def register_page(current_user: dict = Depends(get_current_user)):
-    return _page(current_user["username"])
+    return _page(current_user)
 
 
 @router.post("/register")
@@ -196,21 +194,15 @@ async def list_trucks(current_user: dict = Depends(get_current_user)):
         </tr>"""
     if not items:
         items = '<tr><td colspan="6" class="px-3 py-8 text-center text-gray-400">空車の登録はまだありません</td></tr>'
-    return f"""<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Carroo - 空車一覧</title>
-<script src="https://cdn.tailwindcss.com"></script></head><body class="bg-gray-50">{_nav(current_user['username'])}
-<div class="max-w-6xl mx-auto px-4 py-8">
-  <div class="flex justify-between items-center mb-6">
-    <h1 class="text-3xl font-bold">🚚 空車一覧</h1>
-    <a href="/trucks/register" class="bg-blue-600 text-white px-5 py-2 rounded-lg font-semibold">＋ 空車登録</a>
-  </div>
-  <div class="bg-white rounded-lg shadow overflow-x-auto">
-    <table class="w-full text-sm"><thead class="bg-gray-100 text-left text-gray-600">
-      <tr><th class="px-3 py-2">ID</th><th class="px-3 py-2">空車日時</th><th class="px-3 py-2">区間</th>
-      <th class="px-3 py-2">車両</th><th class="px-3 py-2">掲載状態</th><th class="px-3 py-2"></th></tr>
+    body = f"""
+<div class="card" style="overflow-x:auto">
+    <table><thead>
+      <tr><th>ID</th><th>空車日時</th><th>区間</th><th>車両</th><th>掲載状態</th><th></th></tr>
     </thead><tbody>{items}</tbody></table>
-  </div>
-</div></body></html>"""
+</div>"""
+    actions = '<a class="btn" href="/trucks/register">＋ 空車を出す</a>'
+    return render_page(title="空車一覧", active="truck_list", body=body,
+                       user=current_user, topbar_actions=actions)
 
 
 @router.get("/{truck_id}/manage", response_class=HTMLResponse)
@@ -239,17 +231,14 @@ async def manage_truck(truck_id: int, current_user: dict = Depends(get_current_u
         bn = f' 伝票番号 {h.get("baggage_no")}' if h.get("baggage_no") else ""
         hist += f'<div class="text-sm py-1 border-b">{pf} {act} <b>{sta}</b>{bn} {err}</div>'
 
-    return f"""<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>空車管理 #{truck_id}</title>
-<script src="https://cdn.tailwindcss.com"></script></head><body class="bg-gray-50">{_nav(current_user['username'])}
-<div class="max-w-3xl mx-auto px-4 py-8">
-  <a href="/trucks/" class="text-blue-600 text-sm">← 空車一覧</a>
-  <h1 class="text-2xl font-bold mt-2 mb-1">空車 #{truck_id}</h1>
-  <p class="text-gray-600 mb-4">{t.get('vacant_pref','')}{t.get('vacant_city','')} → {t.get('dest_pref','')}{t.get('dest_city','')}
+    body = f"""
+<div class="max-w-3xl">
+  <a href="/trucks/" class="hl" style="color:var(--signal-ink)">← 空車一覧</a>
+  <p class="hl" style="margin:8px 0 16px">{t.get('vacant_pref','')}{t.get('vacant_city','')} → {t.get('dest_pref','')}{t.get('dest_city','')}
      ／ {t.get('vacant_date','')} {t.get('vacant_time','')} ／ {t.get('truck_weight','')}{t.get('vehicle_type','')}</p>
   <div class="grid grid-cols-2 gap-4 mb-6">{_plat_block('trabox', tb)}{_plat_block('webkit', wk)}</div>
   <h2 class="font-semibold mb-2">投稿履歴</h2>
-  <div class="bg-white rounded-lg shadow p-4">{hist or '<span class="text-gray-400">履歴なし</span>'}</div>
+  <div class="card p-4" style="padding:16px">{hist or '<span class="text-gray-400">履歴なし</span>'}</div>
 </div>
 <script>
 async function delTruck(pf) {{
@@ -257,7 +246,9 @@ async function delTruck(pf) {{
   const r = await fetch('/trucks/{truck_id}/delete', {{method:'POST', body:new URLSearchParams({{platforms:pf}})}});
   location.reload();
 }}
-</script></body></html>"""
+</script>"""
+    return render_page(title=f"空車 #{truck_id}", active="truck_list", body=body,
+                       user=current_user, crumb="Carroo / 空車")
 
 
 @router.post("/{truck_id}/delete")

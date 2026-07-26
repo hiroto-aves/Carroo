@@ -28,33 +28,9 @@ def get_settings_html(
     contact_email: str = "",
 ) -> str:
     """設定ページHTMLを生成"""
-    return f"""<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carroo - 初期設定</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-50">
-    <nav class="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-50">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16 items-center">
-                <div class="flex items-center">
-                    <a href="/dashboard/" class="text-2xl font-bold text-blue-600">📦 Carroo</a>
-                </div>
-                <div class="flex items-center gap-6">
-                    <div class="text-right">
-                        <p class="text-sm text-gray-600">ログイン中:</p>
-                        <p class="font-semibold text-gray-900">{username}</p>
-                    </div>
-                    <div class="w-px h-8 bg-gray-300"></div>
-                    <a href="/dashboard/" class="text-gray-600 hover:text-blue-600 transition">ダッシュボード</a>
-                    <a href="/auth/logout" class="text-gray-600 hover:text-red-600 transition">ログアウト</a>
-                </div>
-            </div>
-        </div>
-    </nav>
+    from app.ui_shell import shell_open, SHELL_CLOSE
+    return shell_open(title="初期設定", active="settings",
+                      user={"username": username}) + f"""
 
     <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div class="mb-8">
@@ -179,8 +155,7 @@ def get_settings_html(
             }}
         }});
     </script>
-</body>
-</html>"""
+""" + SHELL_CLOSE
 
 
 @router.get("/settings/", response_class=HTMLResponse)

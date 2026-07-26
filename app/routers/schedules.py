@@ -16,6 +16,7 @@ from app.tenancy import current_tenant_id, feature_enabled
 from app.services import recurrence
 from app.services.scheduler_service import materialize
 from app.routers.trucks import PREFS, WEIGHTS, VEHICLES, _nav, _opts
+from app.ui_shell import render_page
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/schedules", tags=["schedules"])
@@ -38,12 +39,9 @@ async def register_page(current_user: dict = Depends(_require_feature)):
         f'<label class="inline-flex items-center gap-1 mr-3"><input type="checkbox" '
         f'name="byday" value="{v}"> {lbl}</label>' for v, lbl in WEEKDAYS
     )
-    return f"""<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Carroo - 繰り返し空車登録</title>
-<script src="https://cdn.tailwindcss.com"></script></head><body class="bg-gray-50">{_nav(current_user['username'])}
-<div class="max-w-3xl mx-auto px-4 py-8">
-  <h1 class="text-3xl font-bold mb-1">🔁 繰り返し空車ルール</h1>
-  <p class="text-gray-600 mb-6">毎週・隔週・毎日・毎月のパターンで空車を自動投稿します。</p>
+    body = f"""
+<div class="max-w-3xl">
+  <p class="hl" style="margin:-4px 0 18px">毎週・隔週・毎日・毎月のパターンで空車を自動投稿します。</p>
   <div id="msg" class="hidden mb-4 p-3 rounded-lg"></div>
   <form id="f" class="bg-white rounded-lg shadow p-6 space-y-6">
     <div>
@@ -121,7 +119,9 @@ document.getElementById('f').addEventListener('submit', async (e)=>{{
   msg.textContent=r.ok?('✅ ルール作成: '+j.describe+'（次回投稿予定 '+(j.next||'-')+'）'):('エラー: '+(j.detail||'失敗'));
   msg.classList.remove('hidden'); if(r.ok) setTimeout(()=>location.href='/schedules/',1500);
 }});
-</script></body></html>"""
+</script>"""
+    return render_page(title="繰り返しルール作成", active="schedules", body=body,
+                       user=current_user, crumb="Carroo / 繰り返し")
 
 
 @router.post("/register")
@@ -197,26 +197,20 @@ async def list_page(current_user: dict = Depends(_require_feature)):
           </td></tr>"""
     if not items:
         items = '<tr><td colspan="7" class="px-3 py-8 text-center text-gray-400">繰り返しルールはまだありません</td></tr>'
-    return f"""<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Carroo - 繰り返しルール一覧</title>
-<script src="https://cdn.tailwindcss.com"></script></head><body class="bg-gray-50">{_nav(current_user['username'])}
-<div class="max-w-6xl mx-auto px-4 py-8">
-  <div class="flex justify-between items-center mb-6">
-    <h1 class="text-3xl font-bold">🔁 繰り返しルール</h1>
-    <a href="/schedules/register" class="bg-purple-600 text-white px-5 py-2 rounded-lg font-semibold">＋ ルール作成</a>
-  </div>
-  <div class="bg-white rounded-lg shadow overflow-x-auto">
-    <table class="w-full text-sm"><thead class="bg-gray-100 text-left text-gray-600"><tr>
-      <th class="px-3 py-2">ID</th><th class="px-3 py-2">名前</th><th class="px-3 py-2">パターン</th>
-      <th class="px-3 py-2">区間</th><th class="px-3 py-2">次回</th><th class="px-3 py-2">状態</th><th class="px-3 py-2"></th>
+    body = f"""
+<div class="card" style="overflow-x:auto">
+    <table><thead><tr>
+      <th>ID</th><th>名前</th><th>パターン</th><th>区間</th><th>次回</th><th>状態</th><th></th>
     </tr></thead><tbody>{items}</tbody></table>
-  </div>
 </div>
 <script>
 async function tog(id){{ await fetch('/schedules/'+id+'/toggle',{{method:'POST'}}); location.reload(); }}
 async function del(id){{ if(!confirm('このルールを削除しますか？（生成済みの空車は残ります）'))return;
   await fetch('/schedules/'+id+'/delete',{{method:'POST'}}); location.reload(); }}
-</script></body></html>"""
+</script>"""
+    actions = '<a class="btn" href="/schedules/register">＋ ルール作成</a>'
+    return render_page(title="繰り返しルール", active="schedules", body=body,
+                       user=current_user, topbar_actions=actions)
 
 
 @router.post("/{schedule_id}/toggle")

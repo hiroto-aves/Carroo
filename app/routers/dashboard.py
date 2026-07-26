@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.responses import HTMLResponse
 from app.dependencies import get_current_user
 from app.ui_nav import main_nav
+from app.ui_shell import render_page
 from app.db.database import get_db_connection
 from datetime import datetime
 
@@ -55,141 +56,63 @@ async def dashboard(current_user: dict = Depends(get_current_user),
         d_from, d_to, period_label = _period_range(period, date_from, date_to)
         st = store.dashboard_stats(current_user.get("is_admin", False), user_id,
                                    date_from=d_from, date_to=d_to)
+        is_admin = current_user.get("is_admin", False)
 
-        # 最近の案件（新しい順に5件）: (id, pick, drop, pickup_date, created_at) タプル互換
-        recent_cases = [
-            (c["id"], c.get("pick_location"), c.get("drop_location"),
-             c.get("pickup_date"), c.get("created_at"))
-            for c in store.recent_cases(user_id, 5)
-        ]
+        # 進行中の経路（最近の案件を経路の線で表示）
+        rows_html = ""
+        for c in store.recent_cases(user_id, 6):
+            cid = c["id"]
+            ex = c.get("extras") or {}
+            cs = c.get("contract_status")
+            live = any(store.get_platform_state(cid, p) == "live" for p in ("trabox", "webkit"))
+            if cs == "成約":
+                fill, w, chip, dcls, amb = "var(--signal)", 100, '<span class="chip met">🤝 成約</span>', " met", False
+            elif cs == "不成立":
+                fill, w, chip, dcls, amb = "var(--route)", 100, '<span class="chip off">✕ 不成立</span>', "", False
+            elif live:
+                fill, w, chip, dcls, amb = "var(--signal)", 62, '<span class="chip live">◐ 掲載中</span>', "", False
+            else:
+                fill, w, chip, dcls, amb = "var(--amber)", 26, '<span class="chip wait">⏳ 未決</span>', "", True
+            node = (f'<span class="node" style="left:{w}%;'
+                    + ('border-color:var(--amber);box-shadow:0 0 0 4px var(--amber-wash)' if amb else '')
+                    + '"></span>') if w < 100 else ""
+            rows_html += f"""<div class="rrow">
+              <div class="place">{c.get('pick_location','')}<small>{c.get('pickup_date','')} {c.get('pickup_time') or ''} 積</small></div>
+              <div class="track"><div class="base"></div><div class="fill" style="width:{w}%;background:{fill}"></div>
+                <span class="o"></span>{node}<span class="d{dcls}"></span></div>
+              <div style="text-align:right">
+                <div class="place" style="text-align:right">{c.get('drop_location','')}<small>{ex.get('drop_date','')} {ex.get('drop_time','')} 卸</small></div>
+                <div style="margin-top:4px"><a href="/cases/{cid}/manage">{chip}</a></div>
+              </div>
+            </div>"""
+        if not rows_html:
+            rows_html = '<div style="padding:36px;text-align:center;color:var(--faint)">案件がまだありません。<a href="/cases/register" style="color:var(--signal-ink)">最初の荷物を出す →</a></div>'
 
-        html = f"""
-        <!DOCTYPE html>
-        <html lang="ja">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Carroo - ダッシュボード</title>
-            <script src="https://cdn.tailwindcss.com"></script>
-        </head>
-        <body class="bg-gray-50">
-            <!-- ナビゲーションバー -->
-            {main_nav(username, current_user.get('is_admin'))}
+        seg = '<div class="seg perseg">' + _period_buttons(period) + '</div>'
+        body = f"""
+<div class="stats">
+  <div class="cell"><div class="k">投稿数 <span class="sub">（{period_label}）</span></div><div class="v num">{st['total']}</div></div>
+  <div class="cell"><div class="k">掲載中 <span class="sub">（現在）</span></div><div class="v num sig">{st['live']}</div></div>
+  <div class="cell"><div class="k">成約数</div><div class="v num">{st['contracted']}</div></div>
+  <div class="cell"><div class="k">成約率</div><div class="v num">{st['rate']}%</div></div>
+  <div class="cell"><div class="k">未決</div><div class="v num amb">{st['pending']}</div></div>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;font-size:13px;align-items:center">
+  <span class="chip live">📢 掲載中 {st['live']}</span>
+  <span class="chip met">🤝 成約 {st['contracted']}</span>
+  <span class="chip wait">⏳ 未決 {st['pending']}</span>
+  <span class="chip off">✕ 不成立 {st['failed']}</span>
+  <span style="margin-left:auto;color:var(--faint)">対象期間 <b>{period_label}</b></span>
+</div>
+<div class="ledger">
+  <div class="lhead"><span class="t">進行中の経路</span><a class="a" href="/dashboard/cases">すべての案件 →</a></div>
+  {rows_html}
+</div>
+"""
+        actions = '<a class="btn" href="/cases/register"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>出す</a>'
+        return render_page(title="ダッシュボード", active="dashboard", body=body,
+                           user=current_user, topbar_center=seg, topbar_actions=actions)
 
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                <!-- ページタイトル -->
-                <div class="mb-4">
-                    <h1 class="text-4xl font-bold text-gray-900">ダッシュボード</h1>
-                    <p class="text-gray-600 mt-2">登録された案件と投稿履歴の確認</p>
-                </div>
-
-                <!-- 期間セレクタ -->
-                <div class="flex flex-wrap items-center gap-2 mb-4">
-                    {_period_buttons(period)}
-                    <form method="get" action="/dashboard/" class="flex items-center gap-1 ml-1">
-                        <input type="hidden" name="period" value="custom">
-                        <input type="date" name="date_from" value="{date_from or ''}" class="border rounded px-2 py-1 text-sm">
-                        <span class="text-gray-400">〜</span>
-                        <input type="date" name="date_to" value="{date_to or ''}" class="border rounded px-2 py-1 text-sm">
-                        <button class="bg-gray-800 text-white text-sm px-3 py-1 rounded">適用</button>
-                    </form>
-                    <span class="text-sm text-gray-500 ml-auto">対象期間: <b>{period_label}</b></span>
-                </div>
-
-                <!-- 統計カード（成約ベース） -->
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-4">
-                    <div class="bg-white rounded-lg shadow p-5 border-l-4 border-blue-600">
-                        <p class="text-gray-600 text-sm">投稿数<span class="text-xs text-gray-400">（{period_label}）</span></p>
-                        <p class="text-3xl font-bold text-gray-900">{st['total']}</p>
-                    </div>
-                    <div class="bg-white rounded-lg shadow p-5 border-l-4 border-teal-600">
-                        <p class="text-gray-600 text-sm">掲載中<span class="text-xs text-gray-400">（現在）</span></p>
-                        <p class="text-3xl font-bold text-teal-600">{st['live']}</p>
-                    </div>
-                    <div class="bg-white rounded-lg shadow p-5 border-l-4 border-green-600">
-                        <p class="text-gray-600 text-sm">成約数</p>
-                        <p class="text-3xl font-bold text-green-600">{st['contracted']}</p>
-                    </div>
-                    <div class="bg-white rounded-lg shadow p-5 border-l-4 border-purple-600">
-                        <p class="text-gray-600 text-sm">成約率</p>
-                        <p class="text-3xl font-bold text-purple-600">{st['rate']}%</p>
-                    </div>
-                    <div class="bg-white rounded-lg shadow p-5 border-l-4 border-amber-500">
-                        <p class="text-gray-600 text-sm">未決</p>
-                        <p class="text-3xl font-bold text-amber-600">{st['pending']}</p>
-                    </div>
-                </div>
-                <!-- 内訳バッジ -->
-                <div class="flex flex-wrap gap-3 mb-8 text-sm">
-                    <span class="px-3 py-1 rounded-full bg-teal-50 text-teal-700">📢 掲載中 {st['live']}</span>
-                    <span class="px-3 py-1 rounded-full bg-green-50 text-green-700">🤝 成約 {st['contracted']}</span>
-                    <span class="px-3 py-1 rounded-full bg-amber-50 text-amber-700">⏳ 未決 {st['pending']}</span>
-                    <span class="px-3 py-1 rounded-full bg-gray-100 text-gray-600">✕ 不成立 {st['failed']}</span>
-                    <span class="px-3 py-1 rounded-full bg-blue-50 text-blue-500 ml-auto">閲覧・問い合わせ数は今後対応</span>
-                </div>
-
-                <!-- 最近の案件 -->
-                <div class="bg-white rounded-lg shadow overflow-hidden">
-                    <div class="px-6 py-4 border-b border-gray-200">
-                        <h2 class="text-lg font-semibold text-gray-900">最近の案件</h2>
-                    </div>
-
-                    <div class="overflow-x-auto">
-                        <table class="w-full">
-                            <thead class="bg-gray-50 border-b border-gray-200">
-                                <tr>
-                                    <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">案件ID</th>
-                                    <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">積地</th>
-                                    <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">卸地</th>
-                                    <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">日付</th>
-                                    <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">アクション</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-        """
-
-        if recent_cases:
-            for case in recent_cases:
-                case_id, pick_loc, drop_loc, pickup_date, created_at = case
-                html += f"""
-                                <tr class="border-b border-gray-200 hover:bg-gray-50 transition">
-                                    <td class="px-6 py-4 text-sm text-gray-900">#{case_id}</td>
-                                    <td class="px-6 py-4 text-sm text-gray-600">{pick_loc}</td>
-                                    <td class="px-6 py-4 text-sm text-gray-600">{drop_loc}</td>
-                                    <td class="px-6 py-4 text-sm text-gray-600">{pickup_date}</td>
-                                    <td class="px-6 py-4 text-sm">
-                                        <a href="/dashboard/cases/{case_id}" class="text-blue-600 hover:text-blue-700 font-medium">
-                                            詳細を見る →
-                                        </a>
-                                    </td>
-                                </tr>
-                """
-        else:
-            html += """
-                                <tr>
-                                    <td colspan="5" class="px-6 py-8 text-center text-gray-500">
-                                        案件がまだ登録されていません
-                                    </td>
-                                </tr>
-            """
-
-        html += """
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div class="px-6 py-4 border-t border-gray-200 bg-gray-50">
-                        <a href="/dashboard/cases" class="text-blue-600 hover:text-blue-700 font-medium">
-                            すべての案件を見る →
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </body>
-        </html>
-        """
-
-        return html
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -320,15 +243,8 @@ async def cases_list(
         admin_link = '<a href="/admin/users" class="text-gray-600 hover:text-blue-600 transition">👥 ユーザー管理</a>' if is_admin else ''
         user_filter = f'<div><label class="block text-xs font-medium text-gray-600 mb-1">ユーザー</label><select name="q_user" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"><option value="">全員</option>{user_options}</select></div>' if is_admin else ''
 
-        html = f"""<!DOCTYPE html>
-<html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Carroo - 案件一覧</title><script src="https://cdn.tailwindcss.com"></script></head>
-<body class="bg-gray-50">
-{main_nav(current_user['username'], is_admin)}
-<div class="max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
-  <a href="/dashboard" class="text-blue-600 hover:text-blue-700 text-sm">← ダッシュボードに戻る</a>
-  <h1 class="text-3xl font-bold text-gray-900 mt-2 mb-1">案件一覧</h1>
-  <p class="text-gray-600 mb-5">{'全ユーザー' if is_admin else '自分'}の案件 {len(cases)} 件</p>
+        content = f"""<div>
+  <p class="hl" style="margin:-4px 0 16px">{'全ユーザー' if is_admin else '自分'}の案件 {len(cases)} 件</p>
 
   <form method="get" action="/dashboard/cases" class="bg-white rounded-lg shadow p-4 mb-4">
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
@@ -361,8 +277,10 @@ async def cases_list(
     </tr></thead>
     <tbody>{body}</tbody>
   </table></div></div>
-</div></body></html>"""
-        return html
+</div>"""
+        actions = '<a class="btn" href="/cases/register">＋ 荷物を出す</a>'
+        return render_page(title="荷物一覧", active="load_list", body=content,
+                           user=current_user, topbar_actions=actions)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
