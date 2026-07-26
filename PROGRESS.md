@@ -16,6 +16,14 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-27 データ整理（管理者メンテナンス画面）＋テストダミー一掃（rev carroo-00039-tjs）
+- **管理者専用「データ整理」画面** `/admin/maintenance`（ユーザー管理から導線）：全案件・全空車を一覧
+  （ID/経路/登録日/トラ・WebKit掲載状態）、掲載の無い（live/working でない）レコードのみ完全削除可。
+  個別「完全削除」＋「掲載なし◯件を一括削除」。確認ダイアログ＋監査ログ record_purge / record_purge_bulk。
+- store: `purge_case`/`purge_truck`（doc＋履歴を物理削除・不可逆）、`list_all_cases`/`list_all_trucks` 追加。
+- 掲載中・処理中は外部掲載が残るため削除不可の安全設計。
+- **本番でテストダミー案件を一掃済み（ユーザー実施）✅**。
+
 ### 🆕 2026-07-26 追補④：空車フォーム改善＋定期登録バグ修正（rev carroo-00038-46k）
 - **市区町村を必須化**（定期登録・空車単発の両フォーム／client required＋server validation）。空だと Trabox/WebKit が
   vacantarea 等で投稿失敗するため事前に弾く。原因: 市区町村空のルールで即投稿が silent fail していた。
