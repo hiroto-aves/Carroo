@@ -4,20 +4,43 @@ from app.dependencies import get_current_user
 from app.ui_nav import main_nav
 from app.ui_shell import render_page
 from app.db.database import get_db_connection
-from datetime import datetime
+from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 
-def _period_buttons(active: str) -> str:
-    opts = [("this_month", "今月"), ("last_month", "前月"),
-            ("year", "過去1年"), ("all", "累計")]
-    out = ""
+def _period_controls(active: str, date_from: str, date_to: str) -> str:
+    """期間セレクタ: 今月 / 前月 / 過去1年 ＋ 年月範囲（YYYY年MM月〜YYYY年MM月）。"""
+    opts = [("this_month", "今月"), ("last_month", "前月"), ("year", "過去1年")]
+    seg = '<div class="seg perseg">'
     for key, label in opts:
-        cls = ("bg-blue-600 text-white" if active == key
-               else "bg-white text-gray-700 border border-gray-300 hover:bg-gray-50")
-        out += f'<a href="/dashboard/?period={key}" class="text-sm px-3 py-1 rounded-lg {cls}">{label}</a>'
-    return out
+        on = " on" if active == key else ""
+        seg += f'<a class="{on.strip()}" href="/dashboard/?period={key}">{label}</a>'
+    seg += "</div>"
+    # 年月レンジ（type=month）。custom 選択時は入力値を保持
+    fm = date_from if (active == "custom" and date_from) else ""
+    tm = date_to if (active == "custom" and date_to) else ""
+    ph = ' style="border-color:var(--signal)"' if active == "custom" else ""
+    form = (
+        f'<form method="get" action="/dashboard/" style="display:flex;align-items:center;gap:6px">'
+        f'<input type="hidden" name="period" value="custom">'
+        f'<input type="month" name="date_from" value="{fm}"{ph} style="width:132px;padding:5px 8px;font-size:12px" required>'
+        f'<span style="color:var(--faint);font-size:12px">〜</span>'
+        f'<input type="month" name="date_to" value="{tm}"{ph} style="width:132px;padding:5px 8px;font-size:12px" required>'
+        f'<button class="btn ghost" type="submit" style="padding:6px 12px;font-size:12px">表示</button>'
+        f'</form>'
+    )
+    return f'<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">{seg}{form}</div>'
+
+
+def _month_bounds(ym: str):
+    """'YYYY-MM' → (月初 date, 月末 date)。"""
+    from datetime import date as _date
+    y, m = int(ym[:4]), int(ym[5:7])
+    first = _date(y, m, 1)
+    nm_y, nm_m = (y + 1, 1) if m == 12 else (y, m + 1)
+    last = _date(nm_y, nm_m, 1) - timedelta(days=1)
+    return first, last
 
 
 def _period_range(period: str, date_from: str, date_to: str):
@@ -26,7 +49,16 @@ def _period_range(period: str, date_from: str, date_to: str):
     jst = timezone(timedelta(hours=9))
     today = datetime.now(jst).date()
     if period == "custom" and date_from and date_to:
-        return date_from, date_to, f"{date_from} 〜 {date_to}"
+        # 年月レンジ: from の月初 〜 to の月末
+        try:
+            f0, _ = _month_bounds(date_from)
+            _, t1 = _month_bounds(date_to)
+            if f0 > t1:
+                f0, t1 = t1.replace(day=1), _month_bounds(date_from)[1]
+            label = f"{f0.year}年{f0.month}月〜{t1.year}年{t1.month}月"
+            return f0.isoformat(), t1.isoformat(), label
+        except (ValueError, IndexError):
+            pass
     if period == "last_month":
         first_this = today.replace(day=1)
         last_prev = first_this - timedelta(days=1)
@@ -42,6 +74,77 @@ def _period_range(period: str, date_from: str, date_to: str):
     return first.isoformat(), today.isoformat(), "今月"
 
 
+def _truck_dashboard(current_user: dict, store):
+    """トップページ「空車ミックス」表示: 空車一覧＋空車定期登録一覧。"""
+    from datetime import date
+    from app.tenancy import feature_enabled
+    user_id = current_user["id"]
+    is_admin = current_user.get("is_admin", False)
+
+    # ---- 空車一覧（直近） ----
+    trucks = store.search_trucks(is_admin, user_id, {})
+    live_trucks = 0
+    trows = ""
+    for t in trucks[:12]:
+        tb = store.get_truck_platform_state(t["id"], "trabox")
+        wk = store.get_truck_platform_state(t["id"], "webkit")
+        is_live = "live" in (tb, wk)
+        if is_live:
+            live_trucks += 1
+        chip = ('<span class="chip live">◐ 掲載中</span>' if is_live
+                else '<span class="chip wait">待機</span>')
+        trows += f"""<div class="rrow" style="grid-template-columns:1fr 150px 110px">
+          <div class="place">{t.get('vacant_pref','')}{t.get('vacant_city','')} → {t.get('dest_pref','')}{t.get('dest_city','')}
+            <small>{t.get('vacant_date','')} {t.get('vacant_time','')} 発 ／ {t.get('truck_weight','')}{t.get('vehicle_type','')}</small></div>
+          <div style="text-align:right">{chip}</div>
+          <div style="text-align:right"><a href="/trucks/{t['id']}/manage" style="color:var(--signal-ink);font-size:12px">管理 →</a></div>
+        </div>"""
+    if not trows:
+        trows = '<div style="padding:32px;text-align:center;color:var(--faint)">空車の登録はまだありません。<a href="/trucks/register" style="color:var(--signal-ink)">空車を出す →</a></div>'
+
+    # ---- 空車定期登録一覧 ----
+    sched_card = ""
+    if feature_enabled("recurring", current_user):
+        from app.services import recurrence
+        srows = ""
+        rules = store.list_schedules(is_admin, user_id)
+        active_cnt = sum(1 for s in rules if s.get("status") == "active")
+        for s in rules[:12]:
+            paused = s.get("status") != "active"
+            nd = recurrence.due_dates(s, date.today(), date.today() + timedelta(days=60))
+            nxt = nd[0].isoformat() if nd else "—"
+            chip = ('<span class="chip off">停止中</span>' if paused
+                    else '<span class="chip live">稼働中</span>')
+            srows += f"""<div class="rrow" style="grid-template-columns:1fr 150px 110px">
+              <div class="place">{s.get('vacant_pref','')}{s.get('vacant_city','')} → {s.get('dest_pref','')}{s.get('dest_city','')}
+                <small>{recurrence.describe(s)} ／ 次回 {nxt}</small></div>
+              <div style="text-align:right">{chip}</div>
+              <div style="text-align:right"><a href="/schedules/" style="color:var(--signal-ink);font-size:12px">一覧 →</a></div>
+            </div>"""
+        if not srows:
+            srows = '<div style="padding:32px;text-align:center;color:var(--faint)">定期登録はまだありません。<a href="/schedules/register" style="color:var(--signal-ink)">定期登録を作成 →</a></div>'
+        sched_card = f"""<div class="ledger" style="margin-top:18px">
+          <div class="lhead"><span class="t">空車定期登録 <span style="color:var(--faint);font-weight:500">稼働中 {active_cnt}</span></span><a class="a" href="/schedules/">すべて →</a></div>
+          {srows}
+        </div>"""
+
+    body = f"""
+<div class="stats" style="grid-template-columns:repeat(3,1fr)">
+  <div class="cell"><div class="k">空車登録数</div><div class="v num">{len(trucks)}</div></div>
+  <div class="cell"><div class="k">掲載中 <span class="sub">（現在）</span></div><div class="v num sig">{live_trucks}</div></div>
+  <div class="cell"><div class="k">定期登録</div><div class="v num">{store.list_schedules(is_admin, user_id).__len__() if feature_enabled('recurring', current_user) else '—'}</div></div>
+</div>
+<div class="ledger">
+  <div class="lhead"><span class="t">空車一覧</span><a class="a" href="/trucks/">すべて →</a></div>
+  {trows}
+</div>
+{sched_card}
+"""
+    actions = '<a class="btn" href="/trucks/register"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>空車を出す</a>'
+    return render_page(title="ダッシュボード", active="dashboard", body=body,
+                       user=current_user, topbar_actions=actions)
+
+
 @router.get("/", response_class=HTMLResponse)
 async def dashboard(current_user: dict = Depends(get_current_user),
                     period: str = "this_month",
@@ -53,10 +156,15 @@ async def dashboard(current_user: dict = Depends(get_current_user),
         user_id = current_user["id"]
         username = current_user["username"]
 
-        d_from, d_to, period_label = _period_range(period, date_from, date_to)
-        st = store.dashboard_stats(current_user.get("is_admin", False), user_id,
-                                   date_from=d_from, date_to=d_to)
         is_admin = current_user.get("is_admin", False)
+
+        # トップページ表示内容（設定で切替）: freight=荷物評価 / truck=空車ミックス
+        if current_user.get("dashboard_mode") == "truck":
+            return _truck_dashboard(current_user, store)
+
+        d_from, d_to, period_label = _period_range(period, date_from, date_to)
+        st = store.dashboard_stats(is_admin, user_id,
+                                   date_from=d_from, date_to=d_to)
 
         # 進行中の経路（最近の案件を経路の線で表示）
         rows_html = ""
@@ -88,7 +196,7 @@ async def dashboard(current_user: dict = Depends(get_current_user),
         if not rows_html:
             rows_html = '<div style="padding:36px;text-align:center;color:var(--faint)">案件がまだありません。<a href="/cases/register" style="color:var(--signal-ink)">最初の荷物を出す →</a></div>'
 
-        seg = '<div class="seg perseg">' + _period_buttons(period) + '</div>'
+        seg = _period_controls(period, date_from, date_to)
         body = f"""
 <div class="stats">
   <div class="cell"><div class="k">投稿数 <span class="sub">（{period_label}）</span></div><div class="v num">{st['total']}</div></div>

@@ -75,6 +75,15 @@ def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
     return d
 
 
+def set_user_prefs(user_id: int, fields: Dict[str, Any]) -> None:
+    """ユーザーの表示設定（theme・dashboard_mode 等）をユーザードキュメントに保存。
+    None のフィールドは無視して既存値を維持する。"""
+    clean = {k: v for k, v in fields.items() if v is not None}
+    if not clean:
+        return
+    _db().collection("users").document(str(user_id)).set(clean, merge=True)
+
+
 def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
     docs = _db().collection("users").where("username", "==", username).limit(1).stream()
     for snap in docs:

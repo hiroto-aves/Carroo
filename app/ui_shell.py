@@ -33,7 +33,8 @@ CSS = """
  --sans:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic","Segoe UI",system-ui,sans-serif;
  --mono:ui-monospace,"SF Mono",Menlo,monospace;--r:14px;
 }
-@media (prefers-color-scheme:dark){:root{
+/* ダークトークン（OS設定 と 明示 data-theme=dark の両方で同一を適用） */
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
  --ink:#E9ECE9;--paper:#0C0E10;--surface:#15181B;--raise:#1A1E21;
  --line:#282D2F;--line-soft:#20241F;--muted:#8A918B;--faint:#666C67;--ink-2:#C4CBC5;
  --signal:#22C58A;--signal-br:#33D398;--signal-wash:#13271F;--signal-ink:#7FE3BC;
@@ -41,6 +42,14 @@ CSS = """
  --rail:#0E1113;--rail-2:#161A1D;--rail-line:#242A2D;--rail-txt:#C2C9C3;--rail-txt-dim:#727A74;
  --shadow:0 1px 2px rgba(0,0,0,.5),0 26px 64px -26px rgba(0,0,0,.75);
 }}
+:root[data-theme="dark"]{
+ --ink:#E9ECE9;--paper:#0C0E10;--surface:#15181B;--raise:#1A1E21;
+ --line:#282D2F;--line-soft:#20241F;--muted:#8A918B;--faint:#666C67;--ink-2:#C4CBC5;
+ --signal:#22C58A;--signal-br:#33D398;--signal-wash:#13271F;--signal-ink:#7FE3BC;
+ --amber:#E0B060;--amber-wash:#2A2416;--route:#39413C;
+ --rail:#0E1113;--rail-2:#161A1D;--rail-line:#242A2D;--rail-txt:#C2C9C3;--rail-txt-dim:#727A74;
+ --shadow:0 1px 2px rgba(0,0,0,.5),0 26px 64px -26px rgba(0,0,0,.75);
+}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%}
 body{background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.5;letter-spacing:-.006em;-webkit-font-smoothing:antialiased}
@@ -125,7 +134,7 @@ def _sidebar(active, user):
     is_admin = user.get("is_admin") if user else False
     uname = (user or {}).get("username", "") or "ゲスト"
     initial = uname[0] if uname else "C"
-    recurring = (_nav_item(active, "schedules", "/schedules/", "i-repeat", "繰り返しルール")
+    recurring = (_nav_item(active, "schedules", "/schedules/", "i-repeat", "空車定期登録")
                  if feature_enabled("recurring") else "")
     users = (_nav_item(active, "users", "/admin/users", "i-users", "ユーザー管理")
              if is_admin else "")
@@ -157,7 +166,10 @@ def shell_open(*, title, active, user=None, page_title=None, crumb="Carroo",
                topbar_center="", topbar_actions="", extra_head="") -> str:
     """シェルの先頭〜 <div class="body"> 開きまでを返す（大きな既存テンプレの包み込み用）。"""
     pt = page_title or title
-    return f"""<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
+    # ユーザー別テーマ: auto はOS設定に追従、light/dark は data-theme で明示上書き
+    _theme = (user or {}).get("theme") or "auto"
+    _dt = f' data-theme="{_theme}"' if _theme in ("light", "dark") else ""
+    return f"""<!DOCTYPE html><html lang="ja"{_dt}><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Carroo — {title}</title>
 <script src="https://cdn.tailwindcss.com"></script>

@@ -26,16 +26,54 @@ def get_settings_html(
     contact_name: str = "",
     contact_phone: str = "",
     contact_email: str = "",
+    theme: str = "auto",
+    dashboard_mode: str = "freight",
+    user: dict = None,
 ) -> str:
     """設定ページHTMLを生成"""
     from app.ui_shell import shell_open, SHELL_CLOSE
-    return shell_open(title="初期設定", active="settings",
-                      user={"username": username}) + f"""
 
+    def _sel(cur, val):
+        return " selected" if cur == val else ""
+
+    theme_section = f"""
+        <div class="bg-white rounded-lg shadow-md p-8 mb-6" style="background:var(--surface);border:1px solid var(--line)">
+            <h2 class="text-xl font-semibold mb-1" style="color:var(--ink)">🎨 表示設定</h2>
+            <p class="text-sm mb-6" style="color:var(--muted)">この端末ではなく、あなたのアカウントに保存されます。</p>
+            <div id="prefs-msg" class="hidden mb-4 p-3 rounded-lg"></div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                    <label class="block text-sm font-medium mb-2" style="color:var(--ink-2)">テーマ（ダーク / ライト）</label>
+                    <select id="pref-theme" style="width:100%">
+                        <option value="auto"{_sel(theme,'auto')}>自動（OSの設定に従う）</option>
+                        <option value="light"{_sel(theme,'light')}>ライト（明るい）</option>
+                        <option value="dark"{_sel(theme,'dark')}>ダーク（暗い）</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-2" style="color:var(--ink-2)">トップページに表示する内容</label>
+                    <select id="pref-dash" style="width:100%">
+                        <option value="freight"{_sel(dashboard_mode,'freight')}>荷物の評価（投稿数・成約・進行中の経路）</option>
+                        <option value="truck"{_sel(dashboard_mode,'truck')}>空車ミックス（空車一覧＋空車定期登録一覧）</option>
+                    </select>
+                </div>
+            </div>
+            <button type="button" id="save-prefs" class="mt-6 btn">表示設定を保存</button>
+        </div>
+    """
+
+    return shell_open(title="初期設定", active="settings",
+                      user=user or {"username": username}) + f"""
     <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div class="mb-8">
-            <h1 class="text-3xl font-bold text-gray-900">初期設定</h1>
-            <p class="text-gray-600 mt-2">Trabox と WebKit の認証情報を登録してください</p>
+            <h1 class="text-3xl font-bold" style="color:var(--ink)">初期設定</h1>
+        </div>
+        {theme_section}
+    </div>
+    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold" style="color:var(--ink)">🔐 認証情報・連絡先</h2>
+            <p class="mt-1 text-sm" style="color:var(--muted)">Trabox と WebKit の認証情報を登録してください</p>
         </div>
 
         <div class="bg-white rounded-lg shadow-md p-8">
@@ -154,6 +192,35 @@ def get_settings_html(
                 errorDiv.classList.remove('hidden');
             }}
         }});
+
+        // 表示設定（テーマ・トップページ内容）の保存
+        document.getElementById('save-prefs').addEventListener('click', async () => {{
+            const msg = document.getElementById('prefs-msg');
+            const data = {{
+                theme: document.getElementById('pref-theme').value,
+                dashboard_mode: document.getElementById('pref-dash').value,
+            }};
+            try {{
+                const r = await fetch('/api/settings/prefs/', {{
+                    method: 'POST',
+                    headers: {{'Content-Type': 'application/json'}},
+                    body: JSON.stringify(data)
+                }});
+                if (r.ok) {{
+                    // テーマ即時反映のためリロード
+                    location.reload();
+                }} else {{
+                    const j = await r.json();
+                    msg.textContent = j.detail || '保存に失敗しました';
+                    msg.className = 'mb-4 p-3 rounded-lg bg-red-50 text-red-700';
+                    msg.classList.remove('hidden');
+                }}
+            }} catch (err) {{
+                msg.textContent = 'エラー: ' + err.message;
+                msg.className = 'mb-4 p-3 rounded-lg bg-red-50 text-red-700';
+                msg.classList.remove('hidden');
+            }}
+        }});
     </script>
 """ + SHELL_CLOSE
 
@@ -174,7 +241,26 @@ async def settings_page(current_user: dict = Depends(get_current_user)):
         creds.get("contact_name", "") or "",
         creds.get("contact_phone", "") or "",
         creds.get("contact_email", "") or "",
+        theme=current_user.get("theme", "auto"),
+        dashboard_mode=current_user.get("dashboard_mode", "freight"),
+        user=current_user,
     )
+
+
+class PrefsInput(BaseModel):
+    theme: str = None
+    dashboard_mode: str = None
+
+
+@router.post("/api/settings/prefs/")
+async def save_prefs(prefs: PrefsInput,
+                     current_user: dict = Depends(get_current_user)):
+    """表示設定（テーマ・トップページ内容）をユーザードキュメントに保存。"""
+    from app.db import store
+    theme = prefs.theme if prefs.theme in ("auto", "light", "dark") else None
+    mode = prefs.dashboard_mode if prefs.dashboard_mode in ("freight", "truck") else None
+    store.set_user_prefs(current_user["id"], {"theme": theme, "dashboard_mode": mode})
+    return {"status": "success"}
 
 
 @router.post("/api/settings/credentials/")

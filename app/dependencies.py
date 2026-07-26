@@ -43,4 +43,7 @@ async def get_current_user(access_token: Optional[str] = Cookie(None)):
         "username": user["username"],
         "email": user.get("email"),
         "is_admin": bool(user.get("is_admin")),
+        # 表示設定（ユーザー別）: theme=auto|light|dark, dashboard_mode=freight|truck
+        "theme": user.get("theme") or "auto",
+        "dashboard_mode": user.get("dashboard_mode") or "freight",
     }

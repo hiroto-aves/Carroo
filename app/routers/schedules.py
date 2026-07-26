@@ -28,7 +28,7 @@ WEEKDAYS = [("0", "月"), ("1", "火"), ("2", "水"), ("3", "木"),
 def _require_feature(current_user: dict = Depends(get_current_user)) -> dict:
     """繰り返し機能が有効なテナント/環境でのみ通す（オプション制御の要）。"""
     if not feature_enabled("recurring", current_user):
-        raise HTTPException(403, "繰り返し登録はご利用のプランでは無効です")
+        raise HTTPException(403, "空車定期登録はご利用のプランでは無効です")
     return current_user
 
 
@@ -102,7 +102,7 @@ async def register_page(current_user: dict = Depends(_require_feature)):
       <label class="flex items-center gap-2"><input type="checkbox" name="post_to_trabox" checked> トラボックス</label>
       <label class="flex items-center gap-2"><input type="checkbox" name="post_to_webkit" checked> WebKit</label>
     </div>
-    <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2.5 px-8 rounded-lg">繰り返しルールを作成</button>
+    <button type="submit" class="bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2.5 px-8 rounded-lg">空車定期登録を作成</button>
   </form>
 </div>
 <script>
@@ -120,8 +120,8 @@ document.getElementById('f').addEventListener('submit', async (e)=>{{
   msg.classList.remove('hidden'); if(r.ok) setTimeout(()=>location.href='/schedules/',1500);
 }});
 </script>"""
-    return render_page(title="繰り返しルール作成", active="schedules", body=body,
-                       user=current_user, crumb="Carroo / 繰り返し")
+    return render_page(title="空車定期登録の作成", active="schedules", body=body,
+                       user=current_user, crumb="Carroo / 空車定期登録")
 
 
 @router.post("/register")
@@ -167,7 +167,7 @@ async def create_schedule(
                                 tenant_id=current_tenant_id(current_user))
     # 次回投稿予定日（今日から60日以内の最初の発生日）
     nd = recurrence.due_dates(data, date.today(), date.today() + timedelta(days=60))
-    logger.info(f"✅ 繰り返しルール作成: schedule_id={sid}")
+    logger.info(f"✅ 空車定期登録作成: schedule_id={sid}")
     return {"status": "created", "schedule_id": sid,
             "describe": recurrence.describe(data),
             "next": nd[0].isoformat() if nd else None}
@@ -196,7 +196,7 @@ async def list_page(current_user: dict = Depends(_require_feature)):
             <button onclick="del({s['id']})" class="text-red-600 hover:underline ml-2">削除</button>
           </td></tr>"""
     if not items:
-        items = '<tr><td colspan="7" class="px-3 py-8 text-center text-gray-400">繰り返しルールはまだありません</td></tr>'
+        items = '<tr><td colspan="7" class="px-3 py-8 text-center text-gray-400">空車定期登録はまだありません</td></tr>'
     body = f"""
 <div class="card" style="overflow-x:auto">
     <table><thead><tr>
@@ -208,8 +208,8 @@ async function tog(id){{ await fetch('/schedules/'+id+'/toggle',{{method:'POST'}
 async function del(id){{ if(!confirm('このルールを削除しますか？（生成済みの空車は残ります）'))return;
   await fetch('/schedules/'+id+'/delete',{{method:'POST'}}); location.reload(); }}
 </script>"""
-    actions = '<a class="btn" href="/schedules/register">＋ ルール作成</a>'
-    return render_page(title="繰り返しルール", active="schedules", body=body,
+    actions = '<a class="btn" href="/schedules/register">＋ 定期登録を作成</a>'
+    return render_page(title="空車定期登録", active="schedules", body=body,
                        user=current_user, topbar_actions=actions)
 
 
