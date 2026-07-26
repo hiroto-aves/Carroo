@@ -61,8 +61,7 @@ a{color:inherit;text-decoration:none}
 /* 手動折り畳み（localStorage 記憶） */
 .app.railcol{grid-template-columns:64px 1fr}
 .app.railcol .rail .lbl,.app.railcol .rail .logotype .rest,.app.railcol .rail .group,.app.railcol .rail .who div,.app.railcol .rail .nav .badge{display:none}
-.app.railcol .rail .top{flex-direction:column;gap:12px;padding:18px 0 12px;justify-content:center}
-.app.railcol .rail .logotype{margin:0 auto}
+.app.railcol .rail .top{flex-direction:column;align-items:flex-start;gap:12px}
 .app.railcol .railtoggle svg{transform:rotate(180deg)}
 /* rail */
 .rail{background:var(--rail);color:var(--rail-txt);display:flex;flex-direction:column;border-right:1px solid var(--rail-line);position:sticky;top:0;height:100vh}
