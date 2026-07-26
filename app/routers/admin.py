@@ -65,10 +65,11 @@ async def users_page(current_user: dict = Depends(get_current_user)):
     </table>
   </div>
 
-  <div class="card" style="padding:20px;max-width:680px">
-    <h2 style="font-size:16px;margin:0 0 14px">新しいユーザーを発行</h2>
-    <form method="post" action="/admin/users">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+  <style>.uform input{{padding:12px 15px}}.uform input::placeholder{{color:var(--faint)}}</style>
+  <div class="card" style="padding:22px;max-width:680px">
+    <h2 style="font-size:16px;margin:0 0 16px">新しいユーザーを発行</h2>
+    <form class="uform" method="post" action="/admin/users">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
         <div><label class="fl">ユーザー名 *</label><input name="username" required placeholder="例: 山田太郎"></div>
         <div><label class="fl">メールアドレス *</label><input type="email" name="email" required placeholder="user@example.com"></div>
         <div><label class="fl">初期パスワード *</label><input name="password" required placeholder="4文字以上"></div>
