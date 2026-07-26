@@ -65,16 +65,16 @@ async def register_page(current_user: dict = Depends(_require_feature)):
       <div class="space-y-3">
         <h2 class="font-semibold border-b pb-1">空車地</h2>
         <input type="time" name="vacant_time" value="09:00" class="border rounded px-3 py-2 w-full">
-        <select name="vacant_pref" class="border rounded px-3 py-2 w-full">{_opts(PREFS,"東京都")}</select>
-        <input name="vacant_city" required placeholder="市区町村（例: 練馬区）※必須" class="border rounded px-3 py-2 w-full">
+        <select id="vacant_pref" name="vacant_pref" class="border rounded px-3 py-2 w-full">{_opts(PREFS,"東京都")}</select>
+        <select id="vacant_city" name="vacant_city" required class="border rounded px-3 py-2 w-full bg-white"><option value="">読み込み中...</option></select>
       </div>
       <div class="space-y-3">
         <h2 class="font-semibold border-b pb-1">行先地</h2>
         <div class="flex items-center gap-2 text-sm">空車日の
           <input type="number" name="dest_offset_days" value="1" min="0" max="14" class="border rounded px-2 py-1 w-16">日後
           <input type="time" name="dest_time" value="07:00" class="border rounded px-2 py-1"></div>
-        <select name="dest_pref" class="border rounded px-3 py-2 w-full">{_opts(PREFS,"大阪府")}</select>
-        <input name="dest_city" required placeholder="市区町村（例: 大阪市北区）※必須" class="border rounded px-3 py-2 w-full">
+        <select id="dest_pref" name="dest_pref" class="border rounded px-3 py-2 w-full">{_opts(PREFS,"大阪府")}</select>
+        <select id="dest_city" name="dest_city" required class="border rounded px-3 py-2 w-full bg-white"><option value="">読み込み中...</option></select>
       </div>
     </div>
     <div>
@@ -111,6 +111,34 @@ function upd(){{ const w=freq.value;
   document.getElementById('byday_row').style.display=(w==='WEEKLY'||w==='BIWEEKLY')?'':'none';
   document.getElementById('monthday_row').style.display=(w==='MONTHLY')?'':'none'; }}
 freq.addEventListener('change',upd); upd();
+
+// 都道府県 → 市区町村の連動セレクト（空車を出す画面と同じ /cases/api/cities を利用）
+function setupCityLoader(prefId, cityId){{
+  const prefSel=document.getElementById(prefId);
+  async function load(){{
+    let sel=document.getElementById(cityId); const pref=prefSel.value;
+    if(!pref){{ sel.innerHTML='<option value="">都道府県を先に選択</option>'; sel.disabled=true; return; }}
+    sel.innerHTML='<option value="">読み込み中...</option>'; sel.disabled=true;
+    try{{
+      const res=await fetch('/cases/api/cities?pref='+encodeURIComponent(pref));
+      if(!res.ok) throw new Error('api');
+      const data=await res.json();
+      sel.innerHTML='<option value="">市区町村を選択</option>'+
+        data.cities.map(c=>'<option value="'+c+'">'+c+'</option>').join('');
+      sel.disabled=false;
+    }}catch(e){{
+      // API失敗時は手入力にフォールバック
+      const input=document.createElement('input');
+      input.type='text'; input.name=sel.name; input.id=cityId; input.required=true;
+      input.placeholder='市区町村を入力（例: 練馬区）';
+      input.className=sel.className;
+      sel.replaceWith(input);
+    }}
+  }}
+  prefSel.addEventListener('change',load); load();  // 初期の既定都道府県でも自動ロード
+}}
+setupCityLoader('vacant_pref','vacant_city');
+setupCityLoader('dest_pref','dest_city');
 document.getElementById('f').addEventListener('submit', async (e)=>{{
   e.preventDefault(); const msg=document.getElementById('msg');
   const r=await fetch('/schedules/register',{{method:'POST',body:new URLSearchParams(new FormData(e.target))}});

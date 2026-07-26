@@ -64,8 +64,8 @@ def _page(user) -> str:
           <input type="date" name="vacant_date" required class="border rounded px-3 py-2 w-full">
           <input type="time" name="vacant_time" value="09:00" class="border rounded px-3 py-2">
         </div>
-        <select name="vacant_pref" class="border rounded px-3 py-2 w-full">{pref_opts}</select>
-        <input name="vacant_city" required placeholder="市区町村（例: 練馬区）※必須" class="border rounded px-3 py-2 w-full">
+        <select id="vacant_pref" name="vacant_pref" class="border rounded px-3 py-2 w-full">{pref_opts}</select>
+        <select id="vacant_city" name="vacant_city" required class="border rounded px-3 py-2 w-full bg-white"><option value="">読み込み中...</option></select>
       </div>
       <div class="space-y-3">
         <h2 class="font-semibold text-gray-800 border-b pb-1">行先地</h2>
@@ -73,8 +73,8 @@ def _page(user) -> str:
           <input type="date" name="dest_date" required class="border rounded px-3 py-2 w-full">
           <input type="time" name="dest_time" value="09:00" class="border rounded px-3 py-2">
         </div>
-        <select name="dest_pref" class="border rounded px-3 py-2 w-full">{dpref_opts}</select>
-        <input name="dest_city" required placeholder="市区町村（例: 大阪市北区）※必須" class="border rounded px-3 py-2 w-full">
+        <select id="dest_pref" name="dest_pref" class="border rounded px-3 py-2 w-full">{dpref_opts}</select>
+        <select id="dest_city" name="dest_city" required class="border rounded px-3 py-2 w-full bg-white"><option value="">読み込み中...</option></select>
       </div>
     </div>
     <div class="grid md:grid-cols-2 gap-6">
@@ -108,6 +108,32 @@ def _page(user) -> str:
   </form>
 </div>
 <script>
+// 都道府県 → 市区町村の連動セレクト（荷物を出す画面と同じ /cases/api/cities を利用）
+function setupCityLoader(prefId, cityId){{
+  const prefSel=document.getElementById(prefId);
+  async function load(){{
+    let sel=document.getElementById(cityId); const pref=prefSel.value;
+    if(!pref){{ sel.innerHTML='<option value="">都道府県を先に選択</option>'; sel.disabled=true; return; }}
+    sel.innerHTML='<option value="">読み込み中...</option>'; sel.disabled=true;
+    try{{
+      const res=await fetch('/cases/api/cities?pref='+encodeURIComponent(pref));
+      if(!res.ok) throw new Error('api');
+      const data=await res.json();
+      sel.innerHTML='<option value="">市区町村を選択</option>'+
+        data.cities.map(c=>'<option value="'+c+'">'+c+'</option>').join('');
+      sel.disabled=false;
+    }}catch(e){{
+      const input=document.createElement('input');
+      input.type='text'; input.name=sel.name; input.id=cityId; input.required=true;
+      input.placeholder='市区町村を入力（例: 練馬区）'; input.className=sel.className;
+      sel.replaceWith(input);
+    }}
+  }}
+  prefSel.addEventListener('change',load); load();
+}}
+setupCityLoader('vacant_pref','vacant_city');
+setupCityLoader('dest_pref','dest_city');
+
 document.getElementById('f').addEventListener('submit', async (e) => {{
   e.preventDefault();
   const fd = new FormData(e.target);
