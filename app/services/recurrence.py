@@ -85,7 +85,9 @@ def due_dates(schedule: Dict[str, Any], start: date, end: date) -> List[date]:
 
 def occurrence_to_posting(schedule: Dict[str, Any], vacant_date: date) -> Dict[str, Any]:
     """1発生日 → 空車1件分の truck_posting データ（vacant/dest 日時を確定）。"""
-    offset = int(schedule.get("dest_offset_days") or 1)
+    # dest_offset_days は 0（＝同日着）が正当値。`or 1` だと 0 が 1 に化けるため None 判定にする
+    _off = schedule.get("dest_offset_days")
+    offset = int(_off) if _off is not None else 1
     dest_date = vacant_date + timedelta(days=offset)
     return {
         "vacant_date": vacant_date.isoformat(),
