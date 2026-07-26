@@ -28,6 +28,8 @@ def _login_rate_limit_check(key: str) -> None:
         rec = _login_attempts.get(key)
         if rec and rec.get("locked_until", 0) > now:
             wait = int(rec["locked_until"] - now)
+            from app.utils.audit import audit
+            audit("login_locked", key=key, wait_sec=wait)
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                                 detail=f"試行回数が多すぎます。約{wait//60 + 1}分後に再度お試しください。")
 
@@ -331,14 +333,17 @@ async def login(request: Request, username: str = Form(...), password: str = For
     from app.db import store
     user = store.get_user_by_username(username)
 
+    from app.utils.audit import audit
     if not user or not verify_password(password, user["hashed_password"]):
         _login_rate_limit_fail(_rl_key)
+        audit("login_failure", username=username, ip=client_ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid username or password"
         )
 
     _login_rate_limit_reset(_rl_key)
+    audit("login_success", username=username, user_id=user["id"], ip=client_ip)
     # 旧SHA-256 で保存されていたら、この機会に bcrypt へ透過的に再ハッシュ
     from app.utils.security import needs_rehash
     if needs_rehash(user["hashed_password"]):

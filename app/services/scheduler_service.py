@@ -20,6 +20,38 @@ logger = logging.getLogger(__name__)
 DEFAULT_LEAD_DAYS = 3
 
 
+def _materialize_one(sched: Dict[str, Any], run_date: date,
+                     created: List[Dict[str, Any]]) -> None:
+    """1ルール分のマテリアライズ（lead_days 窓内の未生成分を空車化＋キュー投入）。"""
+    lead = int(sched.get("lead_days") if sched.get("lead_days") is not None
+               else DEFAULT_LEAD_DAYS)
+    window_end = run_date + timedelta(days=max(lead, 0))
+    for d in recurrence.due_dates(sched, run_date, window_end):
+        vd = d.isoformat()
+        # 既に生成済みならスキップ（冪等）
+        if not store.mark_materialized(sched["id"], vd):
+            continue
+        posting = recurrence.occurrence_to_posting(sched, d)
+        posting["schedule_id"] = sched["id"]
+        user_id = sched["user_id"]
+        tenant = sched.get("tenant_id", "takeuchi")
+        truck_id = store.create_truck(user_id, posting, tenant_id=tenant)
+        for p, want in (("trabox", posting["post_to_trabox"]),
+                        ("webkit", posting["post_to_webkit"])):
+            if want:
+                store.add_truck_event(truck_id, p, "register", "pending")
+        td = dict(posting)
+        td["truck_id"] = truck_id
+        get_task_client().add_task({
+            "kind": "truck", "action": "register",
+            "user_id": user_id, "truck_data": td,
+        })
+        created.append({"schedule_id": sched["id"], "truck_id": truck_id,
+                        "vacant_date": vd})
+        logger.info(f"[Materialize] 生成 schedule={sched['id']} "
+                    f"truck={truck_id} vacant={vd}")
+
+
 def materialize(run_date: Optional[date] = None,
                 tenant_id: Optional[str] = None) -> List[Dict[str, Any]]:
     """発生予定の空車を生成してキュー投入。生成した一覧を返す。"""
@@ -30,35 +62,29 @@ def materialize(run_date: Optional[date] = None,
 
     for sched in schedules:
         try:
-            lead = int(sched.get("lead_days") if sched.get("lead_days") is not None
-                       else DEFAULT_LEAD_DAYS)
-            window_end = run_date + timedelta(days=max(lead, 0))
-            for d in recurrence.due_dates(sched, run_date, window_end):
-                vd = d.isoformat()
-                # 既に生成済みならスキップ（冪等）
-                if not store.mark_materialized(sched["id"], vd):
-                    continue
-                posting = recurrence.occurrence_to_posting(sched, d)
-                posting["schedule_id"] = sched["id"]
-                user_id = sched["user_id"]
-                tenant = sched.get("tenant_id", "takeuchi")
-                truck_id = store.create_truck(user_id, posting, tenant_id=tenant)
-                for p, want in (("trabox", posting["post_to_trabox"]),
-                                ("webkit", posting["post_to_webkit"])):
-                    if want:
-                        store.add_truck_event(truck_id, p, "register", "pending")
-                td = dict(posting)
-                td["truck_id"] = truck_id
-                get_task_client().add_task({
-                    "kind": "truck", "action": "register",
-                    "user_id": user_id, "truck_data": td,
-                })
-                created.append({"schedule_id": sched["id"], "truck_id": truck_id,
-                                "vacant_date": vd})
-                logger.info(f"[Materialize] 生成 schedule={sched['id']} "
-                            f"truck={truck_id} vacant={vd}")
+            _materialize_one(sched, run_date, created)
         except Exception as e:
             logger.error(f"[Materialize] schedule={sched.get('id')} でエラー: {e}")
 
     logger.info(f"[Materialize] 生成件数={len(created)}")
+    return created
+
+
+def materialize_schedule(schedule_id: int,
+                         run_date: Optional[date] = None) -> List[Dict[str, Any]]:
+    """特定ルールだけを即マテリアライズ（ルール作成直後の即時投稿に使用）。
+
+    lead_days 窓内に到来する空車日があればその分だけ即キュー投入する。
+    窓外（先の日付のみ）なら空リスト＝翌朝以降の日次materialize待ち。
+    """
+    run_date = run_date or date.today()
+    created: List[Dict[str, Any]] = []
+    sched = store.get_schedule(schedule_id)
+    if not sched or sched.get("status") != "active":
+        return created
+    try:
+        _materialize_one(sched, run_date, created)
+    except Exception as e:
+        logger.error(f"[MaterializeOne] schedule={schedule_id} でエラー: {e}")
+    logger.info(f"[MaterializeOne] schedule={schedule_id} 生成件数={len(created)}")
     return created

@@ -260,6 +260,9 @@ async def delete_truck(truck_id: int, platforms: str = Form(...),
     plats = [p for p in platforms.split(",") if p in ("trabox", "webkit")]
     if not plats:
         raise HTTPException(400, "対象プラットフォームが不正です")
+    from app.utils.audit import audit
+    audit("truck_delete", truck_id=truck_id, user_id=user_id,
+          username=current_user.get("username"), platforms=",".join(plats))
     for p in plats:
         store.add_truck_event(truck_id, p, "delete", "pending")
     get_task_client().add_task({

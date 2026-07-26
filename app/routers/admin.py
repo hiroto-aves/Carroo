@@ -106,5 +106,8 @@ async def create_user(
         )
     store.create_user(username, email, hash_password(password),
                       is_admin=(is_admin == "yes"))
+    from app.utils.audit import audit
+    audit("user_create", new_username=username, is_admin=(is_admin == "yes"),
+          by=current_user.get("username"))
     logger.info(f"[Admin] ユーザー発行: {username} (by {current_user['username']})")
     return RedirectResponse(url="/admin/users", status_code=302)

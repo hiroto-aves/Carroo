@@ -16,6 +16,20 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-26 追補③：定期登録の即時投稿＋運用/監視/DLQ/監査/CSP（rev carroo-00035-w8w）
+- **空車定期登録バグ対応**：ルール作成しても即投稿されない体感を解消。`scheduler_service.materialize_schedule()` を追加し、
+  作成直後に lead_days 窓内の空車日を即マテリアライズ（即キュー投入）。UIも「今すぐN件投稿」or「次回予定」を表示。
+  ※原因は仕様どおりの待ち（日次7:00 or lead窓内のみ生成）。7/24・7/25はactive数=0で生成ゼロだった。
+- **監査ログ**（`app/utils/audit.py`）：`[AUDIT]`+JSON で login_success/failure/locked・case_delete・truck_delete・user_create・dead_letter を出力。
+- **Dead Letter Queue**（`routers/tasks.py`）：`X-CloudTasks-TaskRetryCount` で最終試行を検知→全失敗時に Firestore `dead_letter` へ退避＋監査ログ＋管理者アラートメール（`store.record_dead_letter`）。最終試行は200返却で無駄リトライ停止。
+- **エラーモニタリング**（Cloud Logging/Monitoring）：ログベースメトリクス3本
+  `carroo_error_count`/`carroo_dead_letter`/`carroo_login_failure` ＋ アラートポリシー3本
+  （DLQ退避>0・ERROR>0・ログイン失敗>10/5分）。通知先メール channel（aves.co.jp@gmail.com）。
+- **CSP 実効導入**（現行UIを壊さない範囲）：default-src 'self' / script は self＋Tailwind CDN / object-src none / base-uri self / form-action self / frame-ancestors none。本番ヘッダー確認済み。
+  - ⏸ 完全strict化（script-src から unsafe-inline 除去）は Tailwind セルフホスト＋onclick→addEventListener の大規模改修が前提。**Stage 1 と共に外販判断時に対応**（回帰リスク大のため保留）。
+- **Stage 1（テナント管理）**：基盤（tenancy.py・レコードの tenant_id 保持）は準備済み。テナントdoc/管理コンソール/2階層ロール/WebKit apikeyテナント別化は外販判断時に着手（投機実装を避け保留）。
+- **⏸ テストダミー案件の整理**：本番Firestore の残存レコード削除は破壊的かつ当環境から列挙不可のため、対象IDの確定 or 管理者用「完全削除」アクション追加を要相談（保留）。
+
 ### 🆕 2026-07-26 追補②：一時ページのシェル統合＋セキュリティ全面ハードニング（rev carroo-00033-lg6）
 - **一時ページ2つを左レール・シェルへ移植**（`cases.py`）：単発「登録完了」／「一括登録完了」。旧独自HTML廃止。
 - **セキュリティ強化（全項目実装・本番検証済み）**：

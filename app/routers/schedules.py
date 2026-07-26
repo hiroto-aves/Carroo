@@ -116,8 +116,10 @@ document.getElementById('f').addEventListener('submit', async (e)=>{{
   const r=await fetch('/schedules/register',{{method:'POST',body:new URLSearchParams(new FormData(e.target))}});
   const j=await r.json();
   msg.className='mb-4 p-3 rounded-lg '+(r.ok?'bg-green-50 text-green-700':'bg-red-50 text-red-700');
-  msg.textContent=r.ok?('✅ ルール作成: '+j.describe+'（次回投稿予定 '+(j.next||'-')+'）'):('エラー: '+(j.detail||'失敗'));
-  msg.classList.remove('hidden'); if(r.ok) setTimeout(()=>location.href='/schedules/',1500);
+  if(r.ok){{ const now=j.posted_now>0?('・今すぐ'+j.posted_now+'件を投稿しました'):('・直近の投稿予定は '+(j.next||'-')+'（当日朝に自動投稿）');
+    msg.textContent='✅ ルール作成: '+j.describe+now; }}
+  else msg.textContent='エラー: '+(j.detail||'失敗');
+  msg.classList.remove('hidden'); if(r.ok) setTimeout(()=>location.href='/schedules/',2200);
 }});
 </script>"""
     return render_page(title="空車定期登録の作成", active="schedules", body=body,
@@ -165,11 +167,20 @@ async def create_schedule(
     }
     sid = store.create_schedule(current_user["id"], data,
                                 tenant_id=current_tenant_id(current_user))
+    # 作成直後に lead_days 窓内の近い空車日を即マテリアライズ（＝即投稿）。
+    # これで「ルールを作ったのに何も投稿されない」体感を解消。窓外なら翌朝の日次待ち。
+    from app.services.scheduler_service import materialize_schedule
+    try:
+        immediate = materialize_schedule(sid)
+    except Exception as e:
+        logger.error(f"作成直後の即時マテリアライズ失敗 schedule_id={sid}: {e}")
+        immediate = []
     # 次回投稿予定日（今日から60日以内の最初の発生日）
     nd = recurrence.due_dates(data, date.today(), date.today() + timedelta(days=60))
-    logger.info(f"✅ 空車定期登録作成: schedule_id={sid}")
+    logger.info(f"✅ 空車定期登録作成: schedule_id={sid} 即時投稿={len(immediate)}件")
     return {"status": "created", "schedule_id": sid,
             "describe": recurrence.describe(data),
+            "posted_now": len(immediate),
             "next": nd[0].isoformat() if nd else None}
 
 

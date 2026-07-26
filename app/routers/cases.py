@@ -1081,6 +1081,9 @@ async def case_delete(case_id: int, platforms: str = Form(...),
     plats = [p for p in platforms.split(",") if p in ("trabox", "webkit")]
     if not plats:
         raise HTTPException(status_code=400, detail="削除対象のプラットフォームが不正です")
+    from app.utils.audit import audit
+    audit("case_delete", case_id=case_id, user_id=user_id,
+          username=current_user.get("username"), platforms=",".join(plats))
     # 履歴に delete イベントを pending で追記
     for p in plats:
         store.add_posting_event(case_id, p, "delete", "pending")

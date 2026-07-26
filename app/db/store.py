@@ -47,6 +47,21 @@ def _now() -> str:
     return datetime.now(_JST).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def record_dead_letter(kind: str, action: str, payload: Dict[str, Any],
+                       error: Any = None, retry_count: int = None) -> int:
+    """リトライ上限を超えて確定失敗したタスクを dead_letter コレクションに記録。
+
+    後から管理者が原因調査・手動再投稿できるよう、元 payload とエラーを丸ごと残す。
+    """
+    did = _next_id("dead_letter")
+    _db().collection("dead_letter").document(str(did)).set({
+        "kind": kind, "action": action, "payload": payload,
+        "error": str(error) if error is not None else None,
+        "retry_count": retry_count, "created_at": _now(), "resolved": False,
+    })
+    return did
+
+
 def _next_id(name: str) -> int:
     """counters コレクションでトランザクション採番（連番の整数ID）"""
     from google.cloud import firestore

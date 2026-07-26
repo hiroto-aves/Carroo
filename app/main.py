@@ -20,6 +20,17 @@ app = FastAPI(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
+# Content-Security-Policy（現行UI＝Tailwind CDN＋インラインscript/style/onclick 前提）
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com; "
+    "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
+    "img-src 'self' data:; font-src 'self' data:; "
+    "connect-src 'self'; "
+    "object-src 'none'; base-uri 'self'; form-action 'self'; "
+    "frame-ancestors 'none'"
+)
+
 
 @app.middleware("http")
 async def security_headers_middleware(request, call_next):
@@ -29,15 +40,19 @@ async def security_headers_middleware(request, call_next):
     - X-Content-Type-Options: MIMEスニッフィング防止
     - Referrer-Policy: リファラ漏洩の抑制
     - HSTS: 本番HTTPS(COOKIE_SECURE)時のみHTTPS強制
-    CSP は Tailwind CDN・インラインscript/style を使うため段階導入とし、
-    ここでは frame-ancestors のみ指定（既存UIを壊さない範囲）。
+    - CSP: 現行UIを壊さない範囲で最大限厳格化。
+        script は self＋Tailwind CDN のみ許可（外部スクリプト混入を遮断）。
+        object/base-uri/form-action/frame-ancestors を封じ、外部への流出・クリック
+        ジャッキング・base乗っ取りを防ぐ。connect/img/style は自ドメイン中心。
+        ※ 完全strict化（script-src から 'unsafe-inline' 除去）は Tailwind セルフホスト＋
+          onclick の addEventListener 化が前提のため将来対応。
     """
     response = await call_next(request)
     h = response.headers
     h.setdefault("X-Frame-Options", "DENY")
     h.setdefault("X-Content-Type-Options", "nosniff")
     h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    h.setdefault("Content-Security-Policy", "frame-ancestors 'none'")
+    h.setdefault("Content-Security-Policy", _CSP)
     from app.config import settings as _st
     if _st.COOKIE_SECURE:
         h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
