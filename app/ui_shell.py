@@ -19,6 +19,7 @@ SVG_DEFS = """
  <g id="i-gear" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></g>
  <g id="i-users" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0M16 5.5a3 3 0 0 1 0 5.6M15 20a6 6 0 0 1 6-.2"/></g>
  <g id="i-out" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M10 17l5-5-5-5M15 12H3"/></g>
+ <g id="i-chev" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></g>
 </defs></svg>
 """
 
@@ -56,10 +57,18 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);line-heigh
 a{color:inherit;text-decoration:none}
 .num{font-variant-numeric:tabular-nums}.mono{font-family:var(--mono)}
 .app{display:grid;grid-template-columns:236px 1fr;min-height:100vh}
-@media(max-width:820px){.app{grid-template-columns:64px 1fr}.rail .lbl,.rail .logotype .rest,.rail .group,.rail .who div{display:none}}
+@media(max-width:820px){.app{grid-template-columns:64px 1fr}.rail .lbl,.rail .logotype .rest,.rail .group,.rail .who div,.rail .nav .badge{display:none}}
+/* 手動折り畳み（localStorage 記憶） */
+.app.railcol{grid-template-columns:64px 1fr}
+.app.railcol .rail .lbl,.app.railcol .rail .logotype .rest,.app.railcol .rail .group,.app.railcol .rail .who div,.app.railcol .rail .nav .badge{display:none}
+.app.railcol .rail .top{padding:20px 0 12px;justify-content:center}
+.app.railcol .railtoggle svg{transform:rotate(180deg)}
 /* rail */
 .rail{background:var(--rail);color:var(--rail-txt);display:flex;flex-direction:column;border-right:1px solid var(--rail-line);position:sticky;top:0;height:100vh}
-.rail .top{padding:20px 18px 12px}
+.rail .top{padding:20px 18px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.railtoggle{background:transparent;border:0;color:var(--rail-txt-dim);cursor:pointer;padding:6px;border-radius:8px;display:inline-flex;line-height:0}
+.railtoggle:hover{background:var(--rail-2);color:var(--rail-txt)}
+.railtoggle svg{width:18px;height:18px;transition:transform .15s}
 .logotype{display:inline-flex;align-items:center;font-weight:680;letter-spacing:-.05em;font-size:26px;color:var(--cream);line-height:1}
 .logotype .logoC{height:.92em;width:auto;margin-right:.01em;transform:translateY(.055em)}
 .rail nav{padding:6px 12px;display:flex;flex-direction:column;gap:2px;flex:1;overflow:auto}
@@ -139,7 +148,7 @@ def _sidebar(active, user):
     users = (_nav_item(active, "users", "/admin/users", "i-users", "ユーザー管理")
              if is_admin else "")
     return f"""<aside class="rail">
-  <div class="top"><a class="logotype" href="/dashboard/"><svg class="logoC" viewBox="12 12 69 77"><use href="#cmarkC"/></svg><span class="rest">arroo</span></a></div>
+  <div class="top"><a class="logotype" href="/dashboard/"><svg class="logoC" viewBox="12 12 69 77"><use href="#cmarkC"/></svg><span class="rest">arroo</span></a><button class="railtoggle" type="button" onclick="cRailToggle()" aria-label="サイドバーを折り畳む"><svg><use href="#i-chev"/></svg></button></div>
   <nav>
     {_nav_item(active,"dashboard","/dashboard/","i-dash","ダッシュボード")}
     <div class="group">出す</div>
@@ -175,7 +184,7 @@ def shell_open(*, title, active, user=None, page_title=None, crumb="Carroo",
 <script src="https://cdn.tailwindcss.com"></script>
 <style>{CSS}</style>{extra_head}</head>
 <body>{SVG_DEFS}
-<div class="app">
+<div class="app" id="capp"><script>if(localStorage.getItem('carroo_rail')==='1')document.getElementById('capp').classList.add('railcol');function cRailToggle(){{var a=document.getElementById('capp');a.classList.toggle('railcol');localStorage.setItem('carroo_rail',a.classList.contains('railcol')?'1':'0');}}</script>
   {_sidebar(active, user or {})}
   <main class="content">
     <div class="topbar">
