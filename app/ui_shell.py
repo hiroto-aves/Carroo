@@ -62,7 +62,11 @@ a{color:inherit;text-decoration:none}
 .app.railcol{grid-template-columns:64px 1fr}
 .app.railcol .rail .lbl,.app.railcol .rail .logotype .rest,.app.railcol .rail .group,.app.railcol .rail .who div,.app.railcol .rail .nav .badge{display:none}
 .app.railcol .rail .top{flex-direction:column;align-items:flex-start;gap:12px}
+.app.railcol .rail nav{overflow:visible}
 .app.railcol .railtoggle svg{transform:rotate(180deg)}
+/* 折り畳み時：アイコンホバーでラベルをポップ表示 */
+.app.railcol .nav[data-tip]:hover::after{content:attr(data-tip);position:absolute;left:calc(100% + 10px);top:50%;transform:translateY(-50%);background:var(--rail-2);color:var(--cream);font-size:12.5px;font-weight:600;white-space:nowrap;padding:6px 10px;border-radius:8px;border:1px solid var(--rail-line);box-shadow:0 6px 20px -6px rgba(0,0,0,.5);z-index:40;pointer-events:none}
+.app.railcol .nav[data-tip]:hover::before{content:"";position:absolute;left:calc(100% + 4px);top:50%;transform:translateY(-50%) rotate(45deg);width:8px;height:8px;background:var(--rail-2);border-left:1px solid var(--rail-line);border-bottom:1px solid var(--rail-line);z-index:40;pointer-events:none}
 /* rail */
 .rail{background:var(--rail);color:var(--rail-txt);display:flex;flex-direction:column;border-right:1px solid var(--rail-line);position:sticky;top:0;height:100vh}
 .rail .top{padding:20px 18px 12px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
@@ -136,7 +140,7 @@ h1.pt{font-size:26px;margin:0 0 4px;letter-spacing:-.03em}
 def _nav_item(active, key, href, icon, label, badge=None):
     on = " on" if active == key else ""
     b = f'<span class="badge">{badge}</span>' if badge else ""
-    return (f'<a class="nav{on}" href="{href}"><svg><use href="#{icon}"/></svg>'
+    return (f'<a class="nav{on}" href="{href}" data-tip="{label}"><svg><use href="#{icon}"/></svg>'
             f'<span class="lbl">{label}</span>{b}</a>')
 
 
@@ -163,7 +167,7 @@ def _sidebar(active, user):
   <div class="foot">
     {_nav_item(active,"settings","/settings/","i-gear","設定")}
     {users}
-    <a class="nav" href="/auth/logout"><svg><use href="#i-out"/></svg><span class="lbl">ログアウト</span></a>
+    <a class="nav" href="/auth/logout" data-tip="ログアウト"><svg><use href="#i-out"/></svg><span class="lbl">ログアウト</span></a>
     <div class="who"><span class="ava">{initial}</span><div><div class="nm">{uname}</div><div class="rl">Carroo</div></div></div>
   </div>
 </aside>"""
