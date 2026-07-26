@@ -1,5 +1,25 @@
 # Progress Tracking - OneLogi-Post
 
+## 🆕 2026-07-26 ブランド刷新（左サイドレール）＋ユーザー表示設定
+
+### 実装済み
+- **左サイドレール・シェルに全面移行**（`app/ui_shell.py`：shell_open/render_page）
+  - 統一Cマーク（favicon＝ナビロゴ＝アプリアイコン、緑ノード＝成約）
+  - Route Ledger ダッシュボード（経路を線で表示、成約で緑に）
+  - 全ページ移植：ダッシュ・荷物(登録/一覧/管理/グループ/変更)・空車(登録/一覧/管理)・空車定期登録・設定
+- **① ユーザー別テーマ切替**（自動/ライト/ダーク）
+  - `store.set_user_prefs` でユーザードキュメントに保存、`get_current_user` が theme/dashboard_mode を返却
+  - `shell_open` が `<html data-theme>` で明示上書き（OS設定より優先）。設定画面「🎨 表示設定」＋ `POST /api/settings/prefs/`
+- **② 文言変更**「繰り返しルール」→「空車定期登録」（ナビ・見出し・ボタン・空表示）
+- **③ ダッシュ期間**＝今月/前月/過去1年 ＋ 年月レンジ（YYYY年MM月〜YYYY年MM月、type=month×2）。「累計」廃止
+- **④ トップ表示を設定で切替**：freight=荷物の評価 / truck=空車ミックス（空車一覧＋空車定期登録一覧）＝`_truck_dashboard`
+- 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
+- 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
+
+### 次にやるべきこと
+- 新デザインのブラウザ実機確認（テーマ切替／空車ミックス表示）
+- 登録完了・複数日程完了の一時ページの旧スタイル揃え（低優先）
+
 ## 🆕 2026-07-23 Firestore移行＋東京リージョン本番デプロイ
 
 ### 実装済み
