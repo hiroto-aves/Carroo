@@ -1226,17 +1226,12 @@ async def case_edit_page(case_id: int, platforms: str = "trabox,webkit",
     freight_val = "" if ex.get("freight_negotiable") else int(float(row.get("freight_rate") or 0))
 
     I = 'w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500'
-    return HTMLResponse(f"""<!DOCTYPE html>
-<html lang="ja"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Carroo - 変更 #{case_id}</title><script src="https://cdn.tailwindcss.com"></script></head>
-<body class="bg-gray-50">
-<nav class="bg-white shadow-sm border-b border-gray-200"><div class="max-w-3xl mx-auto px-4 py-3.5 flex items-center justify-between">
-  <a href="/dashboard/" class="text-2xl font-bold text-blue-600 hover:opacity-80">📦 Carroo</a>
-  <a href="/cases/{case_id}/manage" class="text-sm text-gray-600 hover:text-blue-600">← 案件管理へ戻る</a>
-</div></nav>
-<div class="max-w-3xl mx-auto px-4 py-8">
-  <h1 class="text-2xl font-bold">案件の変更</h1>
-  <p class="text-gray-600 mt-1 mb-6">変更対象: <span class="font-semibold text-blue-700">{target_label}</span> ・ 案件 #{case_id}</p>
+    from app.ui_shell import shell_open, SHELL_CLOSE
+    return HTMLResponse(shell_open(title=f"変更 #{case_id}", active="load_list",
+                                   user=_user_from_token(access_token), crumb="Carroo / 荷物") + f"""
+<div class="max-w-3xl">
+  <a href="/cases/{case_id}/manage" class="hl" style="color:var(--signal-ink)">← 案件管理へ戻る</a>
+  <p class="text-gray-600 mt-1 mb-6">変更対象: <span class="font-semibold" style="color:var(--signal-ink)">{target_label}</span> ・ 案件 #{case_id}</p>
   <form method="post" action="/cases/{case_id}/update" class="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5">
     <input type="hidden" name="platforms" value="{','.join(plats)}">
     <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -1266,7 +1261,7 @@ async def case_edit_page(case_id: int, platforms: str = "trabox,webkit",
       <a href="/cases/{case_id}/manage" class="bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold px-6 py-2.5 rounded-lg">キャンセル</a>
     </div>
   </form>
-</div></body></html>""")
+</div>""" + SHELL_CLOSE)
 
 
 @router.post("/{case_id}/update")
