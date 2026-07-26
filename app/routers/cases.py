@@ -604,38 +604,36 @@ def _user_from_token(access_token):
 
 
 def _batch_result_page(case_ids, group_id, pick_location, drop_location,
-                        variants, want_trabox, want_webkit) -> HTMLResponse:
-    """複数日程一括登録の結果ページ（各日程の案件IDとグループ管理導線）。"""
+                        variants, want_trabox, want_webkit, user=None) -> HTMLResponse:
+    """複数日程一括登録の結果ページ（各日程の案件IDとグループ管理導線）。左レール・シェル。"""
+    from app.ui_shell import render_page
     plats = "・".join([p for p, w in (("トラボックス", want_trabox), ("WebKit", want_webkit)) if w]) or "なし"
     rows = ""
     for cid, v in zip(case_ids, variants):
-        rows += (f'<tr class="border-b"><td class="px-3 py-2 font-mono">{cid}</td>'
-                 f'<td class="px-3 py-2">{v["pickup_date"]} {v["pickup_time"]} 積 → '
-                 f'{v["drop_date"]} {v["drop_time"]} 卸</td>'
-                 f'<td class="px-3 py-2"><a href="/cases/{cid}/manage" class="text-blue-600 hover:underline">状況</a></td></tr>')
-    return HTMLResponse(f"""<!DOCTYPE html><html lang="ja"><head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0"><title>Carroo - 一括登録完了</title>
-<script src="https://cdn.tailwindcss.com"></script></head><body class="bg-gray-50">
-<nav class="bg-white shadow-sm border-b"><div class="max-w-7xl mx-auto px-4 flex justify-between h-16 items-center">
-<a href="/dashboard/" class="text-2xl font-bold text-blue-600">📦 Carroo</a>
-<a href="/auth/logout" class="text-red-600">ログアウト</a></div></nav>
-<div class="max-w-2xl mx-auto px-4 py-10">
-  <div class="bg-white rounded-2xl shadow p-8">
-    <div class="text-center mb-6"><div class="text-5xl mb-2">✅</div>
-      <h1 class="text-2xl font-bold">{len(case_ids)}件の日程で一括登録しました</h1>
-      <p class="text-gray-600 mt-1">{pick_location} → {drop_location}／投稿先 {plats}</p></div>
-    <table class="w-full text-sm mb-6"><thead class="bg-gray-100 text-left text-gray-600">
-      <tr><th class="px-3 py-2">案件ID</th><th class="px-3 py-2">日程</th><th class="px-3 py-2"></th></tr></thead>
-      <tbody>{rows}</tbody></table>
-    <div class="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800 mb-6">
+        rows += (f'<tr><td class="mono" style="color:var(--faint)">{cid}</td>'
+                 f'<td>{v["pickup_date"]} {v["pickup_time"]} 積 → {v["drop_date"]} {v["drop_time"]} 卸</td>'
+                 f'<td><a href="/cases/{cid}/manage" style="color:var(--signal-ink);font-weight:600">状況</a></td></tr>')
+    body = f"""
+  <div class="card" style="max-width:640px;margin:8px auto;padding:28px">
+    <div style="text-align:center;margin-bottom:20px">
+      <div style="font-size:48px;line-height:1;margin-bottom:10px">✅</div>
+      <h1 class="pt" style="margin-bottom:4px">{len(case_ids)}件の日程で一括登録しました</h1>
+      <p class="hl" style="margin:0">{pick_location} → {drop_location}／投稿先 {plats}</p>
+    </div>
+    <div class="card" style="overflow:hidden;margin-bottom:18px;box-shadow:none">
+      <table><thead><tr><th>案件ID</th><th>日程</th><th></th></tr></thead><tbody>{rows}</tbody></table>
+    </div>
+    <div style="background:var(--amber-wash);border:1px solid var(--line-soft);border-radius:12px;padding:14px;font-size:13px;color:var(--amber);margin-bottom:20px">
       💡 1件が成約したら、<b>グループ管理画面から残りをまとめて取り下げ</b>できます（二重成約防止）。
     </div>
-    <div class="flex gap-3 justify-center">
-      <a href="/cases/group/{group_id}" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-lg">グループを管理</a>
-      <a href="/cases/register" class="bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold py-2.5 px-6 rounded-lg">続けて登録</a>
+    <div style="display:flex;gap:12px;justify-content:center">
+      <a class="btn" href="/cases/group/{group_id}">グループを管理</a>
+      <a class="btn ghost" href="/cases/register">続けて登録</a>
     </div>
-  </div>
-</div></body></html>""")
+  </div>"""
+    return HTMLResponse(render_page(
+        title="一括登録完了", active="load_new", body=body, user=user,
+        page_title="一括登録完了", crumb="Carroo · 荷物"))
 
 
 @router.post("/register")
@@ -844,7 +842,8 @@ async def register_case(
         # 複数日程の場合は一括結果ページを返す
         if len(case_ids) > 1:
             return _batch_result_page(case_ids, group_id, pick_location,
-                                      drop_location, variants, want_trabox, want_webkit)
+                                      drop_location, variants, want_trabox, want_webkit,
+                                      user=current_user)
 
         # Step 5: 結果画面を返す（投稿処理は背景で実行される）
         platforms = []
@@ -854,53 +853,28 @@ async def register_case(
             platforms.append("WebKit")
         platforms_text = "・".join(platforms) if platforms else "なし（案件保存のみ）"
 
-        return HTMLResponse(f"""<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carroo - 登録完了</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-50">
-    <nav class="bg-white shadow-sm border-b border-gray-200">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16 items-center">
-                <a href="/dashboard/" class="text-2xl font-bold text-blue-600 hover:opacity-80 transition">📦 Carroo</a>
-                <div class="flex items-center gap-4">
-                    <a href="/auth/me" class="text-gray-600 hover:text-gray-900">プロフィール</a>
-                    <a href="/auth/logout" class="text-red-600 hover:text-red-700">ログアウト</a>
-                </div>
-            </div>
-        </div>
-    </nav>
-
-    <div class="min-h-screen flex items-center justify-center px-4 -mt-16">
-        <div class="max-w-lg w-full bg-white rounded-2xl shadow-lg p-10 text-center">
-            <div class="text-6xl mb-4">✅</div>
-            <h1 class="text-2xl font-bold text-gray-900 mb-2">案件を登録しました</h1>
-            <p class="text-gray-600 mb-6">案件ID: <span class="font-mono font-semibold">{case_id}</span></p>
-
-            <div class="text-left bg-gray-50 rounded-lg p-4 mb-6 text-sm space-y-2">
-                <p><span class="text-gray-500">積地:</span> <span class="font-medium">{pick_location}</span></p>
-                <p><span class="text-gray-500">卸地:</span> <span class="font-medium">{drop_location}</span></p>
-                <p><span class="text-gray-500">積み日:</span> <span class="font-medium">{pickup_date}</span></p>
-                <p><span class="text-gray-500">投稿先:</span> <span class="font-medium">{platforms_text}</span></p>
-            </div>
-
-            <p class="text-sm text-gray-500 mb-8">
-                投稿は背景で実行中です（1〜2分程度）。<br>
-                結果（成功/失敗・荷物番号）はダッシュボードの案件詳細で確認できます。
-            </p>
-
-            <div class="flex gap-4 justify-center">
-                <a href="/cases/{case_id}/manage" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-lg transition">投稿状況を確認</a>
-                <a href="/cases/register" class="bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold py-2.5 px-6 rounded-lg transition">続けて登録</a>
-            </div>
-        </div>
+        from app.ui_shell import render_page
+        body = f"""
+  <div class="card" style="max-width:560px;margin:8px auto;padding:32px;text-align:center">
+    <div style="font-size:52px;line-height:1;margin-bottom:12px">✅</div>
+    <h1 class="pt" style="margin-bottom:6px">案件を登録しました</h1>
+    <p class="hl" style="margin:0 0 22px">案件ID: <span class="mono" style="font-weight:600">{case_id}</span></p>
+    <div style="text-align:left;background:var(--raise);border:1px solid var(--line-soft);border-radius:12px;padding:16px;margin-bottom:20px;font-size:13.5px;display:grid;gap:8px">
+      <div><span class="hl">積地:</span> <b>{pick_location}</b></div>
+      <div><span class="hl">卸地:</span> <b>{drop_location}</b></div>
+      <div><span class="hl">積み日:</span> <b>{pickup_date}</b></div>
+      <div><span class="hl">投稿先:</span> <b>{platforms_text}</b></div>
     </div>
-</body>
-</html>""")
+    <p class="hl" style="font-size:12.5px;margin:0 0 24px">投稿は背景で実行中です（1〜2分程度）。<br>結果（成功/失敗・荷物番号）はダッシュボードの案件詳細で確認できます。</p>
+    <div style="display:flex;gap:12px;justify-content:center">
+      <a class="btn" href="/cases/{case_id}/manage">投稿状況を確認</a>
+      <a class="btn ghost" href="/cases/register">続けて登録</a>
+    </div>
+  </div>"""
+        return HTMLResponse(render_page(
+            title="登録完了", active="load_new", body=body,
+            user=current_user, page_title="登録完了",
+            crumb="Carroo · 荷物"))
 
     except HTTPException:
         # バリデーションエラー等はそのまま返す（detail を握りつぶさない）
