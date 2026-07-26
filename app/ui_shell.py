@@ -65,7 +65,8 @@ a{color:inherit;text-decoration:none}
 .app.railcol .railtoggle svg{transform:rotate(180deg)}
 /* rail */
 .rail{background:var(--rail);color:var(--rail-txt);display:flex;flex-direction:column;border-right:1px solid var(--rail-line);position:sticky;top:0;height:100vh}
-.rail .top{padding:20px 18px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+.rail .top{padding:20px 18px 12px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.rail .top .railtoggle{align-self:center}
 .railtoggle{background:transparent;border:0;color:var(--rail-txt-dim);cursor:pointer;padding:6px;border-radius:8px;display:inline-flex;line-height:0}
 .railtoggle:hover{background:var(--rail-2);color:var(--rail-txt)}
 .railtoggle svg{width:18px;height:18px;transition:transform .15s}
