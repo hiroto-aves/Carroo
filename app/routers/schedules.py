@@ -17,6 +17,7 @@ from app.services import recurrence
 from app.services.scheduler_service import materialize
 from app.routers.trucks import PREFS, WEIGHTS, VEHICLES, _nav, _opts
 from app.ui_shell import render_page
+from app.tenancy import scope_tenant
 from app.widgets import pref_picker, PREF_PICKER_JS
 
 logger = logging.getLogger(__name__)
@@ -251,7 +252,7 @@ async def create_schedule(
 
 @router.get("/", response_class=HTMLResponse)
 async def list_page(current_user: dict = Depends(_require_feature)):
-    rows = store.list_schedules(current_user.get("is_admin"), current_user["id"])
+    rows = store.list_schedules(current_user.get("is_admin"), current_user["id"], tenant_id=scope_tenant(current_user))
     items = ""
     for s in rows:
         nd = recurrence.due_dates(s, date.today(), date.today() + timedelta(days=60))
@@ -310,7 +311,7 @@ async def schedules_history(current_user: dict = Depends(_require_feature),
               "deleted": '<span class="chip off">取下げ済</span>',
               "error": '<span class="chip off">エラー</span>',
               "none": '<span class="chip off">—</span>'}
-    trucks = [t for t in store.list_all_trucks() if t.get("schedule_id")]
+    trucks = [t for t in store.list_all_trucks(scope_tenant(current_user)) if t.get("schedule_id")]
     if not is_admin:
         trucks = [t for t in trucks if t.get("user_id") == uid]
     trucks.sort(key=lambda t: t["id"], reverse=True)

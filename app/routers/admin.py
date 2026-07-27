@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app.db.database import get_db_connection
 from app.dependencies import get_current_user
 from app.utils.security import hash_password
+from app.tenancy import scope_tenant
 
 logger = logging.getLogger(__name__)
 
@@ -182,8 +183,8 @@ async def maintenance_page(current_user: dict = Depends(get_current_user)):
                      f'<td style="text-align:right">{btn}</td></tr>')
         return html or f'<tr><td colspan="5" style="text-align:center;color:var(--faint);padding:24px">{kind}はありません</td></tr>', n_purgeable
 
-    cases = store.list_all_cases()
-    trucks = store.list_all_trucks()
+    cases = store.list_all_cases(scope_tenant(current_user))
+    trucks = store.list_all_trucks(scope_tenant(current_user))
     case_rows, case_purge = _rows(cases, _case_states, "case")
     truck_rows, truck_purge = _rows(trucks, _truck_states, "truck")
 
@@ -258,11 +259,11 @@ async def purge_safe(kind: str, current_user: dict = Depends(get_current_user)):
     from app.utils.audit import audit
     deleted = 0
     if kind == "case":
-        for it in store.list_all_cases():
+        for it in store.list_all_cases(scope_tenant(current_user)):
             if _case_states(it["id"])[2]:
                 store.purge_case(it["id"]); deleted += 1
     elif kind == "truck":
-        for it in store.list_all_trucks():
+        for it in store.list_all_trucks(scope_tenant(current_user)):
             if _truck_states(it["id"])[2]:
                 store.purge_truck(it["id"]); deleted += 1
     else:

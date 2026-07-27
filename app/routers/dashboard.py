@@ -4,6 +4,7 @@ from app.dependencies import get_current_user
 from app.ui_nav import main_nav
 from app.ui_shell import render_page, esc
 from app.db.database import get_db_connection
+from app.tenancy import scope_tenant
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -82,7 +83,7 @@ def _truck_dashboard(current_user: dict, store):
     is_admin = current_user.get("is_admin", False)
 
     # ---- 空車一覧（直近） ----
-    trucks = store.search_trucks(is_admin, user_id, {})
+    trucks = store.search_trucks(is_admin, user_id, {}, tenant_id=scope_tenant(current_user))
     live_trucks = 0
     trows = ""
     for t in trucks[:12]:
@@ -107,7 +108,7 @@ def _truck_dashboard(current_user: dict, store):
     if feature_enabled("recurring", current_user):
         from app.services import recurrence
         srows = ""
-        rules = store.list_schedules(is_admin, user_id)
+        rules = store.list_schedules(is_admin, user_id, tenant_id=scope_tenant(current_user))
         active_cnt = sum(1 for s in rules if s.get("status") == "active")
         for s in rules[:12]:
             paused = s.get("status") != "active"
@@ -132,7 +133,7 @@ def _truck_dashboard(current_user: dict, store):
 <div class="stats" style="grid-template-columns:repeat(3,1fr)">
   <div class="cell"><div class="k">空車登録数</div><div class="v num">{len(trucks)}</div></div>
   <div class="cell"><div class="k">掲載中 <span class="sub">（現在）</span></div><div class="v num sig">{live_trucks}</div></div>
-  <div class="cell"><div class="k">定期登録</div><div class="v num">{store.list_schedules(is_admin, user_id).__len__() if feature_enabled('recurring', current_user) else '—'}</div></div>
+  <div class="cell"><div class="k">定期登録</div><div class="v num">{store.list_schedules(is_admin, user_id, tenant_id=scope_tenant(current_user)).__len__() if feature_enabled('recurring', current_user) else '—'}</div></div>
 </div>
 <div class="ledger">
   <div class="lhead"><span class="t">空車一覧</span><a class="a" href="/trucks/">すべて →</a></div>
@@ -180,7 +181,8 @@ async def dashboard(current_user: dict = Depends(get_current_user),
 
         d_from, d_to, period_label = _period_range(period, date_from, date_to)
         st = store.dashboard_stats(is_admin, user_id,
-                                   date_from=d_from, date_to=d_to)
+                                   date_from=d_from, date_to=d_to,
+                                   tenant_id=scope_tenant(current_user))
 
         # 進行中の経路（最近の案件を経路の線で表示）
         rows_html = ""
@@ -293,7 +295,7 @@ async def cases_list(
         rows = store.search_cases(is_admin, user_id, {
             "q_user": q_user, "date_from": date_from, "date_to": date_to,
             "pick": pick, "drop": drop, "vehicle": vehicle, "registrant": registrant,
-        })
+        }, tenant_id=scope_tenant(current_user))
         # owner 表示用にユーザー名を引く（管理者のみ必要）
         uname_by_id = {}
         if is_admin:
@@ -307,7 +309,7 @@ async def cases_list(
                 user_options += f'<option value="{u["id"]}"{sel}>{esc(u["username"])}</option>'
 
         # 登録者名の候補（アカウント内 / 管理者は全件）
-        reg_names = store.list_registrants(is_admin, user_id)
+        reg_names = store.list_registrants(is_admin, user_id, tenant_id=scope_tenant(current_user))
         registrant_opts = '<option value="">すべて</option>' + "".join(
             f'<option value="{esc(n)}"{" selected" if n==registrant else ""}>{esc(n)}</option>' for n in reg_names)
 
@@ -420,7 +422,7 @@ async def cases_history(current_user: dict = Depends(get_current_user),
     is_admin = current_user.get("is_admin")
     uid = current_user["id"]
     can_re = feature_enabled("reregister", current_user)
-    cases = {c["id"]: c for c in store.list_all_cases()}
+    cases = {c["id"]: c for c in store.list_all_cases(scope_tenant(current_user))}
     events = store.list_all_posting_events(1000)
     if not is_admin:
         events = [e for e in events if cases.get(e.get("case_id"), {}).get("user_id") == uid]

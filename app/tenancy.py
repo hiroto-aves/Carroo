@@ -19,6 +19,14 @@ def current_tenant_id(user: dict = None) -> str:
     return os.getenv("DEFAULT_TENANT_ID", DEFAULT_TENANT_ID)
 
 
+def scope_tenant(user: dict = None):
+    """一覧/検索のテナント絞り込み値を返す。
+    運営者(super)は None（全テナント横断）、それ以外は自テナントID。"""
+    if not user or user.get("is_super"):
+        return None
+    return user.get("tenant_id")
+
+
 def get_current_tenant(user: dict = None) -> dict:
     """現在のテナントdocを返す（無ければ空dict）。features/plan の参照元。"""
     try:

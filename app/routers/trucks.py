@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse
 from app.dependencies import get_current_user
 from app.db import store
 from app.services.cloud_tasks import get_task_client
-from app.tenancy import feature_enabled
+from app.tenancy import feature_enabled, scope_tenant
 from app.ui_shell import render_page, esc
 from app.widgets import pref_picker, PREF_PICKER_JS, PREFILL_JS
 
@@ -251,7 +251,7 @@ async def register_truck(
 @router.get("/", response_class=HTMLResponse)
 async def list_trucks(current_user: dict = Depends(get_current_user)):
     is_admin = current_user.get("is_admin")
-    rows = store.search_trucks(is_admin, current_user["id"], {})
+    rows = store.search_trucks(is_admin, current_user["id"], {}, tenant_id=scope_tenant(current_user))
     items = ""
     for t in rows:
         tb = _STATE_BADGE[store.get_truck_platform_state(t["id"], "trabox")]
@@ -287,7 +287,7 @@ async def trucks_history(current_user: dict = Depends(get_current_user),
     is_admin = current_user.get("is_admin")
     uid = current_user["id"]
     can_re = feature_enabled("reregister", current_user)
-    trucks = {t["id"]: t for t in store.list_all_trucks()}
+    trucks = {t["id"]: t for t in store.list_all_trucks(scope_tenant(current_user))}
     events = store.list_all_truck_events(1000)
     if not is_admin:
         events = [e for e in events if trucks.get(e.get("truck_id"), {}).get("user_id") == uid]

@@ -73,23 +73,27 @@ def purge_truck(truck_id: int) -> Dict[str, int]:
     return {"truck": 1, "history": n_hist}
 
 
-def list_all_cases() -> List[Dict[str, Any]]:
-    """全案件（管理者メンテナンス用。ユーザー横断）。"""
+def list_all_cases(tenant_id=None) -> List[Dict[str, Any]]:
+    """全案件（管理者用。tenant_id 指定でそのテナントに限定・None=横断）。"""
     out = []
     for snap in _db().collection("cases").stream():
         d = snap.to_dict() or {}
         d["id"] = int(snap.id)
+        if not _tenant_match(d, tenant_id):
+            continue
         out.append(d)
     out.sort(key=lambda c: c["id"])
     return out
 
 
-def list_all_trucks() -> List[Dict[str, Any]]:
-    """全空車（管理者メンテナンス用）。"""
+def list_all_trucks(tenant_id=None) -> List[Dict[str, Any]]:
+    """全空車（管理者用。tenant_id 指定でそのテナントに限定・None=横断）。"""
     out = []
     for snap in _db().collection("truck_postings").stream():
         d = snap.to_dict() or {}
         d["id"] = int(snap.id)
+        if not _tenant_match(d, tenant_id):
+            continue
         out.append(d)
     out.sort(key=lambda c: c["id"])
     return out
@@ -318,8 +322,10 @@ def update_case(case_id: int, user_id: int, fields: Dict[str, Any]) -> bool:
     return True
 
 
-def search_cases(is_admin: bool, user_id: int, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+def search_cases(is_admin: bool, user_id: int, filters: Dict[str, Any],
+                 tenant_id=None) -> List[Dict[str, Any]]:
     """案件検索。user_id（管理者は全件/指定ユーザー）で取得後 Python でフィルタ。
+    tenant_id 指定時はそのテナントに限定（None=横断/super）。
 
     filters: q_user, date_from, date_to, pick, drop, vehicle, registrant
     """
@@ -336,6 +342,8 @@ def search_cases(is_admin: bool, user_id: int, filters: Dict[str, Any]) -> List[
     for snap in docs:
         d = snap.to_dict()
         d["id"] = int(snap.id)
+        if not _tenant_match(d, tenant_id):
+            continue
         rows.append(d)
 
     df, dt = filters.get("date_from"), filters.get("date_to")
@@ -363,17 +371,20 @@ def search_cases(is_admin: bool, user_id: int, filters: Dict[str, Any]) -> List[
     return rows
 
 
-def list_registrants(is_admin: bool, user_id: int) -> List[str]:
+def list_registrants(is_admin: bool, user_id: int, tenant_id=None) -> List[str]:
     """絞り込み用: 登録者名（contact_name）の一覧（重複除去）
 
-    一般ユーザーは自分のアカウント内、管理者は全件。
+    一般ユーザーは自分のアカウント内、管理者は自社（tenant_id）全件。
     """
     col = _db().collection("cases")
     docs = (col.stream() if is_admin
             else col.where("user_id", "==", int(user_id)).stream())
     names = set()
     for snap in docs:
-        n = (snap.to_dict().get("contact_name") or "").strip()
+        d = snap.to_dict() or {}
+        if not _tenant_match(d, tenant_id):
+            continue
+        n = (d.get("contact_name") or "").strip()
         if n:
             names.add(n)
     return sorted(names)
@@ -563,12 +574,32 @@ def ensure_stage1(default_tenant_id: str = "takeuchi") -> None:
             n += 1
     if n:
         logger.info(f"[Stage1] users バックフィル {n} 件")
+    # 既存レコード(cases/trucks/schedules)の tenant_id 欠損を既定テナントで補完
+    for coll in ("cases", "truck_postings", "truck_schedules"):
+        m = 0
+        try:
+            for snap in _db().collection(coll).stream():
+                if not (snap.to_dict() or {}).get("tenant_id"):
+                    snap.reference.update({"tenant_id": default_tenant_id})
+                    m += 1
+            if m:
+                logger.info(f"[Stage1] {coll} tenant_id 補完 {m} 件")
+        except Exception as e:
+            logger.warning(f"[Stage1] {coll} 補完スキップ: {e}")
     # 既定テナントの seats を有効ユーザー数に同期（課金の基礎値）
     try:
         seats = sum(1 for _ in col.where("tenant_id", "==", default_tenant_id).stream())
         update_tenant(default_tenant_id, {"seats": seats})
     except Exception as e:
         logger.warning(f"[Stage1] seats 同期スキップ: {e}")
+
+
+def _tenant_match(doc: Dict[str, Any], tenant_id, default_tenant_id: str = "takeuchi") -> bool:
+    """レコードが指定テナントに属するか。tenant_id が None(=super/横断) なら常に True。
+    レコードの tenant_id 欠損は既定テナント扱い。"""
+    if tenant_id is None:
+        return True
+    return (doc.get("tenant_id") or default_tenant_id) == tenant_id
 
 
 # ============================================================
@@ -618,8 +649,10 @@ def list_trucks_by_schedule(schedule_id: int) -> List[Dict[str, Any]]:
     return out
 
 
-def search_trucks(is_admin: bool, user_id: int, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
+def search_trucks(is_admin: bool, user_id: int, filters: Dict[str, Any],
+                  tenant_id=None) -> List[Dict[str, Any]]:
     """空車検索。荷物 search_cases と同様に user_id で取得後 Python でフィルタ。
+    tenant_id 指定時はそのテナントに限定（None=横断/super）。
     filters: q_user, date_from, date_to, vacant, dest, vehicle, registrant"""
     col = _db().collection("truck_postings")
     if is_admin:
@@ -631,6 +664,8 @@ def search_trucks(is_admin: bool, user_id: int, filters: Dict[str, Any]) -> List
     for snap in docs:
         d = snap.to_dict()
         d["id"] = int(snap.id)
+        if not _tenant_match(d, tenant_id):
+            continue
         rows.append(d)
     df, dt = filters.get("date_from"), filters.get("date_to")
     vac, dst = filters.get("vacant"), filters.get("dest")
@@ -764,13 +799,15 @@ def delete_schedule(schedule_id: int, user_id: int) -> bool:
     return True
 
 
-def list_schedules(is_admin: bool, user_id: int) -> List[Dict[str, Any]]:
+def list_schedules(is_admin: bool, user_id: int, tenant_id=None) -> List[Dict[str, Any]]:
     col = _db().collection("truck_schedules")
     docs = col.stream() if is_admin else col.where("user_id", "==", int(user_id)).stream()
     rows = []
     for s in docs:
         d = s.to_dict()
         d["id"] = int(s.id)
+        if not _tenant_match(d, tenant_id):
+            continue
         rows.append(d)
     rows.sort(key=lambda r: r.get("created_at", ""), reverse=True)
     return rows
@@ -840,10 +877,11 @@ def _live_case_ids(case_ids: set) -> set:
 
 
 def dashboard_stats(is_admin: bool, user_id: int,
-                    date_from: str = None, date_to: str = None) -> Dict[str, Any]:
+                    date_from: str = None, date_to: str = None,
+                    tenant_id=None) -> Dict[str, Any]:
     """ダッシュボード統計。date_from/date_to（YYYY-MM-DD）で登録日を期間フィルタ。
     掲載中件数(live)は期間に関係ない現在スナップショット（未成約で掲載継続中）。"""
-    cases = search_cases(is_admin, user_id, {})
+    cases = search_cases(is_admin, user_id, {}, tenant_id=tenant_id)
 
     def _in_period(c):
         d = (c.get("created_at", "") or "")[:10]
