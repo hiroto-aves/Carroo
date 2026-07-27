@@ -16,6 +16,19 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-27 Stripe 課金連携コード一式（BILLING_ENABLED OFF で眠り）（rev carroo-00070-bjs）
+- **services/billing.py**：Checkout(サブスク・7日トライアル・カードのみ・基本料+シートquantity=人数-1)／Customer Portal／
+  sync_seats(ユーザー増減→Stripeシート数量, 日割り)／Webhook署名検証(verify_and_parse_webhook)／apply_subscription_to_tenant。
+  全て env 構成、BILLING_ENABLED か STRIPE_SECRET_KEY 無しで no-op（現行不変）。
+- **routers/billing.py**：/billing/(owner向け 状態+契約/管理ボタン)・/checkout・/portal・/webhook(署名検証・認証不要)。
+  サイドバーに「お支払い」(i-card, owner/super のみ)。
+- **store.sync_tenant_seats** が課金稼働時に billing.sync_seats を呼ぶ。requirements に stripe==7.8.0。
+- 機能ゲートは BILLING_ENABLED ON 時に plan 由来（standard=基本のみ/pro=定期・複数日程・再登録）へ自動切替（配線済み）。
+- **要ユーザー作業**：Stripe で商品/価格4つ(Std¥4000+¥2000/人, Pro¥5000+¥3000/人・数量制)・APIキー・Webhook(→/billing/webhook)・
+  Customer Portal 有効化。集めたキーを Cloud Run Secret 登録＋BILLING_ENABLED=on で稼働。
+  必要env: STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET/STRIPE_PRICE_STANDARD_BASE/_STANDARD_SEAT/_PRO_BASE/_PRO_SEAT。
+- 未実装(テスト時): トライアル終了/未払い時の投稿ロック（subscription_status で gate）。
+
 ### 🆕 2026-07-27 Stage 1 マルチテナント Phase C+D（ロール実効化・運営コンソール）（rev carroo-00069-x24）
 - **Phase C（ロール実効化）**：`store.create_user` に tenant_id/role/is_super、`list_users(tenant_id)`、`delete_user`＋`sync_tenant_seats`。
   admin ユーザー管理を自テナント限定（super は全件）、発行ユーザーに発行者テナント＋role付与（super は付与しない）。
