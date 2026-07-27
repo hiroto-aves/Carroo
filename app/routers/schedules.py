@@ -43,11 +43,15 @@ async def register_page(current_user: dict = Depends(_require_feature)):
     body = f"""
 <div class="max-w-3xl">
   <p class="hl" style="margin:-4px 0 18px">毎週・隔週・毎日・毎月のパターンで空車を自動投稿します。</p>
-  <details class="card" style="padding:0;margin-bottom:16px;overflow:hidden">
-    <summary style="cursor:pointer;padding:12px 16px;font-weight:600;font-size:13.5px;list-style:none">
-      ❓ 自動投稿のしくみ（クリックで開く）</summary>
-    <div style="padding:0 16px 16px;font-size:13px;color:var(--muted);line-height:1.7">
-      <ul style="margin:0;padding-left:18px">
+  <details class="helpbox">
+    <summary>
+      <span>❓ 自動投稿のしくみ</span>
+      <span style="font-weight:500;font-size:12px;opacity:.8">クリックで開く</span>
+      <svg class="chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+           stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+    </summary>
+    <div class="help-body">
+      <ul>
         <li><b>毎朝 7:00</b> に、その日から「何日前に投稿」日数ぶん先までに来る該当日を自動で空車登録します。</li>
         <li><b>何日前に投稿（lead_days）</b>：空車日の何日前から掲載を出すか。例: 3 なら3日前に自動投稿。</li>
         <li><b>初期登録回数</b>：作成した<b>その瞬間</b>に、直近この回数ぶんの該当日をまとめて即投稿します（lead 日数は無視）。

@@ -147,6 +147,18 @@ h1.pt{font-size:26px;margin:0 0 4px;letter-spacing:-.03em}
 .track .d.met{border-color:var(--signal);background:var(--signal)}
 .track .node{position:absolute;top:50%;width:8px;height:8px;border-radius:50%;background:var(--surface);border:2px solid var(--signal);transform:translate(-50%,-50%);box-shadow:0 0 0 4px var(--signal-wash)}
 .perseg a{text-decoration:none}
+/* 折りたたみヘルプ（開閉が分かる矢印＋アクセント色） */
+.helpbox{border:1px solid var(--signal);background:var(--signal-wash);border-radius:12px;overflow:hidden;margin-bottom:16px}
+.helpbox>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:9px;
+ padding:12px 15px;font-weight:650;font-size:13.5px;color:var(--signal-ink);user-select:none}
+.helpbox>summary::-webkit-details-marker{display:none}
+.helpbox>summary .chev{margin-left:auto;transition:transform .18s;flex:0 0 auto;color:var(--signal-ink)}
+.helpbox[open]>summary .chev{transform:rotate(90deg)}
+.helpbox[open]>summary{border-bottom:1px solid var(--signal)}
+.helpbox>summary:hover{filter:brightness(.98)}
+.helpbox .help-body{padding:12px 16px 14px;font-size:13px;color:var(--ink-2);line-height:1.7;background:var(--surface)}
+.helpbox .help-body ul{margin:0;padding-left:18px}
+.helpbox .help-body b{color:var(--ink)}
 /* 送信ボタンのスピナー（押下即時フィードバック・二度押し防止） */
 .spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);
  border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px;margin-right:7px}
