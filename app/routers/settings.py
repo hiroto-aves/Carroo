@@ -32,9 +32,21 @@ def get_settings_html(
     theme: str = "auto",
     dashboard_mode: str = "freight",
     user: dict = None,
+    has_trabox_password: bool = False,
 ) -> str:
     """設定ページHTMLを生成"""
     from app.ui_shell import shell_open, SHELL_CLOSE, esc
+    # パスワードは復号表示しない。登録済みなら「登録済み」と分かる表示にし、
+    # 空欄のまま保存すれば既存パスワードを維持する旨を明示する。
+    if has_trabox_password:
+        pw_badge = ('<span class="ml-2 px-1.5 py-0.5 text-xs font-semibold text-green-700 '
+                    'bg-green-50 border border-green-200 rounded">登録済み</span>')
+        pw_placeholder = "●●●●●●●●（変更する場合のみ入力）"
+        pw_note = "※ 登録済み。変更しないなら空欄のままでOK（既存のパスワードを維持します）"
+    else:
+        pw_badge = ""
+        pw_placeholder = "パスワードを入力"
+        pw_note = "※ サーバーに暗号化して保存されます"
 
     def _sel(cur, val):
         return " selected" if cur == val else ""
@@ -93,9 +105,9 @@ def get_settings_html(
                             <p class="text-xs text-gray-500 mt-1">Trabox のログインメールアドレス</p>
                         </div>
                         <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">パスワード</label>
-                            <input type="password" name="trabox_password" autocomplete="current-password" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="パスワードを入力">
-                            <p class="text-xs text-gray-500 mt-1">※ サーバーに暗号化して保存されます</p>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">パスワード{pw_badge}</label>
+                            <input type="password" name="trabox_password" autocomplete="current-password" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="{pw_placeholder}">
+                            <p class="text-xs text-gray-500 mt-1">{pw_note}</p>
                         </div>
                     </div>
                 </div>
@@ -250,6 +262,7 @@ async def settings_page(current_user: dict = Depends(get_current_user)):
         theme=current_user.get("theme", "auto"),
         dashboard_mode=current_user.get("dashboard_mode", "freight"),
         user=current_user,
+        has_trabox_password=bool(creds.get("trabox_password_encrypted")),
     )
 
 
