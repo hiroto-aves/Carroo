@@ -16,6 +16,17 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-27 定期の初期登録回数＋ヘルプ＋掲載取下げ削除＋履歴3種（rev carroo-00059-stp）
+- **初期登録回数**（空車定期登録フォーム）：作成時に直近N回分の該当日を lead無視で即materialize＝即投稿。
+  `scheduler_service.materialize_schedule_initial(sid,count)`（_materialize_date に分解）。0なら従来のlead窓内のみ。
+- **自動投稿のしくみヘルプ**：登録ページに折りたたみ（緑アクセント・開閉で回転する矢印。CSS `.helpbox` を ui_shell に）。
+- **掲載を取下げて削除**：定期一覧に「取下げて削除」（materialize済みliveを全deleteタスク投入→ルール削除。
+  `/schedules/{id}/takedown-delete`＋`store.list_trucks_by_schedule`）と「ルールのみ削除」を分離。
+- **履歴ページ3種**：荷物一覧→`/dashboard/cases/history`、空車一覧→`/trucks/history`、定期一覧→`/schedules/history`。
+  各一覧右上に「履歴」ボタン。posting_history/truck_posting_history の追記式ログ（取下げ済みも残る）を新しい順表示、
+  操作は色付きチップ（widgets.event_chip）。管理者は全ユーザー分。store に list_all_posting_events/list_all_truck_events 追加。
+  ※初回バグ: dashboard.cases_history で store のlocal import 漏れ→NameError（E-SYS-500・参照IDで即特定）を修正。
+
 ### 🆕 2026-07-27 送信ボタンの即時フィードバック（スピナー・二度押し防止）（rev carroo-00053-pvn）
 - `_PWA_HEAD` に共通スクリプトを追加：form submit を capture で拾い、送信ボタンを押下即時に
   スピナー＋「処理中…」＋disabled に（`window.__busy`/`__idle`）。全フォーム一律で二度押し防止。
