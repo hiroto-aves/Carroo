@@ -23,6 +23,7 @@ def esc(value) -> str:
 SVG_DEFS = """
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
  <g id="cmarkC"><path d="M70.9 27.9 A30 30 0 1 0 70.9 72.1" fill="none" stroke="var(--cream)" stroke-width="15.5" stroke-linecap="round"/><circle cx="70.9" cy="27.9" r="9.6" fill="var(--signal-br)"/></g>
+ <g id="cmarkInk"><path d="M70.9 27.9 A30 30 0 1 0 70.9 72.1" fill="none" stroke="currentColor" stroke-width="15.5" stroke-linecap="round"/><circle cx="70.9" cy="27.9" r="9.6" fill="var(--signal-br)"/></g>
  <g id="i-dash" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.4"/><rect x="14" y="3" width="7" height="5" rx="1.4"/><rect x="14" y="12" width="7" height="9" rx="1.4"/><rect x="3" y="16" width="7" height="5" rx="1.4"/></g>
  <g id="i-load" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7 20 7v10l-8 4.3L4 17V7z"/><path d="M4 7l8 4.3L20 7M12 11.3V21.3"/></g>
  <g id="i-truck" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6h11v9H2z"/><path d="M13 9h4l4 3v3h-8z"/><circle cx="7" cy="18" r="2"/><circle cx="17.5" cy="18" r="2"/></g>
@@ -197,9 +198,10 @@ body{background:var(--paper);color:var(--ink);font-family:var(--sans);line-heigh
 .auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 20px}
 .auth-in{width:100%;max-width:396px}
 .brand{display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:26px}
-.clogo{width:60px;height:60px;border-radius:16px;box-shadow:var(--shadow);margin-bottom:14px;display:block}
-.wordmark{font-weight:680;letter-spacing:-.05em;font-size:32px;line-height:1;color:var(--ink)}
-.tagline{color:var(--muted);font-size:13.5px;margin-top:8px}
+.wordmark{display:inline-flex;align-items:center;font-weight:680;letter-spacing:-.05em;
+ font-size:40px;line-height:1;color:var(--ink)}
+.wordmark .wmC{height:.92em;width:auto;margin-right:.01em;transform:translateY(.055em)}
+.tagline{color:var(--muted);font-size:13.5px;margin-top:10px}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:28px}
 .panel h2{font-size:17px;margin:0 0 18px;letter-spacing:-.02em}
 label.fl{display:block;font-size:12.5px;color:var(--faint);margin-bottom:6px;font-weight:600}
@@ -234,8 +236,7 @@ def brand_page(*, title, inner, user=None) -> str:
 <body>{SVG_DEFS}
 <div class="auth"><div class="auth-in">
   <div class="brand">
-    <img class="clogo" src="/static/icons/icon-192.png" alt="Carroo" width="60" height="60">
-    <div class="wordmark">Carroo</div>
+    <div class="wordmark"><svg class="wmC" viewBox="12 12 69 77"><use href="#cmarkInk"/></svg><span>arroo</span></div>
     <div class="tagline">物流案件を Trabox・WebKit へ一括投稿</div>
   </div>
   {inner}
