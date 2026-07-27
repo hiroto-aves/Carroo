@@ -16,6 +16,16 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-27 Stage 1 マルチテナント Phase A+B（土台・テナント絞り込み）（rev carroo-00067-frx）
+- **Phase A（土台・挙動不変）**：`tenants` コレクション新設（get/list/create/update_tenant）。起動時 `store.ensure_stage1()` で
+  既定テナント "takeuchi"(竹内運送) 作成＋全users に tenant_id/role(owner|member)/is_super をバックフィル（管理者→owner+super）。
+  `dependencies.get_current_user` が role/is_super/tenant_id/tenant_features/tenant_plan を付与（ログイン時テナント1回読み）。
+  `tenancy.feature_enabled` を user.features→tenant_features→plan由来(_plan_features, 課金ON時のみ)→env の順に。`BILLING_ENABLED` OFF で env フォールバック＝現行不変。
+- **Phase B（テナント絞り込み）**：`_tenant_match`＋各query関数に `tenant_id` 引数（search_cases/search_trucks/list_schedules/
+  dashboard_stats/list_registrants/list_all_cases/list_all_trucks）。ルーターは `tenancy.scope_tenant(user)`（super=None横断/他=自テナント）を渡す。
+  起動時に既存 cases/truck_postings/truck_schedules の tenant_id 欠損を補完。**現状1テナント＋管理者=super で挙動不変**、2社目で自動分離。
+- 残: Phase C（ロール実効化・自社ユーザー管理限定）／Phase D（運営コンソール /ops）。
+
 ### 🆕 2026-07-27 課金設計確定＋履歴から再登録（Pro機能）（rev carroo-00065-5qp）
 - **課金・プラン設計 確定**：`docs/課金・プラン設計_ver1.0.html`（Artifact: https://claude.ai/code/artifact/b3348285-5865-4389-a43d-b5e17dee268f ）。
   Standard ¥4,000＋¥2,000/人 / Pro ¥5,000＋¥3,000/人（基本料に1人目含む＝Stripeシート quantity=有効users−1）。
