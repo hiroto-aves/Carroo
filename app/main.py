@@ -146,6 +146,43 @@ async def sliding_session_middleware(request, call_next):
     return response
 
 
+from fastapi import Request as _Req
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as _StarletteHTTPException
+from app.errors import AppError, new_ref, format_detail, user_message
+
+
+@app.exception_handler(AppError)
+async def _app_error_handler(request: _Req, exc: AppError):
+    """業務例外: やさしい説明＋コードを detail に埋め込んで返す。"""
+    return JSONResponse(status_code=exc.status_code,
+                        content={"detail": format_detail(exc.user_msg, exc.code),
+                                 "code": exc.code})
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_handler(request: _Req, exc: RequestValidationError):
+    """入力バリデーション失敗(422): 一般ユーザー向けに言い換え＋コード。"""
+    return JSONResponse(status_code=422,
+                        content={"detail": format_detail(user_message("E-VALIDATION"),
+                                                         "E-VALIDATION"),
+                                 "code": "E-VALIDATION"})
+
+
+@app.exception_handler(Exception)
+async def _unhandled_handler(request: _Req, exc: Exception):
+    """未捕捉の例外(500): 参照IDを発行し、全文をログに残す（管理者が追える）。
+    HTTPException はここに来ないので、業務の意図的な 4xx はそのまま通る。"""
+    ref = new_ref()
+    logging.getLogger("errors").exception(
+        f"[E-SYS-500] ref={ref} path={request.url.path}")
+    return JSONResponse(status_code=500,
+                        content={"detail": format_detail(user_message("E-SYS-500"),
+                                                         "E-SYS-500", ref),
+                                 "code": "E-SYS-500", "ref": ref})
+
+
 app.include_router(auth.router)
 app.include_router(cases.router)
 app.include_router(dashboard.router)

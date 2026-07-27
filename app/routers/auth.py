@@ -339,9 +339,10 @@ async def login(request: Request, username: str = Form(...), password: str = For
     if not user or not verify_password(password, user["hashed_password"]):
         _login_rate_limit_fail(_rl_key)
         audit("login_failure", username=username, ip=client_ip)
+        from app.errors import format_detail, user_message
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password"
+            detail=format_detail(user_message("E-AUTH-401"), "E-AUTH-401"),
         )
 
     _login_rate_limit_reset(_rl_key)

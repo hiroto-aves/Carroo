@@ -17,8 +17,18 @@ from typing import Any, Dict
 
 from app.db import store
 from app.db.store import update_posting_result
+from app.errors import classify, format_detail
 
 logger = logging.getLogger(__name__)
+
+
+def _friendly(raw) -> str:
+    """投稿サイトの生エラーを、ユーザー向け説明＋コードに整形（DB/メール表示用）。
+    生メッセージはログ側に残すこと（原因調査は生ログ＋コードで行う）。"""
+    if not raw:
+        return raw
+    code, umsg = classify(raw)
+    return format_detail(umsg, code)
 
 
 def _get_trabox_credentials(user_id: int) -> tuple:
@@ -107,9 +117,9 @@ async def execute_posting_task(payload: Dict[str, Any]) -> Dict[str, Any]:
         except Exception as e:
             error_msg = str(e)[:500]
             update_posting_result(
-                case_id, "trabox", "error", error_message=error_msg
+                case_id, "trabox", "error", error_message=_friendly(error_msg)
             )
-            results["trabox"] = {"status": "error", "message": error_msg}
+            results["trabox"] = {"status": "error", "message": _friendly(error_msg)}
             logger.error(f"[Poster] Trabox 投稿失敗: case_id={case_id} {error_msg}")
 
     # --- WebKit ---
@@ -125,16 +135,16 @@ async def execute_posting_task(payload: Dict[str, Any]) -> Dict[str, Any]:
                 case_id, "webkit",
                 "success" if status == "success" else "error",
                 baggage_no=result.get("baggage_no"),  # WebKit の伝票番号
-                error_message=None if status == "success" else result.get("message"),
+                error_message=None if status == "success" else _friendly(result.get("message")),
             )
             results["webkit"] = result
             logger.info(f"[Poster] WebKit 投稿結果: case_id={case_id} {status}")
         except Exception as e:
             error_msg = str(e)[:500]
             update_posting_result(
-                case_id, "webkit", "error", error_message=error_msg
+                case_id, "webkit", "error", error_message=_friendly(error_msg)
             )
-            results["webkit"] = {"status": "error", "message": error_msg}
+            results["webkit"] = {"status": "error", "message": _friendly(error_msg)}
             logger.error(f"[Poster] WebKit 投稿失敗: case_id={case_id} {error_msg}")
 
     # --- 結果通知メール（Trabox/WebKit の成否をまとめて1通） ---
@@ -269,8 +279,8 @@ async def execute_update_task(payload: Dict[str, Any]) -> Dict[str, Any]:
         if not baggage_no:
             msg = "掲載中の番号が見つかりません（未登録または削除済み）"
             update_posting_result(case_id, platform, "error",
-                                  error_message=msg, action="update")
-            results[platform] = {"status": "error", "message": msg}
+                                  error_message=_friendly(msg), action="update")
+            results[platform] = {"status": "error", "message": _friendly(msg)}
             continue
         try:
             if platform == "trabox":
@@ -287,7 +297,7 @@ async def execute_update_task(payload: Dict[str, Any]) -> Dict[str, Any]:
             update_posting_result(
                 case_id, platform, "success" if st == "success" else "error",
                 baggage_no=baggage_no,
-                error_message=None if st == "success" else result.get("message"),
+                error_message=None if st == "success" else _friendly(result.get("message")),
                 action="update",
             )
             results[platform] = result
@@ -295,8 +305,8 @@ async def execute_update_task(payload: Dict[str, Any]) -> Dict[str, Any]:
         except Exception as e:
             msg = str(e)[:500]
             update_posting_result(case_id, platform, "error",
-                                  error_message=msg, action="update")
-            results[platform] = {"status": "error", "message": msg}
+                                  error_message=_friendly(msg), action="update")
+            results[platform] = {"status": "error", "message": _friendly(msg)}
             logger.error(f"[Poster] {platform} 変更失敗: {msg}")
 
     if results:
@@ -324,8 +334,8 @@ async def execute_delete_task(payload: Dict[str, Any]) -> Dict[str, Any]:
         if not baggage_no:
             msg = "削除対象の番号が見つかりません（未登録または削除済み）"
             update_posting_result(case_id, platform, "error",
-                                  error_message=msg, action="delete")
-            results[platform] = {"status": "error", "message": msg}
+                                  error_message=_friendly(msg), action="delete")
+            results[platform] = {"status": "error", "message": _friendly(msg)}
             continue
         try:
             if platform == "trabox":
@@ -343,7 +353,7 @@ async def execute_delete_task(payload: Dict[str, Any]) -> Dict[str, Any]:
             update_posting_result(
                 case_id, platform, "success" if st == "success" else "error",
                 baggage_no=baggage_no,
-                error_message=None if st == "success" else result.get("message"),
+                error_message=None if st == "success" else _friendly(result.get("message")),
                 action="delete",
             )
             results[platform] = result
@@ -351,8 +361,8 @@ async def execute_delete_task(payload: Dict[str, Any]) -> Dict[str, Any]:
         except Exception as e:
             msg = str(e)[:500]
             update_posting_result(case_id, platform, "error",
-                                  error_message=msg, action="delete")
-            results[platform] = {"status": "error", "message": msg}
+                                  error_message=_friendly(msg), action="delete")
+            results[platform] = {"status": "error", "message": _friendly(msg)}
             logger.error(f"[Poster] {platform} 削除失敗: {msg}")
 
     if results:
@@ -405,8 +415,8 @@ async def execute_truck_posting_task(payload: Dict[str, Any]) -> Dict[str, Any]:
             logger.info(f"[Poster空車] Trabox 登録成功: truck_id={truck_id}")
         except Exception as e:
             msg = str(e)[:500]
-            store.update_truck_result(truck_id, "trabox", "error", error_message=msg)
-            results["trabox"] = {"status": "error", "message": msg}
+            store.update_truck_result(truck_id, "trabox", "error", error_message=_friendly(msg))
+            results["trabox"] = {"status": "error", "message": _friendly(msg)}
             logger.error(f"[Poster空車] Trabox 登録失敗: truck_id={truck_id} {msg}")
 
     # --- WebKit ---
@@ -419,13 +429,13 @@ async def execute_truck_posting_task(payload: Dict[str, Any]) -> Dict[str, Any]:
             store.update_truck_result(
                 truck_id, "webkit", "success" if status == "success" else "error",
                 baggage_no=result.get("baggage_no"),
-                error_message=None if status == "success" else result.get("message"))
+                error_message=None if status == "success" else _friendly(result.get("message")))
             results["webkit"] = result
             logger.info(f"[Poster空車] WebKit 登録結果: truck_id={truck_id} {status}")
         except Exception as e:
             msg = str(e)[:500]
-            store.update_truck_result(truck_id, "webkit", "error", error_message=msg)
-            results["webkit"] = {"status": "error", "message": msg}
+            store.update_truck_result(truck_id, "webkit", "error", error_message=_friendly(msg))
+            results["webkit"] = {"status": "error", "message": _friendly(msg)}
             logger.error(f"[Poster空車] WebKit 登録失敗: truck_id={truck_id} {msg}")
 
     if results:
@@ -462,14 +472,14 @@ async def execute_truck_delete_task(payload: Dict[str, Any]) -> Dict[str, Any]:
             ok = result.get("status") == "success"
             store.update_truck_result(truck_id, platform,
                                       "success" if ok else "error",
-                                      error_message=None if ok else result.get("message"),
+                                      error_message=None if ok else _friendly(result.get("message")),
                                       action="delete")
             results[platform] = result
         except Exception as e:
             msg = str(e)[:500]
             store.update_truck_result(truck_id, platform, "error",
-                                      error_message=msg, action="delete")
-            results[platform] = {"status": "error", "message": msg}
+                                      error_message=_friendly(msg), action="delete")
+            results[platform] = {"status": "error", "message": _friendly(msg)}
 
     if results:
         _send_truck_result_email(user_id, td, results, "削除")
