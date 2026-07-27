@@ -298,10 +298,11 @@ async function takedownDel(id){{ if(!confirm('このルールで掲載中の空�
 
 
 @router.get("/history", response_class=HTMLResponse)
-async def schedules_history(current_user: dict = Depends(_require_feature)):
+async def schedules_history(current_user: dict = Depends(_require_feature),
+                            q: str = "", date_from: str = "", date_to: str = ""):
     """定期登録が生成した空車の履歴（削除済み・取下げ済みも含む）。"""
     from app.ui_shell import esc
-    from app.widgets import event_chip
+    from app.widgets import history_filter_form, in_period
     is_admin = current_user.get("is_admin")
     uid = current_user["id"]
     _STATE = {"live": '<span class="chip live">掲載中</span>',
@@ -313,12 +314,20 @@ async def schedules_history(current_user: dict = Depends(_require_feature)):
     if not is_admin:
         trucks = [t for t in trucks if t.get("user_id") == uid]
     trucks.sort(key=lambda t: t["id"], reverse=True)
-    trucks = trucks[:200]
+    ql = (q or "").strip().lower()
     rows = ""
+    shown = 0
     for t in trucks:
+        if not in_period(t.get("vacant_date"), date_from, date_to):
+            continue
         tid = t["id"]
         route = (f"{t.get('vacant_pref','')}{t.get('vacant_city','')} → "
                  f"{t.get('dest_pref','')}{t.get('dest_city','')}")
+        if ql and ql not in f"{route} #{tid} ルール#{t.get('schedule_id','')}".lower():
+            continue
+        shown += 1
+        if shown > 300:
+            continue
         tb = _STATE.get(store.get_truck_platform_state(tid, "trabox"), "—")
         wk = _STATE.get(store.get_truck_platform_state(tid, "webkit"), "—")
         rows += (f'<tr><td class="mono" style="color:var(--faint)">#{tid}</td>'
@@ -327,10 +336,11 @@ async def schedules_history(current_user: dict = Depends(_require_feature)):
                  f'<td>トラ {tb}　WebKit {wk}</td>'
                  f'<td><a href="/trucks/{tid}/manage" style="color:var(--signal-ink)">管理</a></td></tr>')
     if not rows:
-        rows = '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:28px">定期登録から生成された空車はまだありません</td></tr>'
+        rows = '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:28px">該当する空車はありません</td></tr>'
     body = f"""
   <h1 class="pt">定期登録の履歴</h1>
-  <p class="hl" style="margin:0 0 16px">定期ルールが生成した空車の一覧（新しい順・最大200件{'／全ユーザー' if is_admin else ''}）。取下げ済みも残ります。</p>
+  <p class="hl" style="margin:0 0 14px">定期ルールが生成した空車（新しい順{'／全ユーザー' if is_admin else ''}）。取下げ済みも残ります。該当 {shown} 件{'（先頭300件を表示）' if shown>300 else ''}。期間は空車日で絞り込み。</p>
+  {history_filter_form('/schedules/history', q, date_from, date_to, '区間・空車ID・ルール番号')}
   <div class="card" style="overflow-x:auto"><table>
     <thead><tr><th>空車</th><th>由来ルール</th><th>空車日</th><th>区間</th><th>掲載状態</th><th></th></tr></thead>
     <tbody>{rows}</tbody></table></div>"""

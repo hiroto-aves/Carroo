@@ -22,6 +22,35 @@ REGIONS = [
 ]
 
 
+def history_filter_form(action_url: str, q: str = "", date_from: str = "",
+                        date_to: str = "", q_ph: str = "経路・ID など") -> str:
+    """履歴ページ共通の絞り込みフォーム（キーワード＋期間）。GET 送信。"""
+    return f"""
+  <form method="get" action="{esc(action_url)}" class="card"
+        style="padding:12px 14px;margin-bottom:14px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+    <div style="flex:1;min-width:200px"><label class="fl">キーワード（{esc(q_ph)}）</label>
+      <input name="q" value="{esc(q)}" placeholder="例: 大阪 / 27532260"></div>
+    <div style="width:150px"><label class="fl">期間（開始）</label>
+      <input type="date" name="date_from" value="{esc(date_from)}"></div>
+    <div style="width:150px"><label class="fl">期間（終了）</label>
+      <input type="date" name="date_to" value="{esc(date_to)}"></div>
+    <button class="btn" type="submit">絞り込み</button>
+    <a class="btn ghost" href="{esc(action_url)}">クリア</a>
+  </form>"""
+
+
+def in_period(ymd: str, date_from: str, date_to: str) -> bool:
+    """'YYYY-MM-DD...' 文字列の日付部が [date_from, date_to] に入るか（空は無制限）。"""
+    day = (ymd or "")[:10]
+    if not day:
+        return not (date_from or date_to)
+    if date_from and day < date_from:
+        return False
+    if date_to and day > date_to:
+        return False
+    return True
+
+
 def event_chip(action: str, status: str) -> str:
     """履歴イベントの操作＋状態を色付きチップで表す（ui_shell の .chip を利用）。"""
     label = {"register": "登録", "update": "変更", "delete": "取下げ"}.get(action, action or "-")

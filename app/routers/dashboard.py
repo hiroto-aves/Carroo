@@ -411,30 +411,41 @@ async def cases_list(
 
 
 @router.get("/cases/history", response_class=HTMLResponse)
-async def cases_history(current_user: dict = Depends(get_current_user)):
+async def cases_history(current_user: dict = Depends(get_current_user),
+                        q: str = "", date_from: str = "", date_to: str = ""):
     """荷物の投稿履歴（登録/変更/取下げの全イベント。削除済みも残る追記式ログ）。"""
     from app.db import store
-    from app.widgets import event_chip
+    from app.widgets import event_chip, history_filter_form, in_period
     is_admin = current_user.get("is_admin")
     uid = current_user["id"]
     cases = {c["id"]: c for c in store.list_all_cases()}
-    events = store.list_all_posting_events(400)
+    events = store.list_all_posting_events(1000)
     if not is_admin:
         events = [e for e in events if cases.get(e.get("case_id"), {}).get("user_id") == uid]
+    ql = (q or "").strip().lower()
     rows = ""
+    shown = 0
     for e in events:
+        if not in_period(e.get("posted_at"), date_from, date_to):
+            continue
         c = cases.get(e.get("case_id"), {})
         route = f"{c.get('pick_location','')} → {c.get('drop_location','')}"
         pf = "トラボックス" if e.get("platform") == "trabox" else "WebKit"
+        if ql and ql not in f"{route} #{e.get('case_id','')} {e.get('baggage_no') or ''} {pf}".lower():
+            continue
+        shown += 1
+        if shown > 400:
+            continue
         rows += (f'<tr><td style="color:var(--faint);white-space:nowrap">{esc(e.get("posted_at",""))}</td>'
                  f'<td class="mono">#{e.get("case_id","")}</td><td>{esc(route)}</td>'
                  f'<td>{event_chip(e.get("action"), e.get("status"))}</td>'
                  f'<td>{pf}</td><td class="mono" style="color:var(--faint)">{esc(e.get("baggage_no") or "")}</td></tr>')
     if not rows:
-        rows = '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:28px">履歴はまだありません</td></tr>'
+        rows = '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:28px">該当する履歴はありません</td></tr>'
     body = f"""
   <h1 class="pt">荷物の履歴</h1>
-  <p class="hl" style="margin:0 0 16px">登録・変更・取下げの全操作ログ（新しい順・最大400件{'／全ユーザー' if is_admin else ''}）。</p>
+  <p class="hl" style="margin:0 0 14px">登録・変更・取下げの全操作ログ（新しい順{'／全ユーザー' if is_admin else ''}）。該当 {shown} 件{'（先頭400件を表示）' if shown>400 else ''}。</p>
+  {history_filter_form('/dashboard/cases/history', q, date_from, date_to, '経路・案件ID・荷物番号')}
   <div class="card" style="overflow-x:auto"><table>
     <thead><tr><th>日時</th><th>案件</th><th>経路</th><th>操作</th><th>投稿先</th><th>荷物番号</th></tr></thead>
     <tbody>{rows}</tbody></table></div>"""

@@ -258,31 +258,42 @@ async def list_trucks(current_user: dict = Depends(get_current_user)):
 
 
 @router.get("/history", response_class=HTMLResponse)
-async def trucks_history(current_user: dict = Depends(get_current_user)):
+async def trucks_history(current_user: dict = Depends(get_current_user),
+                         q: str = "", date_from: str = "", date_to: str = ""):
     """空車の投稿履歴（登録/取下げの全イベント。削除済みも残る追記式ログ）。"""
-    from app.widgets import event_chip
+    from app.widgets import event_chip, history_filter_form, in_period
     is_admin = current_user.get("is_admin")
     uid = current_user["id"]
     trucks = {t["id"]: t for t in store.list_all_trucks()}
-    events = store.list_all_truck_events(400)
+    events = store.list_all_truck_events(1000)
     if not is_admin:
         events = [e for e in events if trucks.get(e.get("truck_id"), {}).get("user_id") == uid]
+    ql = (q or "").strip().lower()
     rows = ""
+    shown = 0
     for e in events:
+        if not in_period(e.get("posted_at"), date_from, date_to):
+            continue
         t = trucks.get(e.get("truck_id"), {})
         route = (f"{t.get('vacant_pref','')}{t.get('vacant_city','')} → "
                  f"{t.get('dest_pref','')}{t.get('dest_city','')}")
         via = "（定期）" if t.get("schedule_id") else ""
         pf = "トラボックス" if e.get("platform") == "trabox" else "WebKit"
+        if ql and ql not in f"{route} #{e.get('truck_id','')} {e.get('baggage_no') or ''} {pf}".lower():
+            continue
+        shown += 1
+        if shown > 400:
+            continue
         rows += (f'<tr><td style="color:var(--faint);white-space:nowrap">{esc(e.get("posted_at",""))}</td>'
                  f'<td class="mono">#{e.get("truck_id","")}</td><td>{esc(route)}{via}</td>'
                  f'<td>{event_chip(e.get("action"), e.get("status"))}</td>'
                  f'<td>{pf}</td><td class="mono" style="color:var(--faint)">{esc(e.get("baggage_no") or "")}</td></tr>')
     if not rows:
-        rows = '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:28px">履歴はまだありません</td></tr>'
+        rows = '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:28px">該当する履歴はありません</td></tr>'
     body = f"""
   <h1 class="pt">空車の履歴</h1>
-  <p class="hl" style="margin:0 0 16px">登録・取下げの全操作ログ（新しい順・最大400件{'／全ユーザー' if is_admin else ''}）。「（定期）」は定期登録から生成された分。</p>
+  <p class="hl" style="margin:0 0 14px">登録・取下げの全操作ログ（新しい順{'／全ユーザー' if is_admin else ''}）。「（定期）」は定期登録から生成。該当 {shown} 件{'（先頭400件を表示）' if shown>400 else ''}。</p>
+  {history_filter_form('/trucks/history', q, date_from, date_to, '区間・空車ID・番号')}
   <div class="card" style="overflow-x:auto"><table>
     <thead><tr><th>日時</th><th>空車</th><th>区間</th><th>操作</th><th>投稿先</th><th>番号</th></tr></thead>
     <tbody>{rows}</tbody></table></div>"""
