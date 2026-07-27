@@ -16,6 +16,12 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-27 送信ボタンの即時フィードバック（スピナー・二度押し防止）（rev carroo-00053-pvn）
+- `_PWA_HEAD` に共通スクリプトを追加：form submit を capture で拾い、送信ボタンを押下即時に
+  スピナー＋「処理中…」＋disabled に（`window.__busy`/`__idle`）。全フォーム一律で二度押し防止。
+- fetch系（ログイン/空車/空車定期/設定保存）は失敗時に `__idle` で自動復帰。通常POST（荷物登録）は遷移で解消。
+- スピナーCSSは ui_shell（`.spin`/`@keyframes spin`/`prefers-reduced-motion` 配慮）。
+
 ### 🆕 2026-07-27 都道府県マルチ選択ピッカー（Trabox準拠・地図なし）（rev carroo-00052-z7w）
 - `app/widgets.py` 新設：`pref_picker(field, selected_csv)` ＋ `PREF_PICKER_JS`（ページに1回）。
   チップ表示・ポップオーバー・地域一括（11地域チェック＝北海道/東北/北関東/首都圏/甲信越/北陸/東海/近畿/中国/四国/九州沖縄、
