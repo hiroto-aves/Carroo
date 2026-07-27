@@ -19,11 +19,43 @@ def current_tenant_id(user: dict = None) -> str:
     return os.getenv("DEFAULT_TENANT_ID", DEFAULT_TENANT_ID)
 
 
+def get_current_tenant(user: dict = None) -> dict:
+    """現在のテナントdocを返す（無ければ空dict）。features/plan の参照元。"""
+    try:
+        from app.db import store
+        return store.get_tenant(current_tenant_id(user)) or {}
+    except Exception:
+        return {}
+
+
+def _plan_features(plan: str) -> dict:
+    """プラン → 解放される機能。Pro のみ定期/複数日程/再登録を解放。"""
+    pro = plan == "pro"
+    return {"recurring": pro, "multidate": pro, "reregister": pro}
+
+
 def feature_enabled(name: str, user: dict = None) -> bool:
-    """機能フラグ判定。Stage 0 は環境変数 FEATURE_<NAME>（on/true/1/yes で有効）。
-    将来: テナントの features.<name> を優先し、無ければ env にフォールバック。"""
-    # 将来のテナント別フラグ拡張点（user/会社の features を先に見る）
+    """機能フラグ判定。優先順:
+      1. user.features[name]（個別上書き・テスト用）
+      2. user.tenant_features[name]（ログイン時にテナントから注入。Firestore追加読みを避ける）
+      3. テナックの plan 由来（tenant.plan → _plan_features）
+      4. 環境変数 FEATURE_<NAME>（従来フォールバック）
+    テナントに plan/features がまだ無い現行は 4 に落ちる＝挙動不変。"""
     if user and isinstance(user.get("features"), dict) and name in user["features"]:
         return bool(user["features"][name])
+    if user and isinstance(user.get("tenant_features"), dict) and name in user["tenant_features"]:
+        return bool(user["tenant_features"][name])
+    if user and user.get("tenant_plan"):
+        pf = _plan_features(user["tenant_plan"])
+        if name in pf:
+            # 明示的にプランで管理する機能はプラン判定を優先（課金稼働後）
+            if _billing_active():
+                return bool(pf[name])
     val = os.getenv(f"FEATURE_{name.upper()}", "off").strip().lower()
     return val in ("on", "true", "1", "yes")
+
+
+def _billing_active() -> bool:
+    """課金モードが有効か（env BILLING_ENABLED）。無効時はプラン判定を使わず env フォールバック
+    ＝現行の単一テナント運用を壊さない。Stripe 連携完了後に on にする。"""
+    return os.getenv("BILLING_ENABLED", "off").strip().lower() in ("on", "true", "1", "yes")

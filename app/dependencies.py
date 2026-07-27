@@ -38,11 +38,31 @@ async def get_current_user(access_token: Optional[str] = Cookie(None)):
             detail="User not found",
         )
 
+    # マルチテナント（Stage 1）: ロール／テナント情報を付与。
+    # role: owner(会社管理者) | member(一般)。is_super: 運営者(全テナント横断)。
+    role = user.get("role") or ("owner" if user.get("is_admin") else "member")
+    is_super = bool(user.get("is_super"))
+    tenant_id = user.get("tenant_id")
+    tenant_features, tenant_plan = {}, None
+    try:
+        from app.tenancy import current_tenant_id
+        tenant = store.get_tenant(current_tenant_id({"tenant_id": tenant_id})) or {}
+        tenant_features = tenant.get("features") or {}
+        tenant_plan = tenant.get("plan")
+    except Exception:
+        pass
+
     return {
         "id": user["id"],
         "username": user["username"],
         "email": user.get("email"),
-        "is_admin": bool(user.get("is_admin")),
+        # 後方互換: is_admin は「会社管理者(owner) か 運営者(super)」を表す
+        "is_admin": bool(user.get("is_admin")) or role == "owner" or is_super,
+        "role": role,
+        "is_super": is_super,
+        "tenant_id": tenant_id,
+        "tenant_features": tenant_features,
+        "tenant_plan": tenant_plan,
         # 表示設定（ユーザー別）: theme=auto|light|dark, dashboard_mode=freight|truck
         "theme": user.get("theme") or "auto",
         "dashboard_mode": user.get("dashboard_mode") or "freight",

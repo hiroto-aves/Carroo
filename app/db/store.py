@@ -497,6 +497,81 @@ def ensure_seed_admin(hash_password_fn) -> None:
 
 
 # ============================================================
+# マルチテナント（Stage 1）: tenants コレクション＋ロール
+#   tenant doc: {id(str), name, plan, features(map), webkit_apikey,
+#                subscription_status, seats, created_at}
+# ============================================================
+
+def get_tenant(tenant_id) -> Optional[Dict[str, Any]]:
+    snap = _db().collection("tenants").document(str(tenant_id)).get()
+    if not snap.exists:
+        return None
+    d = snap.to_dict() or {}
+    d["id"] = snap.id
+    return d
+
+
+def list_tenants() -> List[Dict[str, Any]]:
+    out = []
+    for snap in _db().collection("tenants").stream():
+        d = snap.to_dict() or {}
+        d["id"] = snap.id
+        out.append(d)
+    out.sort(key=lambda t: str(t.get("created_at", "")))
+    return out
+
+
+def create_tenant(tenant_id: str, name: str, plan: str = "standard",
+                  features: Dict[str, Any] = None) -> str:
+    _db().collection("tenants").document(str(tenant_id)).set({
+        "name": name, "plan": plan, "features": features or {},
+        "webkit_apikey": None, "subscription_status": None,
+        "seats": 0, "created_at": _now(),
+    })
+    return str(tenant_id)
+
+
+def update_tenant(tenant_id: str, fields: Dict[str, Any]) -> None:
+    _db().collection("tenants").document(str(tenant_id)).update(fields)
+
+
+def ensure_stage1(default_tenant_id: str = "takeuchi") -> None:
+    """Stage 1 移行を冪等に実施（起動時に呼ぶ・挙動は変えない）。
+
+    1. 既定テナントが無ければ作成（features は空＝env フォールバックのまま）。
+    2. 全ユーザーに tenant_id / role / is_super をバックフィル。
+       - tenant_id 未設定 → default_tenant_id
+       - role 未設定 → is_admin なら owner、他は member
+       - is_super 未設定 → is_admin（現管理者＝運営者として将来の /ops へ）
+    """
+    if not get_tenant(default_tenant_id):
+        create_tenant(default_tenant_id, "竹内運送")
+        logger.info(f"[Stage1] 既定テナント {default_tenant_id} を作成")
+    col = _db().collection("users")
+    n = 0
+    for snap in col.stream():
+        d = snap.to_dict() or {}
+        patch = {}
+        if not d.get("tenant_id"):
+            patch["tenant_id"] = default_tenant_id
+        if not d.get("role"):
+            patch["role"] = "owner" if d.get("is_admin") else "member"
+        if d.get("is_super") is None:
+            patch["is_super"] = bool(d.get("is_admin"))
+        if patch:
+            snap.reference.update(patch)
+            n += 1
+    if n:
+        logger.info(f"[Stage1] users バックフィル {n} 件")
+    # 既定テナントの seats を有効ユーザー数に同期（課金の基礎値）
+    try:
+        seats = sum(1 for _ in col.where("tenant_id", "==", default_tenant_id).stream())
+        update_tenant(default_tenant_id, {"seats": seats})
+    except Exception as e:
+        logger.warning(f"[Stage1] seats 同期スキップ: {e}")
+
+
+# ============================================================
 # 空車（トラック空き）: 荷物と完全分離した並行データ層
 #   コレクション: truck_postings（1回分の空車）/ truck_posting_history（投稿履歴）
 #   ID は counters の "truck_postings" で採番（荷物 cases とは別系列）

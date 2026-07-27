@@ -218,6 +218,12 @@ async def startup_event():
         store.ensure_seed_admin(hash_password)
     except Exception as e:
         logging.error(f"❌ 起動時の管理者シード確認エラー: {e}")
+    # Stage 1（マルチテナント）移行を冪等に実施（挙動は変えない）
+    try:
+        from app.tenancy import current_tenant_id
+        store.ensure_stage1(current_tenant_id())
+    except Exception as e:
+        logging.error(f"❌ 起動時の Stage1 移行エラー: {e}")
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
