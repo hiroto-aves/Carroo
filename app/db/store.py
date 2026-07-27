@@ -400,6 +400,28 @@ def list_posting_history(case_id: int) -> List[Dict[str, Any]]:
     return rows
 
 
+def list_all_posting_events(limit: int = 400) -> List[Dict[str, Any]]:
+    """全案件の投稿イベント（履歴ページ用。新しい順）。"""
+    rows = []
+    for s in _db().collection("posting_history").stream():
+        d = s.to_dict() or {}
+        d["id"] = int(s.id)
+        rows.append(d)
+    rows.sort(key=lambda r: r["id"], reverse=True)
+    return rows[:limit]
+
+
+def list_all_truck_events(limit: int = 400) -> List[Dict[str, Any]]:
+    """全空車の投稿イベント（履歴ページ用。新しい順）。"""
+    rows = []
+    for s in _db().collection("truck_posting_history").stream():
+        d = s.to_dict() or {}
+        d["id"] = int(s.id)
+        rows.append(d)
+    rows.sort(key=lambda r: r["id"], reverse=True)
+    return rows[:limit]
+
+
 def count_posting_by_status(user_id: int, status: str) -> int:
     """ダッシュボード統計用: 自分の案件の投稿成功/失敗数"""
     case_ids = {int(s.id) for s in _db().collection("cases")

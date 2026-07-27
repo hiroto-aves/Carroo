@@ -22,6 +22,18 @@ REGIONS = [
 ]
 
 
+def event_chip(action: str, status: str) -> str:
+    """履歴イベントの操作＋状態を色付きチップで表す（ui_shell の .chip を利用）。"""
+    label = {"register": "登録", "update": "変更", "delete": "取下げ"}.get(action, action or "-")
+    if status == "pending":
+        return f'<span class="chip wait">{label}（処理中）</span>'
+    if status == "error":
+        return f'<span class="chip off">{label}（失敗）</span>'
+    if action == "delete":
+        return f'<span class="chip off">{label}</span>'
+    return f'<span class="chip live">{label}</span>'
+
+
 def short_name(pref: str) -> str:
     """表示用の短縮名（東京都→東京 / 北海道はそのまま / 和歌山県→和歌山）。"""
     if pref == "北海道":

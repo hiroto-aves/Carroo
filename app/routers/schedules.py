@@ -291,8 +291,51 @@ async function takedownDel(id){{ if(!confirm('このルールで掲載中の空�
   else alert('エラー: '+(j.detail||'失敗'));
   location.reload(); }}
 </script>"""
-    actions = '<a class="btn" href="/schedules/register">＋ 定期登録を作成</a>'
+    actions = ('<a class="btn ghost" href="/schedules/history">履歴</a>'
+               '<a class="btn" href="/schedules/register" style="margin-left:8px">＋ 定期登録を作成</a>')
     return render_page(title="空車定期登録", active="schedules", body=body,
+                       user=current_user, topbar_actions=actions)
+
+
+@router.get("/history", response_class=HTMLResponse)
+async def schedules_history(current_user: dict = Depends(_require_feature)):
+    """定期登録が生成した空車の履歴（削除済み・取下げ済みも含む）。"""
+    from app.ui_shell import esc
+    from app.widgets import event_chip
+    is_admin = current_user.get("is_admin")
+    uid = current_user["id"]
+    _STATE = {"live": '<span class="chip live">掲載中</span>',
+              "working": '<span class="chip wait">処理中</span>',
+              "deleted": '<span class="chip off">取下げ済</span>',
+              "error": '<span class="chip off">エラー</span>',
+              "none": '<span class="chip off">—</span>'}
+    trucks = [t for t in store.list_all_trucks() if t.get("schedule_id")]
+    if not is_admin:
+        trucks = [t for t in trucks if t.get("user_id") == uid]
+    trucks.sort(key=lambda t: t["id"], reverse=True)
+    trucks = trucks[:200]
+    rows = ""
+    for t in trucks:
+        tid = t["id"]
+        route = (f"{t.get('vacant_pref','')}{t.get('vacant_city','')} → "
+                 f"{t.get('dest_pref','')}{t.get('dest_city','')}")
+        tb = _STATE.get(store.get_truck_platform_state(tid, "trabox"), "—")
+        wk = _STATE.get(store.get_truck_platform_state(tid, "webkit"), "—")
+        rows += (f'<tr><td class="mono" style="color:var(--faint)">#{tid}</td>'
+                 f'<td style="color:var(--faint);white-space:nowrap">ルール#{t.get("schedule_id","")}</td>'
+                 f'<td style="white-space:nowrap">{esc(t.get("vacant_date",""))}</td><td>{esc(route)}</td>'
+                 f'<td>トラ {tb}　WebKit {wk}</td>'
+                 f'<td><a href="/trucks/{tid}/manage" style="color:var(--signal-ink)">管理</a></td></tr>')
+    if not rows:
+        rows = '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:28px">定期登録から生成された空車はまだありません</td></tr>'
+    body = f"""
+  <h1 class="pt">定期登録の履歴</h1>
+  <p class="hl" style="margin:0 0 16px">定期ルールが生成した空車の一覧（新しい順・最大200件{'／全ユーザー' if is_admin else ''}）。取下げ済みも残ります。</p>
+  <div class="card" style="overflow-x:auto"><table>
+    <thead><tr><th>空車</th><th>由来ルール</th><th>空車日</th><th>区間</th><th>掲載状態</th><th></th></tr></thead>
+    <tbody>{rows}</tbody></table></div>"""
+    actions = '<a class="btn ghost" href="/schedules/">← 定期一覧へ</a>'
+    return render_page(title="定期登録の履歴", active="schedules", body=body,
                        user=current_user, topbar_actions=actions)
 
 

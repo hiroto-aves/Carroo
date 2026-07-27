@@ -251,8 +251,43 @@ async def list_trucks(current_user: dict = Depends(get_current_user)):
       <tr><th>ID</th><th>空車日時</th><th>区間</th><th>車両</th><th>掲載状態</th><th></th></tr>
     </thead><tbody>{items}</tbody></table>
 </div>"""
-    actions = '<a class="btn" href="/trucks/register">＋ 空車を出す</a>'
+    actions = ('<a class="btn ghost" href="/trucks/history">履歴</a>'
+               '<a class="btn" href="/trucks/register" style="margin-left:8px">＋ 空車を出す</a>')
     return render_page(title="空車一覧", active="truck_list", body=body,
+                       user=current_user, topbar_actions=actions)
+
+
+@router.get("/history", response_class=HTMLResponse)
+async def trucks_history(current_user: dict = Depends(get_current_user)):
+    """空車の投稿履歴（登録/取下げの全イベント。削除済みも残る追記式ログ）。"""
+    from app.widgets import event_chip
+    is_admin = current_user.get("is_admin")
+    uid = current_user["id"]
+    trucks = {t["id"]: t for t in store.list_all_trucks()}
+    events = store.list_all_truck_events(400)
+    if not is_admin:
+        events = [e for e in events if trucks.get(e.get("truck_id"), {}).get("user_id") == uid]
+    rows = ""
+    for e in events:
+        t = trucks.get(e.get("truck_id"), {})
+        route = (f"{t.get('vacant_pref','')}{t.get('vacant_city','')} → "
+                 f"{t.get('dest_pref','')}{t.get('dest_city','')}")
+        via = "（定期）" if t.get("schedule_id") else ""
+        pf = "トラボックス" if e.get("platform") == "trabox" else "WebKit"
+        rows += (f'<tr><td style="color:var(--faint);white-space:nowrap">{esc(e.get("posted_at",""))}</td>'
+                 f'<td class="mono">#{e.get("truck_id","")}</td><td>{esc(route)}{via}</td>'
+                 f'<td>{event_chip(e.get("action"), e.get("status"))}</td>'
+                 f'<td>{pf}</td><td class="mono" style="color:var(--faint)">{esc(e.get("baggage_no") or "")}</td></tr>')
+    if not rows:
+        rows = '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:28px">履歴はまだありません</td></tr>'
+    body = f"""
+  <h1 class="pt">空車の履歴</h1>
+  <p class="hl" style="margin:0 0 16px">登録・取下げの全操作ログ（新しい順・最大400件{'／全ユーザー' if is_admin else ''}）。「（定期）」は定期登録から生成された分。</p>
+  <div class="card" style="overflow-x:auto"><table>
+    <thead><tr><th>日時</th><th>空車</th><th>区間</th><th>操作</th><th>投稿先</th><th>番号</th></tr></thead>
+    <tbody>{rows}</tbody></table></div>"""
+    actions = '<a class="btn ghost" href="/trucks/">← 空車一覧へ</a>'
+    return render_page(title="空車の履歴", active="truck_list", body=body,
                        user=current_user, topbar_actions=actions)
 
 
