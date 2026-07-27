@@ -147,6 +147,36 @@ h1.pt{font-size:26px;margin:0 0 4px;letter-spacing:-.03em}
 .track .d.met{border-color:var(--signal);background:var(--signal)}
 .track .node{position:absolute;top:50%;width:8px;height:8px;border-radius:50%;background:var(--surface);border:2px solid var(--signal);transform:translate(-50%,-50%);box-shadow:0 0 0 4px var(--signal-wash)}
 .perseg a{text-decoration:none}
+/* ==== 都道府県マルチ選択ピッカー（Trabox準拠） ==== */
+.prefpick{position:relative}
+.pp-box{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:42px;padding:7px 10px;
+ border:1px solid var(--line);border-radius:10px;background:var(--surface);cursor:pointer}
+.pp-box:focus{outline:none;border-color:var(--signal);box-shadow:0 0 0 3px var(--signal-wash)}
+.pp-ph{color:var(--faint);font-size:14px}
+.pp-chev{margin-left:auto;color:var(--faint);flex:0 0 auto}
+.pp-chip{display:inline-flex;align-items:center;gap:5px;background:var(--signal-wash);color:var(--signal-ink);
+ border:1px solid var(--line-soft);border-radius:8px;padding:3px 6px 3px 9px;font-size:12.5px;font-weight:600}
+.pp-x{border:0;background:transparent;color:var(--signal-ink);cursor:pointer;font-size:14px;line-height:1;padding:0 2px}
+.pp-x:hover{color:#C9503E}
+.pp-pop{position:absolute;z-index:60;top:calc(100% + 6px);left:0;right:0;background:var(--surface);
+ border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:14px;max-height:60vh;overflow:auto}
+.pp-head{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.pp-head button{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;
+ padding:5px 12px;font-size:12.5px;font-weight:600;cursor:pointer}
+.pp-head .pp-done{margin-left:auto;background:var(--signal);color:#fff;border-color:var(--signal)}
+.pp-head button:hover{filter:brightness(1.04)}
+.pp-grid{display:grid;gap:10px}
+.pp-region{display:grid;grid-template-columns:110px 1fr;gap:10px;align-items:start;
+ padding:8px 0;border-top:1px solid var(--line-soft)}
+.pp-region:first-child{border-top:0}
+.pp-reg{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer}
+.pp-reg input{width:auto;margin:0}
+.pp-prefs{display:flex;flex-wrap:wrap;gap:6px}
+.pp-pref{border:1px solid var(--line);background:var(--surface);color:var(--ink);border-radius:8px;
+ padding:5px 11px;font-size:13px;cursor:pointer;font-family:var(--sans)}
+.pp-pref:hover{border-color:var(--signal);background:var(--raise)}
+.pp-pref.on{background:var(--signal);border-color:var(--signal);color:#fff;font-weight:600}
+@media(max-width:640px){.pp-region{grid-template-columns:1fr}}
 /* ネイティブ日時入力(カレンダー/時計)をテーマに追従させる。
    これが無いとダーク時にピッカーアイコンが黒のまま暗背景に埋もれて見えない。 */
 :root{color-scheme:light dark}

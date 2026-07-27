@@ -11,6 +11,7 @@ from app.dependencies import get_current_user
 from app.db import store
 from app.services.cloud_tasks import get_task_client
 from app.ui_shell import render_page, esc
+from app.widgets import pref_picker, PREF_PICKER_JS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/trucks", tags=["trucks"])
@@ -84,12 +85,12 @@ def _page(user) -> str:
     </div>
     <div class="grid md:grid-cols-2 gap-6">
       <div>
-        <label class="block text-sm font-medium mb-1">その他対応可能行先（複数可・カンマ区切り）</label>
-        <input name="dest_able" placeholder="例: 兵庫県,京都府" class="border rounded px-3 py-2 w-full">
+        <label class="block text-sm font-medium mb-1">その他対応可能行先（複数可）</label>
+        {pref_picker("dest_able", placeholder="都道府県を選択（任意）")}
       </div>
       <div>
         <label class="block text-sm font-medium mb-1">その他対応可能空車地（複数可）</label>
-        <input name="vacant_able" placeholder="例: 埼玉県,千葉県" class="border rounded px-3 py-2 w-full">
+        {pref_picker("vacant_able", placeholder="都道府県を選択（任意）")}
       </div>
     </div>
     <div class="grid md:grid-cols-3 gap-4">
@@ -160,7 +161,7 @@ document.getElementById('f').addEventListener('submit', async (e) => {{
   msg.classList.remove('hidden');
   if (r.ok) setTimeout(()=>location.href='/trucks/', 1500);
 }});
-</script>"""
+</script>""" + PREF_PICKER_JS
     return render_page(title="空車を出す", active="truck_new", body=body, user=user)
 
 

@@ -17,6 +17,7 @@ from app.services import recurrence
 from app.services.scheduler_service import materialize
 from app.routers.trucks import PREFS, WEIGHTS, VEHICLES, _nav, _opts
 from app.ui_shell import render_page
+from app.widgets import pref_picker, PREF_PICKER_JS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/schedules", tags=["schedules"])
@@ -78,8 +79,8 @@ async def register_page(current_user: dict = Depends(_require_feature)):
       </div>
     </div>
     <div>
-      <label class="block text-sm font-medium mb-1">その他対応可能行先（複数可・カンマ区切り）</label>
-      <input name="dest_able" placeholder="例: 兵庫県,京都府" class="border rounded px-3 py-2 w-full">
+      <label class="block text-sm font-medium mb-1">その他対応可能行先（複数可）</label>
+      {pref_picker("dest_able", placeholder="都道府県を選択（任意）")}
     </div>
     <div class="grid md:grid-cols-3 gap-4">
       <div><label class="block text-sm mb-1">積載重量</label>
@@ -149,7 +150,7 @@ document.getElementById('f').addEventListener('submit', async (e)=>{{
   else msg.textContent='エラー: '+(j.detail||'失敗');
   msg.classList.remove('hidden'); if(r.ok) setTimeout(()=>location.href='/schedules/',2200);
 }});
-</script>"""
+</script>""" + PREF_PICKER_JS
     return render_page(title="空車定期登録の作成", active="schedules", body=body,
                        user=current_user, crumb="Carroo / 空車定期登録")
 
