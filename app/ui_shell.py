@@ -198,7 +198,7 @@ def shell_open(*, title, active, user=None, page_title=None, crumb="Carroo",
     return f"""<!DOCTYPE html><html lang="ja"{_dt}><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Carroo — {title}</title>
-<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="/static/tailwind.css">
 <style>{CSS}</style>{extra_head}</head>
 <body>{SVG_DEFS}
 <div class="app" id="capp"><script>if(localStorage.getItem('carroo_rail')==='1')document.getElementById('capp').classList.add('railcol');function cRailToggle(){{var a=document.getElementById('capp');a.classList.toggle('railcol');localStorage.setItem('carroo_rail',a.classList.contains('railcol')?'1':'0');}}</script>

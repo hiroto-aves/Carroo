@@ -58,7 +58,7 @@ async def login_page():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Carroo - ログイン</title>
-        <script src="https://cdn.tailwindcss.com"></script>
+        <link rel="stylesheet" href="/static/tailwind.css">
     </head>
     <body class="bg-gradient-to-br from-blue-50 via-white to-blue-50 min-h-screen">
         <div class="min-h-screen flex items-center justify-center px-4 py-8">
@@ -176,7 +176,7 @@ async def _register_page_unused():
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Carroo - 新規登録</title>
-        <script src="https://cdn.tailwindcss.com"></script>
+        <link rel="stylesheet" href="/static/tailwind.css">
     </head>
     <body class="bg-gradient-to-br from-blue-50 via-white to-blue-50 min-h-screen">
         <div class="min-h-screen flex items-center justify-center px-4 py-8">
@@ -410,7 +410,7 @@ async def profile_page(access_token: str = Cookie(None)):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Carroo - プロフィール</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/tailwind.css">
 </head>
 <body class="bg-gray-50">
     <nav class="bg-white shadow-sm border-b border-gray-200">

@@ -97,7 +97,7 @@ SETUP_REQUIRED_HTML = """<!DOCTYPE html>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Carroo - 初期設定が必要です</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/tailwind.css">
 </head>
 <body class="bg-gray-50">
     <nav class="bg-white shadow-sm border-b border-gray-200">
@@ -152,7 +152,7 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Carroo - 案件登録</title>
-        <script src="https://cdn.tailwindcss.com"></script>
+        <link rel="stylesheet" href="/static/tailwind.css">
     </head>
     <body class="bg-gray-50">
         <!-- ナビゲーションバー（共通） -->
@@ -983,7 +983,7 @@ async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(No
         if stt == "error" and err:
             detail = f'<span class="text-red-600">{err[:80]}</span>'
         rows_html += f'''
-        <div class="grid grid-cols-[130px_110px_1fr] gap-3 items-baseline px-4 py-3 border-b border-gray-100 last:border-0">
+        <div class="grid gap-3 items-baseline px-4 py-3 border-b border-gray-100 last:border-0" style="grid-template-columns:130px 110px 1fr">
           <span class="text-xs text-gray-500 font-mono">{ts or ''}</span>
           <span class="text-sm font-semibold">{_platform_label(plat)}</span>
           <span class="text-sm text-gray-700"><span class="font-bold">{act_txt} {ST_TXT.get(stt,stt)}</span>
