@@ -66,7 +66,7 @@ async function dlqResolve(id){{ if(!confirm('この項目を解決済みにし�
   var r=await fetch('/failed/'+id+'/resolve',{{method:'POST'}});
   if(r.ok) location.reload(); else alert('失敗'); }}
 </script>"""
-    return HTMLResponse(render_page(title="失敗した投稿", active="dashboard", body=body,
+    return HTMLResponse(render_page(title="失敗した投稿", active="failed", body=body,
                                     user=current_user, crumb="Carroo"))
 
 
