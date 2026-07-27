@@ -16,6 +16,16 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-27 ホーム/ログイン刷新＋ロゴ/ファビコン統一＋日時入力ダーク対応（rev carroo-00051-smf）
+- **ホーム(/)・ログイン画面を本体意匠に統一**：未ログイン用共通シェル `ui_shell.brand_page()` を新設。
+  サイドバーと同じ「Cマーク＋arroo」ロックアップ（明背景用に `cmarkInk`＝stroke currentColor＋緑ノードを追加）、
+  紙面/墨/緑トークン・ライト/ダーク対応・シグナルグリーンのボタン。旧・青系Tailwindを廃止。
+- **ファビコン/アプリアイコンを正規ロゴで再生成**：旧アイコンは緑がCからはみ出し＋下に余計な点で誤り。
+  承認済み Cマーク幾何（クリームC＋上に緑ノード・下無し）を濃い角丸背景に載せ rsvg-convert で全サイズ生成、
+  favicon.ico は 16/32/48 マルチ。再生成用 `static/icons/carroo_icon.master.svg` を同梱。
+- **日時入力のダークモード可視化**：ui_shell CSS に `color-scheme`（root＝テーマ連動、date/time等に inherit）を追加。
+  ダーク時にカレンダー/時計ピッカーが背景に埋もれて見えない問題を解消（荷物/空車/定期/変更フォーム全て）。
+
 ### 🆕 2026-07-27 エラー体系＋空車担当者欄＋設定周り（rev carroo-00046-nr2）
 - **エラー体系導入**（`app/errors.py`＋main.py 共通ハンドラ）：全エラーを「やさしい説明（コード: E-XXX[ / 参照: REF]）」に統一。
   未捕捉500は参照ID発行＋全文ログ、投稿失敗は classify で E-POST-* に自動分類（poster `_friendly`）、ログイン失敗も日本語化。

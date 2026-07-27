@@ -147,6 +147,12 @@ h1.pt{font-size:26px;margin:0 0 4px;letter-spacing:-.03em}
 .track .d.met{border-color:var(--signal);background:var(--signal)}
 .track .node{position:absolute;top:50%;width:8px;height:8px;border-radius:50%;background:var(--surface);border:2px solid var(--signal);transform:translate(-50%,-50%);box-shadow:0 0 0 4px var(--signal-wash)}
 .perseg a{text-decoration:none}
+/* ネイティブ日時入力(カレンダー/時計)をテーマに追従させる。
+   これが無いとダーク時にピッカーアイコンが黒のまま暗背景に埋もれて見えない。 */
+:root{color-scheme:light dark}
+:root[data-theme="dark"]{color-scheme:dark}
+:root[data-theme="light"]{color-scheme:light}
+input[type="date"],input[type="time"],input[type="month"],input[type="datetime-local"]{color-scheme:inherit}
 """
 
 
