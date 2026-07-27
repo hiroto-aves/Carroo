@@ -397,6 +397,7 @@ async def cases_list(
 @router.get("/cases/history", response_class=HTMLResponse)
 async def cases_history(current_user: dict = Depends(get_current_user)):
     """荷物の投稿履歴（登録/変更/取下げの全イベント。削除済みも残る追記式ログ）。"""
+    from app.db import store
     from app.widgets import event_chip
     is_admin = current_user.get("is_admin")
     uid = current_user["id"]
