@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
-from app.routers import auth, cases, dashboard, notifications, settings, tasks, admin, trucks, schedules, failed, ops
+from app.routers import auth, cases, dashboard, notifications, settings, tasks, admin, trucks, schedules, failed, ops, billing
 from app.db.database import init_db, get_db_connection
 from app.utils.security import hash_password
 import os
@@ -203,6 +203,7 @@ app.include_router(trucks.router)
 app.include_router(schedules.router)
 app.include_router(failed.router)
 app.include_router(ops.router)
+app.include_router(billing.router)
 
 @app.on_event("startup")
 async def startup_event():

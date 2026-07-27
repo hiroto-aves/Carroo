@@ -262,6 +262,13 @@ def sync_tenant_seats(tenant_id: str) -> int:
         update_tenant(tenant_id, {"seats": n})
     except Exception as e:
         logger.warning(f"[Seats] {tenant_id} 同期失敗: {e}")
+    # 課金稼働中なら Stripe のシート数量にも反映（未契約/未有効化なら no-op）
+    try:
+        from app.services import billing
+        if billing.billing_enabled():
+            billing.sync_seats(get_tenant(tenant_id) or {"id": tenant_id, "seats": n})
+    except Exception as e:
+        logger.warning(f"[Seats] Stripe同期スキップ {tenant_id}: {e}")
     return n
 
 

@@ -35,6 +35,7 @@ SVG_DEFS = """
  <g id="i-chev" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></g>
  <g id="i-alert" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></g>
  <g id="i-ops" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M6 21V7l6-4 6 4v14"/><path d="M9 21v-4h6v4M9 10h.01M12 10h.01M15 10h.01M9 13h.01M12 13h.01M15 13h.01"/></g>
+ <g id="i-card" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></g>
 </defs></svg>
 """
 
@@ -223,6 +224,8 @@ def _sidebar(active, user):
              if is_admin else "")
     ops = (_nav_item(active, "ops", "/ops/", "i-ops", "運営コンソール")
            if (user and user.get("is_super")) else "")
+    billing_nav = (_nav_item(active, "billing", "/billing/", "i-card", "お支払い")
+                   if (user and (user.get("role") == "owner" or user.get("is_super"))) else "")
     return f"""<aside class="rail">
   <div class="top"><a class="logotype" href="/dashboard/"><svg class="logoC" viewBox="12 12 69 77"><use href="#cmarkC"/></svg><span class="rest">arroo</span></a><button class="railtoggle" type="button" data-act="cRailToggle" aria-label="サイドバーを折り畳む"><svg><use href="#i-chev"/></svg></button></div>
   <nav>
@@ -238,6 +241,7 @@ def _sidebar(active, user):
   </nav>
   <div class="foot">
     {_nav_item(active,"settings","/settings/","i-gear","設定")}
+    {billing_nav}
     {users}
     {ops}
     <a class="nav" href="/auth/logout" data-tip="ログアウト"><svg><use href="#i-out"/></svg><span class="lbl">ログアウト</span></a>
