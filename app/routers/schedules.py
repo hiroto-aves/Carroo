@@ -43,6 +43,22 @@ async def register_page(current_user: dict = Depends(_require_feature)):
     body = f"""
 <div class="max-w-3xl">
   <p class="hl" style="margin:-4px 0 18px">毎週・隔週・毎日・毎月のパターンで空車を自動投稿します。</p>
+  <details class="card" style="padding:0;margin-bottom:16px;overflow:hidden">
+    <summary style="cursor:pointer;padding:12px 16px;font-weight:600;font-size:13.5px;list-style:none">
+      ❓ 自動投稿のしくみ（クリックで開く）</summary>
+    <div style="padding:0 16px 16px;font-size:13px;color:var(--muted);line-height:1.7">
+      <ul style="margin:0;padding-left:18px">
+        <li><b>毎朝 7:00</b> に、その日から「何日前に投稿」日数ぶん先までに来る該当日を自動で空車登録します。</li>
+        <li><b>何日前に投稿（lead_days）</b>：空車日の何日前から掲載を出すか。例: 3 なら3日前に自動投稿。</li>
+        <li><b>初期登録回数</b>：作成した<b>その瞬間</b>に、直近この回数ぶんの該当日をまとめて即投稿します（lead 日数は無視）。
+          例）毎週＋土曜＋初期登録回数<b>4</b> → 直近4回分の土曜をすぐ登録。<b>0</b> なら即投稿はlead日数ぶんのみ。</li>
+        <li><b>祝日はスキップ</b>：ONだと該当日が祝日なら飛ばして次の該当日を使います。</li>
+        <li><b>有効開始日／終了日</b>：この期間内の該当日だけが対象。終了日が空なら無期限。</li>
+        <li>同じ空車日が二重に登録されることはありません（生成済みは自動でスキップ）。</li>
+        <li>停止中のルールは自動投稿されません（一覧から停止／再開できます）。</li>
+      </ul>
+    </div>
+  </details>
   <div id="msg" class="hidden mb-4 p-3 rounded-lg"></div>
   <form id="f" class="bg-white rounded-lg shadow p-6 space-y-6">
     <div>
