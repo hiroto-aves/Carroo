@@ -462,6 +462,17 @@ def update_truck_doc(truck_id: int, user_id: int, fields: Dict[str, Any]) -> boo
     return True
 
 
+def list_trucks_by_schedule(schedule_id: int) -> List[Dict[str, Any]]:
+    """定期ルールから生成された空車の一覧（掲載取り下げ用）。"""
+    out = []
+    for snap in (_db().collection("truck_postings")
+                 .where("schedule_id", "==", int(schedule_id)).stream()):
+        d = snap.to_dict() or {}
+        d["id"] = int(snap.id)
+        out.append(d)
+    return out
+
+
 def search_trucks(is_admin: bool, user_id: int, filters: Dict[str, Any]) -> List[Dict[str, Any]]:
     """空車検索。荷物 search_cases と同様に user_id で取得後 Python でフィルタ。
     filters: q_user, date_from, date_to, vacant, dest, vehicle, registrant"""

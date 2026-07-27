@@ -269,7 +269,8 @@ async def list_page(current_user: dict = Depends(_require_feature)):
           <td class="px-3 py-2">{badge}</td>
           <td class="px-3 py-2 text-sm whitespace-nowrap">
             <button data-act="tog" data-args="[{s['id']}]" class="text-blue-600 hover:underline">{'再開' if paused else '停止'}</button>
-            <button data-act="del" data-args="[{s['id']}]" class="text-red-600 hover:underline ml-2">削除</button>
+            <button data-act="takedownDel" data-args="[{s['id']}]" class="text-red-700 hover:underline ml-3">取下げて削除</button>
+            <button data-act="del" data-args="[{s['id']}]" class="text-gray-400 hover:underline ml-3">ルールのみ削除</button>
           </td></tr>"""
     if not items:
         items = '<tr><td colspan="7" class="px-3 py-8 text-center text-gray-400">空車定期登録はまだありません</td></tr>'
@@ -281,8 +282,14 @@ async def list_page(current_user: dict = Depends(_require_feature)):
 </div>
 <script>
 async function tog(id){{ await fetch('/schedules/'+id+'/toggle',{{method:'POST'}}); location.reload(); }}
-async function del(id){{ if(!confirm('このルールを削除しますか？（生成済みの空車は残ります）'))return;
+async function del(id){{ if(!confirm('ルールのみ削除します。既に掲載中の空車はTrabox/WebKitに残ります。よろしいですか？'))return;
   await fetch('/schedules/'+id+'/delete',{{method:'POST'}}); location.reload(); }}
+async function takedownDel(id){{ if(!confirm('このルールで掲載中の空車をすべて取り下げてから、ルールを削除します。よろしいですか？'))return;
+  var r=await fetch('/schedules/'+id+'/takedown-delete',{{method:'POST'}});
+  var j=await r.json();
+  if(r.ok) alert((j.taken_down||0)+'件の空車を取り下げ、ルールを削除しました（取り下げは数分で反映）。');
+  else alert('エラー: '+(j.detail||'失敗'));
+  location.reload(); }}
 </script>"""
     actions = '<a class="btn" href="/schedules/register">＋ 定期登録を作成</a>'
     return render_page(title="空車定期登録", active="schedules", body=body,
@@ -304,6 +311,43 @@ async def delete_schedule_route(schedule_id: int, current_user: dict = Depends(_
     if not store.delete_schedule(schedule_id, current_user["id"]):
         raise HTTPException(404, "ルールが見つかりません")
     return {"status": "deleted"}
+
+
+def _takedown_schedule_listings(schedule_id: int, user_id: int) -> int:
+    """このルールから生成された空車のうち、掲載中(live)のものを全取り下げ（deleteタスク投入）。
+    取り下げタスクを投入した空車の件数を返す。"""
+    from app.services.cloud_tasks import get_task_client
+    n = 0
+    for t in store.list_trucks_by_schedule(schedule_id):
+        tid = t["id"]
+        plats = [p for p in ("trabox", "webkit")
+                 if store.get_truck_platform_state(tid, p) == "live"]
+        if not plats:
+            continue
+        for p in plats:
+            store.add_truck_event(tid, p, "delete", "pending")
+        get_task_client().add_task({
+            "kind": "truck", "action": "delete",
+            "user_id": t.get("user_id", user_id), "truck_id": tid, "platforms": plats,
+        })
+        n += 1
+    return n
+
+
+@router.post("/{schedule_id}/takedown-delete")
+async def takedown_and_delete_route(schedule_id: int,
+                                    current_user: dict = Depends(_require_feature)):
+    """掲載中の空車を全取り下げてから、ルール自体も削除する。"""
+    s = store.get_schedule(schedule_id, current_user["id"])
+    if not s:
+        raise HTTPException(404, "ルールが見つかりません")
+    n = _takedown_schedule_listings(schedule_id, current_user["id"])
+    store.delete_schedule(schedule_id, current_user["id"])
+    from app.utils.audit import audit
+    audit("schedule_takedown_delete", schedule_id=schedule_id,
+          taken_down=n, by=current_user.get("username"))
+    logger.info(f"✅ 定期ルール取下げ削除: schedule_id={schedule_id} 取下げ={n}件")
+    return {"status": "ok", "taken_down": n}
 
 
 def _check_scheduler_token(request: Request):
