@@ -16,6 +16,15 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-27 Stage 1 マルチテナント Phase C+D（ロール実効化・運営コンソール）（rev carroo-00069-x24）
+- **Phase C（ロール実効化）**：`store.create_user` に tenant_id/role/is_super、`list_users(tenant_id)`、`delete_user`＋`sync_tenant_seats`。
+  admin ユーザー管理を自テナント限定（super は全件）、発行ユーザーに発行者テナント＋role付与（super は付与しない）。
+  ユーザー削除UI新規（owner=自テナント非super/自分不可、API側でも403）。seats を作成/削除で自動同期＋画面に人数表示（課金基礎）。
+- **Phase D（運営コンソール）**：`/ops`（routers/ops.py・super専用）。テナント一覧＋plan(standard/pro)その場変更＋
+  テナント発行（最初のownerユーザーも同時作成）。監査ログ tenant_create/tenant_set_plan。サイドバーに「運営コンソール」(i-ops, super のみ)。
+- **Stage 1 = A/B/C/D 完了**。super発行→owner自社管理→テナント分離→ops でplan設定 の骨格完成。BILLING_ENABLED OFF で機能は従来通り全開放（安全）。
+- 残: 課金連携（Stripe）— plan→機能ゲート＋シート課金をカード決済へ。
+
 ### 🆕 2026-07-27 Stage 1 マルチテナント Phase A+B（土台・テナント絞り込み）（rev carroo-00067-frx）
 - **Phase A（土台・挙動不変）**：`tenants` コレクション新設（get/list/create/update_tenant）。起動時 `store.ensure_stage1()` で
   既定テナント "takeuchi"(竹内運送) 作成＋全users に tenant_id/role(owner|member)/is_super をバックフィル（管理者→owner+super）。
