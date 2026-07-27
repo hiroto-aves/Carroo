@@ -91,7 +91,7 @@ def get_settings_html(
                         </div>
                         <div>
                             <label class="block text-sm font-medium text-gray-700 mb-2">パスワード</label>
-                            <input type="password" name="trabox_password" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="パスワードを入力">
+                            <input type="password" name="trabox_password" autocomplete="current-password" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="パスワードを入力">
                             <p class="text-xs text-gray-500 mt-1">※ サーバーに暗号化して保存されます</p>
                         </div>
                     </div>

@@ -418,7 +418,7 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
                                 </div>
                                 <div>
                                     <label class="block text-sm font-medium text-gray-700 mb-2">パスワード</label>
-                                    <input type="password" name="trabox_password" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="パスワード">
+                                    <input type="password" name="trabox_password" autocomplete="current-password" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="パスワード">
                                 </div>
                             </div>
                         </div>

@@ -101,6 +101,7 @@ async def login_page():
                             <input
                                 type="password"
                                 name="password"
+                                autocomplete="current-password"
                                 class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                                 placeholder="パスワードを入力"
                                 required
@@ -235,6 +236,7 @@ async def _register_page_unused():
                             <input
                                 type="password"
                                 name="password"
+                                autocomplete="current-password"
                                 class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                                 placeholder="パスワードを入力"
                                 required
