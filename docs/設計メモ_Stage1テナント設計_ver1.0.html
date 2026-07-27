@@ -1,0 +1,251 @@
+<title>Carroo Stage 1 — テナント設計</title>
+<style>
+  :root{
+    --ink:#14171A;--paper:#F2F4F1;--surface:#FFFFFF;--raise:#FAFBF9;
+    --line:#E2E5DF;--line-soft:#ECEEE8;--muted:#6E756F;--faint:#9AA19A;
+    --signal:#0FA36B;--signal-wash:#E6F4EC;--signal-ink:#0B7D53;
+    --amber:#C8892B;--amber-wash:#F6ECD9;--rail:#15181C;--cream:#F4F2EC;
+    --violet:#5B6CC4;--violet-wash:#EAECF7;
+    --sans:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic","Segoe UI",system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    --shadow:0 1px 2px rgba(20,23,26,.05),0 18px 46px -22px rgba(20,23,26,.20);
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --ink:#E9ECE9;--paper:#0C0E10;--surface:#15181B;--raise:#1A1E21;
+    --line:#282D2F;--line-soft:#20241F;--muted:#8A918B;--faint:#666C67;
+    --signal:#22C58A;--signal-wash:#13271F;--signal-ink:#7FE3BC;
+    --amber:#E0B060;--amber-wash:#2A2416;--rail:#0E1113;--cream:#F4F2EC;
+    --violet:#8E9BE6;--violet-wash:#1B1F31;
+    --shadow:0 1px 2px rgba(0,0,0,.5),0 26px 64px -28px rgba(0,0,0,.75);
+  }}
+  :root[data-theme="dark"]{
+    --ink:#E9ECE9;--paper:#0C0E10;--surface:#15181B;--raise:#1A1E21;
+    --line:#282D2F;--line-soft:#20241F;--muted:#8A918B;--faint:#666C67;
+    --signal:#22C58A;--signal-wash:#13271F;--signal-ink:#7FE3BC;
+    --amber:#E0B060;--amber-wash:#2A2416;--rail:#0E1113;--cream:#F4F2EC;
+    --violet:#8E9BE6;--violet-wash:#1B1F31;
+    --shadow:0 1px 2px rgba(0,0,0,.5),0 26px 64px -28px rgba(0,0,0,.75);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.55;letter-spacing:-.006em;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:44px 24px 72px}
+  .eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--signal-ink);font-weight:700}
+  h1{font-size:32px;letter-spacing:-.03em;margin:6px 0 6px;text-wrap:balance}
+  .lede{color:var(--muted);font-size:15px;max-width:64ch;margin:0 0 34px}
+  h2{font-size:20px;letter-spacing:-.02em;margin:44px 0 4px}
+  .h2sub{color:var(--faint);font-size:13px;margin:0 0 18px}
+  section{scroll-margin-top:20px}
+  .mono{font-family:var(--mono)}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+  /* role hierarchy */
+  .roles{display:grid;grid-template-columns:1fr;gap:14px}
+  .role{display:grid;grid-template-columns:150px 1fr;gap:0;border:1px solid var(--line);border-radius:14px;overflow:hidden;background:var(--surface)}
+  @media(max-width:640px){.role{grid-template-columns:1fr}}
+  .role .badge{padding:16px 18px;display:flex;flex-direction:column;gap:6px;justify-content:center}
+  .role .body{padding:16px 18px;border-left:1px solid var(--line-soft);background:var(--raise)}
+  @media(max-width:640px){.role .body{border-left:0;border-top:1px solid var(--line-soft)}}
+  .role h3{margin:0;font-size:15px}
+  .role .scope{font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+  .tag{display:inline-block;font-size:11px;font-weight:700;padding:2px 9px;border-radius:999px;width:fit-content}
+  .t-sys{background:var(--violet-wash);color:var(--violet)}
+  .t-owner{background:var(--signal-wash);color:var(--signal-ink)}
+  .t-member{background:var(--amber-wash);color:var(--amber)}
+  .role ul{margin:6px 0 0;padding-left:18px;font-size:13px;color:var(--muted)}
+  .role li{margin:2px 0}
+  .role li b{color:var(--ink);font-weight:600}
+  /* ER diagram */
+  .er{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+  @media(max-width:760px){.er{grid-template-columns:1fr}}
+  .tbl{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .tbl.new{border-color:var(--signal);box-shadow:0 0 0 3px var(--signal-wash)}
+  .tbl .tt{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--raise);border-bottom:1px solid var(--line-soft);font-weight:700;font-size:13.5px}
+  .tbl .tt .pill{margin-left:auto;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:999px}
+  .pill.new{background:var(--signal);color:#fff}
+  .pill.chg{background:var(--amber);color:#241a08}
+  .fields{list-style:none;margin:0;padding:6px 0}
+  .fields li{display:flex;gap:8px;padding:5px 14px;font-size:12.5px;font-family:var(--mono);align-items:baseline}
+  .fields li .k{color:var(--faint);width:13px;flex:0 0 auto;text-align:center}
+  .fields li .n{color:var(--ink)}
+  .fields li .ty{color:var(--faint);margin-left:auto}
+  .fields li.hl{background:var(--signal-wash)}
+  .fields li.hl .n{color:var(--signal-ink);font-weight:700}
+  .fields li.rm{opacity:.5;text-decoration:line-through}
+  .note{font-size:12px;color:var(--muted);padding:8px 14px;border-top:1px dashed var(--line);background:var(--raise)}
+  .rel{font-size:12.5px;color:var(--muted);margin:14px 2px 0;display:flex;flex-wrap:wrap;gap:6px 18px}
+  .rel span{display:inline-flex;gap:7px;align-items:center}
+  .rel .mono{color:var(--ink)}
+  /* before/after */
+  table.cmp{width:100%;border-collapse:collapse;font-size:13px;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  table.cmp th,table.cmp td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  table.cmp thead th{background:var(--raise);font-size:11.5px;letter-spacing:.03em;color:var(--muted);text-transform:uppercase}
+  table.cmp td:first-child{font-weight:600;white-space:nowrap}
+  table.cmp .now{color:var(--muted)}
+  table.cmp .next{color:var(--ink)}
+  table.cmp .next b{color:var(--signal-ink)}
+  .scroll{overflow-x:auto}
+  .flow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;font-family:var(--mono);color:var(--muted);background:var(--raise);border:1px solid var(--line-soft);border-radius:12px;padding:14px 16px}
+  .flow b{color:var(--signal-ink)} .flow .ar{color:var(--faint)}
+  .foot{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);color:var(--faint);font-size:12px}
+  .k-legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin:10px 2px 0}
+  .k-legend span{display:inline-flex;gap:6px;align-items:center}
+  .dot{width:9px;height:9px;border-radius:3px;display:inline-block}
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Carroo · Stage 1 設計相談</div>
+  <h1>マルチテナント化：ロールとDB構成</h1>
+  <p class="lede">外販に踏み切る場合の設計案。現状（Stage 0）は「テナント＝竹内運送1社固定・<span class="mono">is_admin</span> の boolean 1枚」。Stage 1 では会社（テナント）を第一級の存在にし、ロールを2階層＋運営者に分けます。既存レコードは <span class="mono">tenant_id</span> を持たせ済みなので、土台は入っています。</p>
+
+  <section>
+    <h2>1. ロール階層</h2>
+    <p class="h2sub">運営者（あなた）＝テナント横断。各社の中は「管理者」と「一般」の2階層。</p>
+    <div class="roles">
+      <div class="role">
+        <div class="badge"><span class="tag t-sys">SUPER&nbsp;ADMIN</span><span class="scope" style="color:var(--violet)">全テナント横断</span></div>
+        <div class="body">
+          <h3>運営者（Carroo 側 = あなた）</h3>
+          <ul>
+            <li><b>テナントの発行・停止・課金設定</b>（features / WebKit apikey）</li>
+            <li>全社データの閲覧（サポート対応・障害調査）</li>
+            <li>テナント管理コンソール <span class="mono">/ops</span> に入れる唯一のロール</li>
+          </ul>
+        </div>
+      </div>
+      <div class="role">
+        <div class="badge"><span class="tag t-owner">TENANT&nbsp;ADMIN</span><span class="scope" style="color:var(--signal-ink)">自社内のみ</span></div>
+        <div class="body">
+          <h3>会社の管理者（例：竹内運送の管理担当）</h3>
+          <ul>
+            <li><b>自社ユーザーの発行・削除</b>（今の <span class="mono">/admin/users</span> 相当）</li>
+            <li>自社の全案件・空車を横断表示／データ整理</li>
+            <li>自社の連絡先・WebKit担当者IDなどの初期設定</li>
+          </ul>
+        </div>
+      </div>
+      <div class="role">
+        <div class="badge"><span class="tag t-member">MEMBER</span><span class="scope" style="color:var(--amber)">自分の担当分</span></div>
+        <div class="body">
+          <h3>一般ユーザー（現場の配車担当）</h3>
+          <ul>
+            <li>荷物・空車の登録／変更／取下げ、成約マーク</li>
+            <li>既定は<b>自分が登録した案件</b>のみ表示。自社内共有の<b>ON/OFF は tenant admin だけが切替</b>可（member 側に切替UIは出さない・APIも 403）</li>
+            <li>ユーザー管理・課金設定には触れない</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <p class="rel"><span>いまの <span class="mono">is_admin=true</span> ⟶ <span class="mono">role="owner"</span> に移行、<span class="mono">is_admin=false</span> ⟶ <span class="mono">role="member"</span>。運営者は別フラグ <span class="mono">is_super=true</span>。</span></p>
+  </section>
+
+  <section>
+    <h2>2. DB構成（Firestore コレクション）</h2>
+    <p class="h2sub">緑＝新設／変更。テナントが親、その下にユーザーとレコードがぶら下がる形。物理階層ではなく <span class="mono">tenant_id</span> で束ねる（現状の実装方針を継承）。</p>
+    <div class="k-legend">
+      <span><span class="dot" style="background:var(--signal)"></span>新設コレクション</span>
+      <span><span class="dot" style="background:var(--amber)"></span>フィールド追加/変更</span>
+      <span><span class="dot" style="background:var(--faint)"></span>取り外し（env→テナントへ移設）</span>
+    </div>
+    <div class="er" style="margin-top:14px">
+      <div class="tbl new">
+        <div class="tt">🏢 tenants <span class="pill new">新設</span></div>
+        <ul class="fields">
+          <li><span class="k">#</span><span class="n">id</span><span class="ty">"takeuchi"</span></li>
+          <li><span class="k">·</span><span class="n">name</span><span class="ty">string</span></li>
+          <li class="hl"><span class="k">◆</span><span class="n">features</span><span class="ty">{recurring, multidate…}</span></li>
+          <li class="hl"><span class="k">◆</span><span class="n">webkit_apikey</span><span class="ty">string</span></li>
+          <li><span class="k">·</span><span class="n">status</span><span class="ty">active / suspended</span></li>
+          <li><span class="k">·</span><span class="n">created_at</span><span class="ty">ts</span></li>
+        </ul>
+        <div class="note">課金オプション（features）と WebKit の API キーを<b>会社単位</b>で持たせる。今は env 共通のものをここへ移設。</div>
+      </div>
+
+      <div class="tbl">
+        <div class="tt">👤 users <span class="pill chg">変更</span></div>
+        <ul class="fields">
+          <li><span class="k">#</span><span class="n">id</span><span class="ty">int</span></li>
+          <li><span class="k">·</span><span class="n">username / email</span><span class="ty">string</span></li>
+          <li><span class="k">·</span><span class="n">hashed_password</span><span class="ty">bcrypt</span></li>
+          <li class="hl"><span class="k">◆</span><span class="n">tenant_id</span><span class="ty">→ tenants.id</span></li>
+          <li class="hl"><span class="k">◆</span><span class="n">role</span><span class="ty">"owner" | "member"</span></li>
+          <li class="hl"><span class="k">◆</span><span class="n">is_super</span><span class="ty">bool（運営者）</span></li>
+          <li class="rm"><span class="k">·</span><span class="n">is_admin</span><span class="ty">→ role へ統合</span></li>
+        </ul>
+        <div class="note">ログイン時に <span class="mono">tenant_id</span> と <span class="mono">role</span> をトークン/セッションへ載せる（既に <span class="mono">tenancy.current_tenant_id()</span> が user から読む設計）。</div>
+      </div>
+
+      <div class="tbl">
+        <div class="tt">🔑 credentials <span class="pill chg">縮小</span></div>
+        <ul class="fields">
+          <li><span class="k">#</span><span class="n">user_id</span><span class="ty">→ users.id</span></li>
+          <li><span class="k">·</span><span class="n">trabox_id / _password</span><span class="ty">enc</span></li>
+          <li><span class="k">·</span><span class="n">webkit_person_id</span><span class="ty">担当者（人単位）</span></li>
+          <li><span class="k">·</span><span class="n">contact_* / case_columns</span><span class="ty">個人設定</span></li>
+          <li class="rm"><span class="k">·</span><span class="n">(webkit apikey)</span><span class="ty">→ tenants へ</span></li>
+        </ul>
+        <div class="note">「人」に紐づくもの（Trabox ログイン・WebKit 担当者ID・連絡先）はここに残す。「会社」に紐づく apikey だけ tenants へ。</div>
+      </div>
+
+      <div class="tbl">
+        <div class="tt">📦 cases / 🚚 trucks / 🔁 schedules <span class="pill chg">スコープ有効化</span></div>
+        <ul class="fields">
+          <li><span class="k">#</span><span class="n">id</span><span class="ty">int</span></li>
+          <li><span class="k">·</span><span class="n">user_id</span><span class="ty">→ users.id</span></li>
+          <li class="hl"><span class="k">◆</span><span class="n">tenant_id</span><span class="ty">→ tenants.id（実効化）</span></li>
+          <li><span class="k">·</span><span class="n">… 既存フィールド …</span><span class="ty"></span></li>
+        </ul>
+        <div class="note"><b>今も tenant_id は保存済み</b>（"takeuchi" 固定）。Stage 1 では検索/一覧を必ず <span class="mono">where tenant_id == 自分のテナント</span> で絞る。</div>
+      </div>
+    </div>
+    <p class="rel">
+      <span>🏢 <span class="mono">tenants 1</span> ─&lt; <span class="mono">users N</span></span>
+      <span>👤 <span class="mono">users 1</span> ─&lt; <span class="mono">cases / trucks / schedules N</span></span>
+      <span>🏢 <span class="mono">tenants 1</span> ─&lt; <span class="mono">cases / trucks N</span>（tenant_id で横断集計）</span>
+    </p>
+  </section>
+
+  <section>
+    <h2>3. アクセス制御の効き方</h2>
+    <p class="h2sub">1本のルールで表現できる：「まず tenant で絞り、次に role で絞る」。</p>
+    <div class="flow">
+      <span>リクエスト</span><span class="ar">→</span>
+      <b>tenant_id 一致?</b><span class="ar">→</span>
+      <span>role で許可判定</span><span class="ar">→</span>
+      <b>member は自分の user_id 分のみ / owner は自社全部 / super は全テナント</b>
+    </div>
+    <div class="scroll" style="margin-top:16px">
+      <table class="cmp">
+        <thead><tr><th>操作</th><th>member</th><th>owner（会社管理者）</th><th>super（運営者）</th></tr></thead>
+        <tbody>
+          <tr><td>荷物・空車の登録/変更/取下げ</td><td>自分の分</td><td>自社の全件</td><td>全テナント</td></tr>
+          <tr><td>一覧・ダッシュボード</td><td>自分の分（共有ON時のみ自社内も表示）</td><td>自社の全件</td><td>全テナント</td></tr>
+          <tr><td>自社内共有の ON/OFF 切替</td><td>✕（切替UIなし）</td><td><b>◯（このロールだけ）</b></td><td>◯</td></tr>
+          <tr><td>ユーザー発行・削除</td><td>✕</td><td>自社ユーザーのみ</td><td>◯（テナント跨ぎ）</td></tr>
+          <tr><td>データ整理（完全削除）</td><td>✕</td><td>自社のみ</td><td>◯</td></tr>
+          <tr><td>課金オプション・apikey 設定</td><td>✕</td><td>✕（申込のみ）</td><td>◯ <span class="mono">/ops</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. 現状(Stage 0) → Stage 1 の差分</h2>
+    <p class="h2sub">土台がある分、作るのは主に「tenants コレクション」「role 化」「クエリのテナント絞り」「運営コンソール」。</p>
+    <div class="scroll">
+      <table class="cmp">
+        <thead><tr><th>論点</th><th>いま（Stage 0）</th><th>Stage 1</th></tr></thead>
+        <tbody>
+          <tr><td>テナント</td><td class="now">env <span class="mono">DEFAULT_TENANT_ID="takeuchi"</span> 固定</td><td class="next"><b>tenants コレクション</b>で複数社</td></tr>
+          <tr><td>ロール</td><td class="now"><span class="mono">is_admin</span> の 2値</td><td class="next"><b>role = owner / member</b> ＋ <b>is_super</b></td></tr>
+          <tr><td>課金オプション</td><td class="now">env <span class="mono">FEATURE_*</span>（全体一律）</td><td class="next"><b>tenants.features</b>（会社ごと）</td></tr>
+          <tr><td>WebKit apikey</td><td class="now">env 共通1本</td><td class="next"><b>tenants.webkit_apikey</b>（会社ごと）</td></tr>
+          <tr><td>データの絞り込み</td><td class="now">tenant_id は保存するが未使用</td><td class="next">検索/集計を <b>tenant_id で必須フィルタ</b></td></tr>
+          <tr><td>管理画面</td><td class="now">/admin（自社ユーザー）</td><td class="next">＋ <b>/ops 運営コンソール</b>（テナント発行）</td></tr>
+          <tr><td>既存アカウントの移行</td><td class="now">全員 <span class="mono">tenant_id="takeuchi"</span>（保存済）</td><td class="next">最初のテナント＝<b>"takeuchi" を流用</b>。現 <span class="mono">is_admin=true</span>→<b>owner</b>／それ以外→<b>member</b>（採番し直さず既存レコードそのまま）</td></tr>
+          <tr><td>既に済んでいる土台</td><td class="now" colspan="2"><span class="mono">tenancy.current_tenant_id()/feature_enabled()</span> は user・features を優先して読む設計、cases/trucks/schedules は <span class="mono">tenant_id</span> 保持済み</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <p class="foot">Carroo Stage 1 設計メモ（相談用）。実装未着手・外販判断時に着手。既存の <span class="mono">app/tenancy.py</span> の拡張点コメントに沿う。</p>
+</div>

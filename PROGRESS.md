@@ -16,6 +16,17 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-27 Stage 1（マルチテナント）設計メモ ※実装未着手・外販判断時に着手
+- 設計図: `docs/設計メモ_Stage1テナント設計_ver1.0.html`（Artifact: https://claude.ai/code/artifact/3268f7e9-9966-47a4-af8f-68b735a4dab6 ）
+- **ロール3層**: super(運営者=横断/テナント発行・課金) / owner(=tenant admin・自社ユーザー管理/全件) / member(自分の担当分)。
+  現 `is_admin=true→owner` / `false→member`、運営者は別フラグ `is_super`。
+- **DB**: tenants 新設（features＝課金オプション・webkit_apikey を会社単位）。users に tenant_id/role/is_super 追加、
+  is_admin は role に統合。credentials は人単位のまま（apikey だけ tenants へ移設）。cases/trucks/schedules は
+  保存済み tenant_id を検索/集計で必須フィルタ化。
+- **決定事項（ユーザー確認済み）**:
+  - 自社内共有の ON/OFF 切替は **tenant admin のみ**（member は切替UIなし・API 403）。
+  - 既存アカウントは最初のテナント `"takeuchi"` を流用（採番し直さない・既存レコード無変更）。現管理者→owner、他→member。
+
 ### 🆕 2026-07-27 完全strict CSP（Tailwindセルフホスト＋nonce＋onclick廃止）（rev carroo-00042-ztj）
 - **Tailwind セルフホスト化**：Play CDN を撤去し standalone CLI で `static/tailwind.css` を生成・配信
   （外部スクリプト依存と `unsafe-eval` の必要性を排除）。ビルド設定 `build_tools/`（content=app/**/*.py）。
