@@ -3,15 +3,17 @@
 荷物(cases)と分離した空車の登録・一覧・管理・削除。
 投稿は kind="truck" タスクとしてキュー投入 → poster.execute_truck_task。
 """
+import json
 import logging
-from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi import APIRouter, Depends, Form, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
 from app.dependencies import get_current_user
 from app.db import store
 from app.services.cloud_tasks import get_task_client
+from app.tenancy import feature_enabled
 from app.ui_shell import render_page, esc
-from app.widgets import pref_picker, PREF_PICKER_JS
+from app.widgets import pref_picker, PREF_PICKER_JS, PREFILL_JS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/trucks", tags=["trucks"])
@@ -50,7 +52,7 @@ def _opts(values, selected=None):
     )
 
 
-def _page(user) -> str:
+def _page(user, prefill: dict = None) -> str:
     from app.ui_shell import esc
     pref_opts = _opts(PREFS, "東京都")
     dpref_opts = _opts(PREFS, "大阪府")
@@ -163,12 +165,32 @@ document.getElementById('f').addEventListener('submit', async (e) => {{
   if (r.ok) setTimeout(()=>location.href='/trucks/', 1500);
 }});
 </script>""" + PREF_PICKER_JS
+    if prefill:
+        body += (f'<script>window.__prefill={json.dumps(prefill, ensure_ascii=False)};</script>'
+                 + PREFILL_JS)
     return render_page(title="空車を出す", active="truck_new", body=body, user=user)
 
 
 @router.get("/register", response_class=HTMLResponse)
-async def register_page(current_user: dict = Depends(get_current_user)):
-    return _page(current_user)
+async def register_page(current_user: dict = Depends(get_current_user),
+                        from_id: int = Query(None, alias="from")):
+    prefill = None
+    # 履歴から再登録（Pro機能）: 過去の空車を元にフォームを埋める。日付は引き継がない。
+    if from_id and feature_enabled("reregister", current_user):
+        t = store.get_truck(from_id, None if current_user.get("is_admin") else current_user["id"])
+        if t:
+            prefill = {
+                "vacant_time": t.get("vacant_time"), "vacant_pref": t.get("vacant_pref"),
+                "vacant_city": t.get("vacant_city"), "dest_time": t.get("dest_time"),
+                "dest_pref": t.get("dest_pref"), "dest_city": t.get("dest_city"),
+                "truck_weight": t.get("truck_weight"), "vehicle_type": t.get("vehicle_type"),
+                "min_freight": t.get("min_freight"), "remarks": t.get("remarks"),
+                "contact_name": t.get("contact_name"), "contact_phone": t.get("contact_phone"),
+                "dest_able": ",".join(t.get("dest_able_prefs") or []),
+                "vacant_able": ",".join(t.get("vacant_able_prefs") or []),
+            }
+            prefill = {k: v for k, v in prefill.items() if v not in (None, "")}
+    return _page(current_user, prefill=prefill)
 
 
 @router.post("/register")
@@ -264,6 +286,7 @@ async def trucks_history(current_user: dict = Depends(get_current_user),
     from app.widgets import event_chip, history_filter_form, in_period
     is_admin = current_user.get("is_admin")
     uid = current_user["id"]
+    can_re = feature_enabled("reregister", current_user)
     trucks = {t["id"]: t for t in store.list_all_trucks()}
     events = store.list_all_truck_events(1000)
     if not is_admin:
@@ -284,18 +307,21 @@ async def trucks_history(current_user: dict = Depends(get_current_user),
         shown += 1
         if shown > 400:
             continue
+        re_btn = (f'<a class="btn ghost" style="padding:4px 10px;font-size:12px" '
+                  f'href="/trucks/register?from={e.get("truck_id","")}">再登録</a>' if can_re else "")
         rows += (f'<tr><td style="color:var(--faint);white-space:nowrap">{esc(e.get("posted_at",""))}</td>'
                  f'<td class="mono">#{e.get("truck_id","")}</td><td>{esc(route)}{via}</td>'
                  f'<td>{event_chip(e.get("action"), e.get("status"))}</td>'
-                 f'<td>{pf}</td><td class="mono" style="color:var(--faint)">{esc(e.get("baggage_no") or "")}</td></tr>')
+                 f'<td>{pf}</td><td class="mono" style="color:var(--faint)">{esc(e.get("baggage_no") or "")}</td>'
+                 f'<td style="text-align:right">{re_btn}</td></tr>')
     if not rows:
-        rows = '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:28px">該当する履歴はありません</td></tr>'
+        rows = '<tr><td colspan="7" style="text-align:center;color:var(--faint);padding:28px">該当する履歴はありません</td></tr>'
     body = f"""
   <h1 class="pt">空車の履歴</h1>
   <p class="hl" style="margin:0 0 14px">登録・取下げの全操作ログ（新しい順{'／全ユーザー' if is_admin else ''}）。「（定期）」は定期登録から生成。該当 {shown} 件{'（先頭400件を表示）' if shown>400 else ''}。</p>
   {history_filter_form('/trucks/history', q, date_from, date_to, '区間・空車ID・番号')}
   <div class="card" style="overflow-x:auto"><table>
-    <thead><tr><th>日時</th><th>空車</th><th>区間</th><th>操作</th><th>投稿先</th><th>番号</th></tr></thead>
+    <thead><tr><th>日時</th><th>空車</th><th>区間</th><th>操作</th><th>投稿先</th><th>番号</th><th></th></tr></thead>
     <tbody>{rows}</tbody></table></div>"""
     actions = '<a class="btn ghost" href="/trucks/">← 空車一覧へ</a>'
     return render_page(title="空車の履歴", active="truck_list", body=body,

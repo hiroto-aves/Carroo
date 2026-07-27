@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Form, Depends, Cookie
+from fastapi import APIRouter, HTTPException, status, Form, Depends, Cookie, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 from app.models.schemas import CaseCreate, Case
 from app.db.database import get_db_connection
@@ -127,7 +127,8 @@ SETUP_REQUIRED_HTML = """<!DOCTYPE html>
 
 
 @router.get("/register", response_class=HTMLResponse)
-async def case_register_page(access_token: Optional[str] = Cookie(None)):
+async def case_register_page(access_token: Optional[str] = Cookie(None),
+                             from_id: int = Query(None, alias="from")):
     contact = _get_contact_defaults(access_token)
     # 🔴 初期設定（連絡先メール）未登録の場合は案件登録に進めない
     if not contact["email"]:
@@ -535,8 +536,42 @@ async def case_register_page(access_token: Optional[str] = Cookie(None)):
     )
     # 既存テンプレの中身だけを取り出して左レール・シェルで包む
     inner = built.split('<body class="bg-gray-50">', 1)[-1].rsplit("</body>", 1)[0]
+    # 履歴から再登録（Pro機能）: 過去の案件を元にフォームを埋める。日付は引き継がない。
+    _user = _user_from_token(access_token)
+    if from_id and feature_enabled("reregister", _user):
+        prefill = _case_prefill(from_id, _user)
+        if prefill:
+            import json as _json
+            from app.widgets import PREFILL_JS
+            inner += (f'<script>window.__prefill={_json.dumps(prefill, ensure_ascii=False)};</script>'
+                      + PREFILL_JS)
     return shell_open(title="荷物を出す", active="load_new",
-                      user=_user_from_token(access_token)) + inner + SHELL_CLOSE
+                      user=_user) + inner + SHELL_CLOSE
+
+
+def _case_prefill(case_id: int, user: dict) -> Optional[dict]:
+    """再登録用: 既存案件から登録フォームの初期値 dict を作る（日付は除く）。"""
+    from app.db import store
+    from app.automations.trabox_form_mapper import TraboxFormMapper as M
+    row = store.get_case(case_id, None if user and user.get("is_admin") else (user or {}).get("id"))
+    if not row:
+        return None
+    ex = row.get("extras") or {}
+    pl = row.get("pick_location", "") or ""
+    dl = row.get("drop_location", "") or ""
+    pick_pref = next((p for p in PREFECTURES if pl.startswith(p)), "")
+    drop_pref = next((p for p in PREFECTURES if dl.startswith(p)), "")
+    pf = {
+        "pick_pref": pick_pref, "pick_city": (M.extract_city(pl) or ""),
+        "drop_pref": drop_pref, "drop_city": (M.extract_city(dl) or ""),
+        "pickup_time": row.get("pickup_time"), "drop_time": ex.get("drop_time"),
+        "cargo_weight": (str(int(float(row.get("cargo_weight") or 0))) if row.get("cargo_weight") else None),
+        "truck_weight": ex.get("truck_weight"), "vehicle_type": row.get("vehicle_type"),
+        "cargo_type": ex.get("cargo_type"), "freight_rate": row.get("freight_rate"),
+        "contact_name": row.get("contact_name"), "contact_phone": ex.get("contact_phone"),
+        "remarks": ex.get("remarks"),
+    }
+    return {k: v for k, v in pf.items() if v not in (None, "")}
 
 
 # 複数日程一括投稿 UI（FEATURE_MULTIDATE）。上の積み/着 日時が「1本目」、

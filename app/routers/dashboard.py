@@ -416,8 +416,10 @@ async def cases_history(current_user: dict = Depends(get_current_user),
     """荷物の投稿履歴（登録/変更/取下げの全イベント。削除済みも残る追記式ログ）。"""
     from app.db import store
     from app.widgets import event_chip, history_filter_form, in_period
+    from app.tenancy import feature_enabled
     is_admin = current_user.get("is_admin")
     uid = current_user["id"]
+    can_re = feature_enabled("reregister", current_user)
     cases = {c["id"]: c for c in store.list_all_cases()}
     events = store.list_all_posting_events(1000)
     if not is_admin:
@@ -436,18 +438,21 @@ async def cases_history(current_user: dict = Depends(get_current_user),
         shown += 1
         if shown > 400:
             continue
+        re_btn = (f'<a class="btn ghost" style="padding:4px 10px;font-size:12px" '
+                  f'href="/cases/register?from={e.get("case_id","")}">再登録</a>' if can_re else "")
         rows += (f'<tr><td style="color:var(--faint);white-space:nowrap">{esc(e.get("posted_at",""))}</td>'
                  f'<td class="mono">#{e.get("case_id","")}</td><td>{esc(route)}</td>'
                  f'<td>{event_chip(e.get("action"), e.get("status"))}</td>'
-                 f'<td>{pf}</td><td class="mono" style="color:var(--faint)">{esc(e.get("baggage_no") or "")}</td></tr>')
+                 f'<td>{pf}</td><td class="mono" style="color:var(--faint)">{esc(e.get("baggage_no") or "")}</td>'
+                 f'<td style="text-align:right">{re_btn}</td></tr>')
     if not rows:
-        rows = '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:28px">該当する履歴はありません</td></tr>'
+        rows = '<tr><td colspan="7" style="text-align:center;color:var(--faint);padding:28px">該当する履歴はありません</td></tr>'
     body = f"""
   <h1 class="pt">荷物の履歴</h1>
   <p class="hl" style="margin:0 0 14px">登録・変更・取下げの全操作ログ（新しい順{'／全ユーザー' if is_admin else ''}）。該当 {shown} 件{'（先頭400件を表示）' if shown>400 else ''}。</p>
   {history_filter_form('/dashboard/cases/history', q, date_from, date_to, '経路・案件ID・荷物番号')}
   <div class="card" style="overflow-x:auto"><table>
-    <thead><tr><th>日時</th><th>案件</th><th>経路</th><th>操作</th><th>投稿先</th><th>荷物番号</th></tr></thead>
+    <thead><tr><th>日時</th><th>案件</th><th>経路</th><th>操作</th><th>投稿先</th><th>荷物番号</th><th></th></tr></thead>
     <tbody>{rows}</tbody></table></div>"""
     actions = '<a class="btn ghost" href="/dashboard/cases">← 荷物一覧へ</a>'
     return HTMLResponse(render_page(title="荷物の履歴", active="load_list", body=body,

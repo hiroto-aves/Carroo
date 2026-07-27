@@ -1,0 +1,210 @@
+<title>Carroo 課金・プラン設計</title>
+<style>
+  :root{
+    --ink:#14171A;--paper:#F2F4F1;--surface:#FFFFFF;--raise:#FAFBF9;
+    --line:#E2E5DF;--line-soft:#ECEEE8;--muted:#6E756F;--faint:#9AA19A;
+    --signal:#0FA36B;--signal-wash:#E6F4EC;--signal-ink:#0B7D53;
+    --amber:#C8892B;--amber-wash:#F6ECD9;--rail:#15181C;--cream:#F4F2EC;
+    --violet:#5B6CC4;--violet-wash:#EAECF7;
+    --sans:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic","Segoe UI",system-ui,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,monospace;
+    --shadow:0 1px 2px rgba(20,23,26,.05),0 18px 46px -22px rgba(20,23,26,.20);
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --ink:#E9ECE9;--paper:#0C0E10;--surface:#15181B;--raise:#1A1E21;
+    --line:#282D2F;--line-soft:#20241F;--muted:#8A918B;--faint:#666C67;
+    --signal:#22C58A;--signal-wash:#13271F;--signal-ink:#7FE3BC;
+    --amber:#E0B060;--amber-wash:#2A2416;--rail:#0E1113;--cream:#F4F2EC;
+    --violet:#8E9BE6;--violet-wash:#1B1F31;
+    --shadow:0 1px 2px rgba(0,0,0,.5),0 26px 64px -28px rgba(0,0,0,.75);
+  }}
+  :root[data-theme="dark"]{
+    --ink:#E9ECE9;--paper:#0C0E10;--surface:#15181B;--raise:#1A1E21;
+    --line:#282D2F;--line-soft:#20241F;--muted:#8A918B;--faint:#666C67;
+    --signal:#22C58A;--signal-wash:#13271F;--signal-ink:#7FE3BC;
+    --amber:#E0B060;--amber-wash:#2A2416;--rail:#0E1113;--cream:#F4F2EC;
+    --violet:#8E9BE6;--violet-wash:#1B1F31;
+    --shadow:0 1px 2px rgba(0,0,0,.5),0 26px 64px -28px rgba(0,0,0,.75);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.55;letter-spacing:-.006em;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1080px;margin:0 auto;padding:44px 24px 72px}
+  .eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--signal-ink);font-weight:700}
+  h1{font-size:32px;letter-spacing:-.03em;margin:6px 0 6px;text-wrap:balance}
+  .lede{color:var(--muted);font-size:15px;max-width:66ch;margin:0 0 34px}
+  h2{font-size:20px;letter-spacing:-.02em;margin:44px 0 4px}
+  .h2sub{color:var(--faint);font-size:13px;margin:0 0 18px}
+  .mono{font-family:var(--mono)}
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+  .scroll{overflow-x:auto}
+  /* plans */
+  .plans{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  @media(max-width:640px){.plans{grid-template-columns:1fr}}
+  .plan{border:1px solid var(--line);border-radius:16px;background:var(--surface);padding:20px;box-shadow:var(--shadow)}
+  .plan.pro{border-color:var(--signal);box-shadow:0 0 0 3px var(--signal-wash)}
+  .plan .pname{font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+  .plan.free .pname{color:var(--muted)} .plan.pro .pname{color:var(--signal-ink)}
+  .plan .price{font-size:26px;font-weight:680;letter-spacing:-.02em;margin:6px 0 2px}
+  .plan .price small{font-size:13px;color:var(--faint);font-weight:500}
+  .plan ul{list-style:none;margin:14px 0 0;padding:0;font-size:13.5px}
+  .plan li{display:flex;gap:9px;padding:5px 0;align-items:baseline;color:var(--ink)}
+  .plan li .m{flex:0 0 auto;font-weight:800;width:16px;text-align:center}
+  .plan li.on .m{color:var(--signal)} .plan li.off{color:var(--faint)} .plan li.off .m{color:var(--faint)}
+  .tagp{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 9px;border-radius:999px;margin-left:8px;background:var(--signal);color:#fff}
+  /* er/table shared */
+  .tbl{background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .tbl.new{border-color:var(--signal);box-shadow:0 0 0 3px var(--signal-wash)}
+  .tbl .tt{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--raise);border-bottom:1px solid var(--line-soft);font-weight:700;font-size:13.5px}
+  .tbl .tt .pill{margin-left:auto;font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:2px 8px;border-radius:999px}
+  .pill.new{background:var(--signal);color:#fff}.pill.chg{background:var(--amber);color:#241a08}
+  .fields{list-style:none;margin:0;padding:6px 0}
+  .fields li{display:flex;gap:8px;padding:5px 14px;font-size:12.5px;font-family:var(--mono);align-items:baseline}
+  .fields li .k{color:var(--faint);width:13px;flex:0 0 auto;text-align:center}
+  .fields li .n{color:var(--ink)} .fields li .ty{color:var(--faint);margin-left:auto}
+  .fields li.hl{background:var(--signal-wash)} .fields li.hl .n{color:var(--signal-ink);font-weight:700}
+  .note{font-size:12px;color:var(--muted);padding:8px 14px;border-top:1px dashed var(--line);background:var(--raise)}
+  table.cmp{width:100%;border-collapse:collapse;font-size:13px;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  table.cmp th,table.cmp td{padding:11px 14px;text-align:left;border-bottom:1px solid var(--line-soft);vertical-align:top}
+  table.cmp thead th{background:var(--raise);font-size:11.5px;letter-spacing:.03em;color:var(--muted);text-transform:uppercase}
+  table.cmp td:first-child{font-weight:600;white-space:nowrap}
+  /* flow */
+  .flow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12.5px;font-family:var(--mono);color:var(--muted);background:var(--raise);border:1px solid var(--line-soft);border-radius:12px;padding:14px 16px}
+  .flow b{color:var(--signal-ink)} .flow .ar{color:var(--faint)}
+  /* phases */
+  .phase{display:grid;grid-template-columns:38px 1fr;gap:14px;align-items:start;padding:14px 0;border-top:1px solid var(--line-soft)}
+  .phase:first-child{border-top:0}
+  .phase .n{width:34px;height:34px;border-radius:10px;background:var(--signal-wash);color:var(--signal-ink);display:grid;place-items:center;font-weight:800;font-size:14px}
+  .phase h3{margin:2px 0 3px;font-size:15px}.phase p{margin:0;font-size:13px;color:var(--muted)}
+  .foot{margin-top:40px;padding-top:18px;border-top:1px solid var(--line);color:var(--faint);font-size:12px}
+  .warn{background:var(--amber-wash);border:1px solid var(--amber);color:var(--amber);border-radius:12px;padding:12px 15px;font-size:13px;margin:14px 0}
+  .k-legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin:10px 2px 0}
+  .k-legend span{display:inline-flex;gap:6px;align-items:center}.dot{width:9px;height:9px;border-radius:3px;display:inline-block}
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Carroo · 課金 & プラン設計（相談用）</div>
+  <h1>プラン制・機能制限・課金の設計</h1>
+  <p class="lede">無料プランは無し。<b>7日間の無料トライアル</b>後に有料化。<b>シート課金</b>（基本料＋ユーザー追加ごとの従量）で、上位プラン（Pro）は「空車定期登録」と「荷物の複数日程一括」を解放。課金はテナント（会社）単位・<b>Stripe カードのみ</b>。土台は既存（<span class="mono">tenancy.feature_enabled()</span> が features→env の順で判定、両機能は既にゲート済み）。<b>Stage 1（マルチテナント）に載せる前提</b>。</p>
+
+  <section>
+    <h2>1. プラン（2階層・シート課金・7日トライアル）</h2>
+    <p class="h2sub">会社（テナント）ごとに 1 プラン。すべて Stripe カード決済。7日間の無料トライアル後に課金開始。</p>
+    <div class="plans">
+      <div class="plan">
+        <div class="pname">Standard</div>
+        <div class="price">¥4,000<small> / 月（基本）</small></div>
+        <div style="font-size:13px;color:var(--muted);margin-top:2px">＋ ユーザー追加 <b style="color:var(--ink)">¥2,000</b> / 人・月</div>
+        <ul>
+          <li class="on"><span class="m">✓</span>荷物登録（Trabox / WebKit 一括）</li>
+          <li class="on"><span class="m">✓</span>空車登録（単発）</li>
+          <li class="on"><span class="m">✓</span>成約トラッキング・履歴・失敗タスク再投稿</li>
+          <li class="off"><span class="m">–</span>空車定期登録</li>
+          <li class="off"><span class="m">–</span>荷物の複数日程一括</li>
+        </ul>
+      </div>
+      <div class="plan pro">
+        <div class="pname">Pro<span class="tagp">上位</span></div>
+        <div class="price">¥5,000<small> / 月（基本）</small></div>
+        <div style="font-size:13px;color:var(--muted);margin-top:2px">＋ ユーザー追加 <b style="color:var(--ink)">¥3,000</b> / 人・月</div>
+        <ul>
+          <li class="on"><span class="m">✓</span>Standard の全機能</li>
+          <li class="on"><span class="m">✓</span><b>空車定期登録</b>（毎週/隔週/毎日/毎月・初期登録回数）</li>
+          <li class="on"><span class="m">✓</span><b>荷物の複数日程一括</b>（最大5日程）</li>
+          <li class="on"><span class="m">✓</span><b>履歴から再登録</b>（過去の荷物/空車を元にワンクリックで再投稿）</li>
+        </ul>
+      </div>
+    </div>
+    <div class="scroll" style="margin-top:14px">
+      <table class="cmp">
+        <thead><tr><th>プラン</th><th>基本料/月</th><th>ユーザー追加/月</th><th>例: 3ユーザー</th><th>Pro機能</th></tr></thead>
+        <tbody>
+          <tr><td>Standard</td><td>¥4,000</td><td>¥2,000 / 人</td><td>¥4,000 + ¥2,000×2 = <b>¥8,000</b></td><td>×</td></tr>
+          <tr><td>Pro</td><td>¥5,000</td><td>¥3,000 / 人</td><td>¥5,000 + ¥3,000×2 = <b>¥11,000</b></td><td>○ 定期＋複数日程</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="h2sub" style="margin-top:8px">※「ユーザー追加」= <b>基本料に1人目（アカウント料）を含み、2人目以降を課金</b>（確定）。Stripe のシート quantity = 有効ユーザー数 − 1。</p>
+    <div class="warn">Standard が Pro 機能を開こうとした場合：UIは「Proにアップグレード」表示、APIは 403（既存の <span class="mono">_require_feature</span> / FEATURE_MULTIDATE ゲートを流用）。Pro→Standard へ下げたら既存の定期ルールを自動停止（再アップグレードで復帰）。トライアル終了で未課金なら投稿系をロック。</div>
+  </section>
+
+  <section>
+    <h2>2. データモデル（tenants に課金を集約）</h2>
+    <p class="h2sub">Stage 1 の tenants ドキュメントへ課金フィールドを追加。features は plan から導出。</p>
+    <div class="k-legend">
+      <span><span class="dot" style="background:var(--signal)"></span>新規フィールド</span>
+      <span><span class="dot" style="background:var(--amber)"></span>プランから自動導出</span>
+    </div>
+    <div class="tbl new" style="margin-top:14px;max-width:560px">
+      <div class="tt">🏢 tenants（課金拡張） <span class="pill chg">Stage1 + 課金</span></div>
+      <ul class="fields">
+        <li><span class="k">#</span><span class="n">id / name</span><span class="ty"></span></li>
+        <li class="hl"><span class="k">◆</span><span class="n">plan</span><span class="ty">"standard" | "pro"</span></li>
+        <li class="hl"><span class="k">◆</span><span class="n">features</span><span class="ty">{recurring, multidate}（plan由来）</span></li>
+        <li class="hl"><span class="k">◆</span><span class="n">seats</span><span class="ty">課金対象ユーザー数（=有効users数）</span></li>
+        <li class="hl"><span class="k">◆</span><span class="n">stripe_customer_id</span><span class="ty">Stripe 顧客ID</span></li>
+        <li class="hl"><span class="k">◆</span><span class="n">stripe_subscription_id</span><span class="ty">サブスクID</span></li>
+        <li class="hl"><span class="k">◆</span><span class="n">subscription_status</span><span class="ty">trialing/active/past_due/canceled</span></li>
+        <li class="hl"><span class="k">◆</span><span class="n">trial_end</span><span class="ty">トライアル終了(7日)</span></li>
+        <li class="hl"><span class="k">◆</span><span class="n">current_period_end</span><span class="ty">次回更新日</span></li>
+      </ul>
+      <div class="note">既存の webkit_apikey もここ（Stage 1）。features は「plan→features マップ」で常に上書き＝プランと機能が食い違わない。seats は tenant の有効ユーザー数と常に同期。</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. 機能ゲートの効き方</h2>
+    <p class="h2sub">1本の関数で判定。UIと API の両方で同じ真偽を使う（既存の仕組みを踏襲）。</p>
+    <div class="flow">
+      <span>アクセス</span><span class="ar">→</span>
+      <b>tenant.plan</b><span class="ar">→</span>
+      <span>plan→features マップ</span><span class="ar">→</span>
+      <b>feature_enabled("recurring"/"multidate")</b><span class="ar">→</span>
+      <span>UI表示 / API許可 or 403</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>4. 課金フロー（<span style="color:var(--signal-ink)">Stripe 採用</span>）</h2>
+    <p class="h2sub">Stripe Checkout（ホスト型決済）＋ Customer Portal（解約/カード変更）＋ Webhook。自前の決済UI・カード保持はしない（PCI負担を回避）。プロバイダ非依存の抽象化層を1枚挟み、将来 Pay.jp へ差し替え可能に。</p>
+    <div class="scroll">
+      <table class="cmp">
+        <thead><tr><th>操作</th><th>フロー</th></tr></thead>
+        <tbody>
+          <tr><td>加入（トライアル開始）</td><td>テナント管理者がプラン選択→ <b>Checkout</b>（カード登録）→ <b>7日トライアル</b>開始（<span class="mono">trialing</span>）。Webhook で tenant.plan/status/trial_end 反映。トライアル終了で自動課金。</td></tr>
+          <tr><td>更新・失敗</td><td>毎月自動課金。失敗は <span class="mono">past_due</span> Webhook→猶予表示。回復で active に戻る（dunningはプロバイダ任せ）。</td></tr>
+          <tr><td>解約・変更</td><td><b>顧客ポータル</b>（ホスト型）で解約/カード変更→ Webhook で status/period_end 反映。期末までは Pro 維持→以降 free。</td></tr>
+          <tr><td>整合性</td><td>状態の正は <b>Webhook</b>（署名検証・冪等）。画面表示は tenants の保存値を読むだけ。取りこぼしは定期照合で補正。</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="warn">RevenueCat はモバイルアプリ内課金(IAP)用のため今回のWebカード課金では非採用。将来ネイティブアプリのIAPを出す時に別途検討。</div>
+
+    <h2 style="font-size:16px;margin-top:26px">Stripe でのシート課金の作り方</h2>
+    <div class="scroll">
+      <table class="cmp">
+        <thead><tr><th>要素</th><th>Stripe での表現</th></tr></thead>
+        <tbody>
+          <tr><td>基本料</td><td>Standard/Pro それぞれに「基本料」Price（¥4,000 / ¥5,000・licensed・数量1）。</td></tr>
+          <tr><td>ユーザー追加</td><td>Standard/Pro それぞれに「シート」Price（¥2,000 / ¥3,000・per-seat licensed）。<b>subscription item の quantity = 有効ユーザー数 − 1</b>（1人目は基本料に含む）。</td></tr>
+          <tr><td>ユーザー増減</td><td>ユーザー発行/削除（Stage1のowner操作）に連動して <b>quantity を更新</b>→ Stripe が日割り(proration)で自動調整。</td></tr>
+          <tr><td>7日トライアル</td><td>サブスク作成時に <span class="mono">trial_period_days = 7</span>。<span class="mono">trialing</span> 中は満額機能、終了で課金開始。未決済なら past_due→ロック。</td></tr>
+          <tr><td>プラン変更</td><td>Standard⇄Pro は基本料/シートのPrice差し替え（proration）。features は plan から即再導出。</td></tr>
+          <tr><td>カードのみ</td><td>Checkout の <span class="mono">payment_method_types=['card']</span> でカード限定。</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>5. 実装フェーズ</h2>
+    <p class="h2sub">課金はテナントに紐づくため、Stage 1 が前提。段階的に。</p>
+    <div class="card" style="padding:6px 18px 10px">
+      <div class="phase"><div class="n">1</div><div><h3>Stage 1：マルチテナント</h3><p>tenants コレクション＋role（owner/member）＋クエリのテナント絞り。既存レコードは "takeuchi" テナントへ流用（設計図は別紙）。</p></div></div>
+      <div class="phase"><div class="n">2</div><div><h3>プラン＆機能ゲート（課金なしで先行）</h3><p>tenant.plan→features、Pro機能ロック表示＋API403、無料/Pro切替は当面フラグ手動。ここまでで「制限UI」は完成・検証できる。</p></div></div>
+      <div class="phase"><div class="n">3</div><div><h3>課金連携（Stripe）</h3><p>Stripe Checkout / Customer Portal / Webhook（署名検証・冪等）→ subscription_status で plan 自動更新。Secret は Secret Manager、Webhook は署名シークレットで検証。</p></div></div>
+      <div class="phase"><div class="n">4</div><div><h3>運用</h3><p>請求書/領収書（プロバイダ発行）・解約導線・past_due 表示・売上ダッシュボード（任意）。</p></div></div>
+    </div>
+  </section>
+
+  <p class="foot">Carroo 課金・プラン設計メモ（相談用）。実装未着手・Stage 1 と一体で進める。料率等は各社の最新公式を要確認。</p>
+</div>

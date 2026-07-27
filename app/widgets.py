@@ -174,8 +174,35 @@ PREF_PICKER_JS = """
     root.querySelector('.pp-none').addEventListener('click', function(){ setSelected([]); });
     root.querySelector('.pp-done').addEventListener('click', function(){ pop.hidden=true; });
     document.addEventListener('click', function(e){ if(!root.contains(e.target)) pop.hidden=true; });
+    root.addEventListener('pprefresh', render);  // 外部から hidden 値を差し替えた後の再描画用
     render();
   }
   document.querySelectorAll('.prefpick').forEach(init);
+})();
+</script>"""
+
+
+# 履歴から再登録：window.__prefill を読み、登録フォームの各項目に値を流し込む共通JS。
+# 都道府県→市区町村の非同期セレクトと、都道府県マルチ選択(pref_picker)にも対応。
+PREFILL_JS = """
+<script>
+(function(){
+  var pf=window.__prefill; if(!pf) return;
+  var form=document.getElementById('f')||document.querySelector('form'); if(!form) return;
+  var cityPairs=[['vacant_pref','vacant_city'],['dest_pref','dest_city'],['pick_pref','pick_city'],['drop_pref','drop_city']];
+  var cityNames=cityPairs.map(function(p){return p[1];});
+  function setSimple(name,val){ if(val==null)return; var el=form.querySelector('[name="'+name+'"]'); if(!el)return;
+    if(el.type==='checkbox'){ el.checked=(val===true||val==='yes'||val==='1'); } else { el.value=val; } }
+  Object.keys(pf).forEach(function(k){ if(cityNames.indexOf(k)<0 && k!=='dest_able' && k!=='vacant_able') setSimple(k,pf[k]); });
+  cityPairs.forEach(function(p){
+    var ps=form.querySelector('[name="'+p[0]+'"]'); if(!ps||pf[p[0]]==null) return;
+    ps.value=pf[p[0]]; ps.dispatchEvent(new Event('change'));
+    var want=pf[p[1]]; if(want==null) return; var tries=0;
+    var iv=setInterval(function(){ var cs=document.getElementById(p[1])||form.querySelector('[name="'+p[1]+'"]');
+      if(cs){ if(cs.tagName==='SELECT'){ if(cs.options.length>1){ cs.value=want; clearInterval(iv);} } else { cs.value=want; clearInterval(iv);} }
+      if(++tries>50) clearInterval(iv); },100); });
+  ['dest_able','vacant_able'].forEach(function(name){
+    if(pf[name]==null) return; var h=form.querySelector('input[type=hidden][name="'+name+'"]'); if(!h) return;
+    h.value=pf[name]; var root=h.closest('.prefpick'); if(root) root.dispatchEvent(new Event('pprefresh')); });
 })();
 </script>"""
