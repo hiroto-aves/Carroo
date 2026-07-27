@@ -5,18 +5,21 @@ from app.dependencies import get_current_user
 from app.db.database import get_db_connection
 from app.utils.encryption import encrypt_password, decrypt_password
 from pydantic import BaseModel
+from typing import Optional
 from datetime import datetime
 
 router = APIRouter(tags=["settings"])
 
 
 class CredentialsInput(BaseModel):
-    trabox_username: str = None
-    trabox_password: str = None
-    webkit_person_id: str = None
-    contact_name: str = None
-    contact_phone: str = None
-    contact_email: str = None
+    # Optional にしないと、空欄フィールドが JSON の null で送られた際に
+    # Pydantic v2 が「str なのに null」で 422 を返してしまう
+    trabox_username: Optional[str] = None
+    trabox_password: Optional[str] = None
+    webkit_person_id: Optional[str] = None
+    contact_name: Optional[str] = None
+    contact_phone: Optional[str] = None
+    contact_email: Optional[str] = None
 
 
 def get_settings_html(
@@ -184,7 +187,10 @@ def get_settings_html(
                         window.location.href = '/dashboard/';
                     }}, 2000);
                 }} else {{
-                    errorDiv.textContent = result.detail || '保存に失敗しました';
+                    let d = result.detail;
+                    if (Array.isArray(d)) d = d.map(x => x.msg || JSON.stringify(x)).join(' / ');
+                    else if (d && typeof d === 'object') d = JSON.stringify(d);
+                    errorDiv.textContent = d || '保存に失敗しました';
                     errorDiv.classList.remove('hidden');
                 }}
             }} catch (error) {{
