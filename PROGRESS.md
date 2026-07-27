@@ -16,6 +16,15 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-27 エラー体系＋空車担当者欄＋設定周り（rev carroo-00046-nr2）
+- **エラー体系導入**（`app/errors.py`＋main.py 共通ハンドラ）：全エラーを「やさしい説明（コード: E-XXX[ / 参照: REF]）」に統一。
+  未捕捉500は参照ID発行＋全文ログ、投稿失敗は classify で E-POST-* に自動分類（poster `_friendly`）、ログイン失敗も日本語化。
+  仕様書 `docs/エラー体系仕様書_ver1.0.md`（**変更時は改版必須＝CLAUDE.md にルール明記・上書き禁止・ver管理**）。
+- **空車登録に担当者名・電話番号欄を追加**（初期設定からプリフィル、未設定は username 補完）。荷物登録は元から有り。
+  WebKit=personname/portablephone、Trabox=担当者欄（電話は送信項目なし）。
+- **設定保存の 422 修正**：`CredentialsInput` を `Optional[str]` 化（空欄=null で弾かれていた）。エラー表示も配列/オブジェクトを整形。
+- **Trabox パスワード「登録済み」表示**：登録済みなら緑バッジ＋●●●●プレースホルダー＋「空欄で維持」注記（復号表示はしない）。
+
 ### 🆕 2026-07-27 Stage 1（マルチテナント）設計メモ ※実装未着手・外販判断時に着手
 - 設計図: `docs/設計メモ_Stage1テナント設計_ver1.0.html`（Artifact: https://claude.ai/code/artifact/3268f7e9-9966-47a4-af8f-68b735a4dab6 ）
 - **ロール3層**: super(運営者=横断/テナント発行・課金) / owner(=tenant admin・自社ユーザー管理/全件) / member(自分の担当分)。
