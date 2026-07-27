@@ -946,14 +946,14 @@ async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(No
         disabled = 'disabled' if st in ("working", "none") else ''
         if st == "live":
             actions = f'''
-              <button onclick="editCase('{p}')" class="flex-1 border border-gray-300 rounded-lg py-2 text-sm font-semibold hover:bg-gray-50">変更</button>
-              <button onclick="deleteCase('{p}')" class="flex-1 border border-red-200 text-red-600 bg-red-50 rounded-lg py-2 text-sm font-semibold hover:brightness-95">削除</button>'''
+              <button data-act="editCase" data-args='["{p}"]' class="flex-1 border border-gray-300 rounded-lg py-2 text-sm font-semibold hover:bg-gray-50">変更</button>
+              <button data-act="deleteCase" data-args='["{p}"]' class="flex-1 border border-red-200 text-red-600 bg-red-50 rounded-lg py-2 text-sm font-semibold hover:brightness-95">削除</button>'''
         elif st == "deleted":
-            actions = f'<button onclick="editCase(\'{p}\',true)" class="flex-1 border border-gray-300 rounded-lg py-2 text-sm font-semibold hover:bg-gray-50">再投稿</button>'
+            actions = f'<button data-act="editCase" data-args=\'["{p}",true]\' class="flex-1 border border-gray-300 rounded-lg py-2 text-sm font-semibold hover:bg-gray-50">再投稿</button>'
         elif st == "working":
             actions = '<span class="text-sm text-amber-700">処理完了までお待ちください（メールでも通知します）</span>'
         else:
-            actions = f'<button onclick="editCase(\'{p}\',true)" class="flex-1 border border-gray-300 rounded-lg py-2 text-sm font-semibold hover:bg-gray-50">投稿する</button>'
+            actions = f'<button data-act="editCase" data-args=\'["{p}",true]\' class="flex-1 border border-gray-300 rounded-lg py-2 text-sm font-semibold hover:bg-gray-50">投稿する</button>'
         cards += f'''
         <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-5 flex flex-col gap-3">
           <div class="flex items-center justify-between">
@@ -1014,17 +1014,17 @@ async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(No
     <span class="text-sm text-gray-500">成約:</span>
     <span class="text-sm font-bold px-2.5 py-1 rounded-full border {cs_cls}">{cs_txt}</span>
     <div class="flex gap-2 ml-auto">
-      <button onclick="setContract('成約')" class="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">🤝 成約にする</button>
-      <button onclick="setContract('不成立')" class="border border-gray-300 text-gray-700 text-sm font-semibold px-3 py-2 rounded-lg hover:bg-gray-50">✕ 不成立</button>
-      <button onclick="setContract('')" class="text-gray-400 text-sm px-2 hover:text-gray-600">未決に戻す</button>
+      <button data-act="setContract" data-args='["成約"]' class="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">🤝 成約にする</button>
+      <button data-act="setContract" data-args='["不成立"]' class="border border-gray-300 text-gray-700 text-sm font-semibold px-3 py-2 rounded-lg hover:bg-gray-50">✕ 不成立</button>
+      <button data-act="setContract" data-args='[""]' class="text-gray-400 text-sm px-2 hover:text-gray-600">未決に戻す</button>
     </div>
   </div>
   <p class="text-xs text-gray-400 mt-1">※ 電話等で決まったらここで記録してください（ダッシュボードの成約数・成約率に反映されます）。</p>
 
   <div class="flex items-center gap-3 mt-5 mb-1 flex-wrap">
     <span class="text-sm text-gray-500">一括操作:</span>
-    <button onclick="editCase('both')" class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">両方を変更</button>
-    <button onclick="deleteCase('both')" class="border border-red-200 text-red-600 bg-red-50 text-sm font-semibold px-4 py-2 rounded-lg hover:brightness-95">両方を削除</button>
+    <button data-act="editCase" data-args='["both"]' class="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">両方を変更</button>
+    <button data-act="deleteCase" data-args='["both"]' class="border border-red-200 text-red-600 bg-red-50 text-sm font-semibold px-4 py-2 rounded-lg hover:brightness-95">両方を削除</button>
   </div>
   <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">{cards}</div>
 
@@ -1121,7 +1121,7 @@ async def case_group_page(group_id: int, current_user: dict = Depends(get_curren
                  f'<td class="px-3 py-2"><span class="text-xs px-2 py-0.5 rounded {tb[1]}">トラボックス {tb[0]}</span> '
                  f'<span class="text-xs px-2 py-0.5 rounded {wk[1]}">WebKit {wk[0]}</span></td>'
                  f'<td class="px-3 py-2 text-sm"><a href="/cases/{cid}/manage" class="text-blue-600 hover:underline">個別</a>'
-                 f' <button onclick="keepOne({cid})" class="ml-2 text-amber-700 hover:underline">これで成約→他を取下げ</button></td></tr>')
+                 f' <button data-act="keepOne" data-args="[{cid}]" class="ml-2 text-amber-700 hover:underline">これで成約→他を取下げ</button></td></tr>')
     c0 = cases[0]
     from app.ui_shell import shell_open, SHELL_CLOSE, esc
     return HTMLResponse(shell_open(title=f"複数日程グループ #{group_id}", active="load_list",
@@ -1133,7 +1133,7 @@ async def case_group_page(group_id: int, current_user: dict = Depends(get_curren
       <tr><th class="px-3 py-2">案件ID</th><th class="px-3 py-2">日程</th><th class="px-3 py-2">掲載状態</th><th class="px-3 py-2"></th></tr>
     </thead><tbody>{rows}</tbody></table>
   </div>
-  <button onclick="cancelAll()" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 px-6 rounded-lg">全ての日程を取り下げる</button>
+  <button data-act="cancelAll" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-2.5 px-6 rounded-lg">全ての日程を取り下げる</button>
 </div>
 <script>
 async function keepOne(keep){{ if(!confirm('この日程で成約とし、他の日程の掲載を取り下げますか？'))return;

@@ -247,7 +247,7 @@ async def manage_truck(truck_id: int, current_user: dict = Depends(get_current_u
 
     def _plat_block(pf, badge):
         st = badge[0]
-        btn = (f'<button onclick="delTruck(\'{pf}\')" class="mt-2 border border-red-200 text-red-600 '
+        btn = (f'<button data-act="delTruck" data-args=\'["{pf}"]\' class="mt-2 border border-red-200 text-red-600 '
                f'bg-red-50 rounded px-3 py-1 text-sm">掲載終了</button>' if st in ("掲載中", "エラー") else "")
         return f"""<div class="border rounded-lg p-4">
           <div class="font-semibold mb-1">{'トラボックス' if pf=='trabox' else 'WebKit'}</div>

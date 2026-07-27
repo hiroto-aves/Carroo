@@ -159,7 +159,7 @@ async def maintenance_page(current_user: dict = Depends(get_current_user)):
                 route = (f"{it.get('vacant_pref','')}{it.get('vacant_city','')} → "
                          f"{it.get('dest_pref','')}{it.get('dest_city','')}")
             btn = (f'<button class="btn danger" style="padding:5px 12px;font-size:12px" '
-                   f'onclick="purge(\'{kind}\',{iid})">完全削除</button>' if purgeable
+                   f'data-act="purge" data-args=\'["{kind}",{iid}]\'>完全削除</button>' if purgeable
                    else '<span class="hl" style="font-size:12px">掲載中は不可</span>')
             html += (f'<tr><td class="mono" style="color:var(--faint)">{iid}</td>'
                      f'<td>{esc(route)}</td><td style="color:var(--faint)">{esc(it.get("created_at",""))}</td>'
@@ -180,8 +180,8 @@ async def maintenance_page(current_user: dict = Depends(get_current_user)):
   </div>
 
   <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">
-    <button class="btn danger" onclick="purgeSafe('case')">案件の掲載なし {case_purge}件を一括削除</button>
-    <button class="btn danger" onclick="purgeSafe('truck')">空車の掲載なし {truck_purge}件を一括削除</button>
+    <button class="btn danger" data-act="purgeSafe" data-args='["case"]'>案件の掲載なし {case_purge}件を一括削除</button>
+    <button class="btn danger" data-act="purgeSafe" data-args='["truck"]'>空車の掲載なし {truck_purge}件を一括削除</button>
   </div>
 
   <h2 style="font-size:15px;margin:18px 0 8px">案件（{len(cases)}件）</h2>

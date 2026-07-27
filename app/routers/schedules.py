@@ -236,8 +236,8 @@ async def list_page(current_user: dict = Depends(_require_feature)):
           <td class="px-3 py-2 text-sm">{nxt}</td>
           <td class="px-3 py-2">{badge}</td>
           <td class="px-3 py-2 text-sm whitespace-nowrap">
-            <button onclick="tog({s['id']})" class="text-blue-600 hover:underline">{'再開' if paused else '停止'}</button>
-            <button onclick="del({s['id']})" class="text-red-600 hover:underline ml-2">削除</button>
+            <button data-act="tog" data-args="[{s['id']}]" class="text-blue-600 hover:underline">{'再開' if paused else '停止'}</button>
+            <button data-act="del" data-args="[{s['id']}]" class="text-red-600 hover:underline ml-2">削除</button>
           </td></tr>"""
     if not items:
         items = '<tr><td colspan="7" class="px-3 py-8 text-center text-gray-400">空車定期登録はまだありません</td></tr>'

@@ -20,39 +20,35 @@ app = FastAPI(
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Content-Security-Policy（現行UI＝Tailwind CDN＋インラインscript/style/onclick 前提）
-_CSP = (
-    "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.tailwindcss.com; "
-    "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; "
-    "img-src 'self' data:; font-src 'self' data:; "
-    "connect-src 'self'; "
-    "object-src 'none'; base-uri 'self'; form-action 'self'; "
-    "frame-ancestors 'none'"
-)
+def _csp(nonce: str) -> str:
+    """厳格CSP。script は self＋当該nonceのみ（unsafe-inline/eval・外部CDN無し）。
+
+    Tailwind はセルフホスト化済みのため script から CDN を排除。style は多数の
+    インライン style 属性が現行UIの基盤のため 'unsafe-inline' を維持（業界標準の妥協。
+    出力は全てHTMLエスケープ済みで、危険なのは script 実行のため script を strict 化）。
+    """
+    script = f"script-src 'self' 'nonce-{nonce}'" if nonce else "script-src 'self'"
+    return (
+        "default-src 'self'; "
+        f"{script}; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; font-src 'self' data:; "
+        "connect-src 'self'; "
+        "object-src 'none'; base-uri 'self'; form-action 'self'; "
+        "frame-ancestors 'none'"
+    )
 
 
 @app.middleware("http")
 async def security_headers_middleware(request, call_next):
-    """全レスポンスに防御的セキュリティヘッダーを付与。
-
-    - X-Frame-Options / frame-ancestors: クリックジャッキング防止
-    - X-Content-Type-Options: MIMEスニッフィング防止
-    - Referrer-Policy: リファラ漏洩の抑制
-    - HSTS: 本番HTTPS(COOKIE_SECURE)時のみHTTPS強制
-    - CSP: 現行UIを壊さない範囲で最大限厳格化。
-        script は self＋Tailwind CDN のみ許可（外部スクリプト混入を遮断）。
-        object/base-uri/form-action/frame-ancestors を封じ、外部への流出・クリック
-        ジャッキング・base乗っ取りを防ぐ。connect/img/style は自ドメイン中心。
-        ※ 完全strict化（script-src から 'unsafe-inline' 除去）は Tailwind セルフホスト＋
-          onclick の addEventListener 化が前提のため将来対応。
-    """
+    """防御的セキュリティヘッダー。CSP は HTML の場合 html_rewrite 側が nonce 付きで
+    上書きするため、ここでは非HTML用の base CSP（nonce無し script-src 'self'）を置く。"""
     response = await call_next(request)
     h = response.headers
     h.setdefault("X-Frame-Options", "DENY")
     h.setdefault("X-Content-Type-Options", "nosniff")
     h.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-    h.setdefault("Content-Security-Policy", _CSP)
+    h.setdefault("Content-Security-Policy", _csp(""))
     from app.config import settings as _st
     if _st.COOKIE_SECURE:
         h.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
@@ -66,7 +62,9 @@ async def favicon():
     return FileResponse("static/icons/favicon.ico", media_type="image/x-icon")
 
 
-# PWA（ホーム画面に追加してアプリとして起動可能に）用の head 注入内容
+# PWA（ホーム画面に追加してアプリとして起動可能に）用の head 注入内容。
+# 末尾に「クリック委譲ディスパッチャ」を含む: strict CSP 下ではインライン onclick が
+# 使えないため、data-act（関数名）+ data-args（JSON配列）で window 上の関数を呼ぶ。
 _PWA_HEAD = (
     '<link rel="manifest" href="/static/manifest.json">'
     '<meta name="theme-color" content="#0FA36B">'
@@ -78,17 +76,23 @@ _PWA_HEAD = (
     '<link rel="apple-touch-icon" href="/static/icons/icon-180.png">'
     '<link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="any">'
     '<link rel="icon" type="image/png" sizes="48x48" href="/static/icons/favicon-32.png">'
-    '<script>if("serviceWorker"in navigator){navigator.serviceWorker.register("/static/sw.js").catch(function(){});}</script>'
+    '<script>if("serviceWorker"in navigator){navigator.serviceWorker.register("/static/sw.js").catch(function(){});}'
+    'document.addEventListener("click",function(e){var el=e.target.closest("[data-act]");'
+    'if(!el)return;var f=window[el.getAttribute("data-act")];if(typeof f!=="function")return;'
+    'e.preventDefault();var a=[];try{a=JSON.parse(el.getAttribute("data-args")||"[]");}catch(_){}'
+    'f.apply(null,a);});</script>'
 )
 
 
 @app.middleware("http")
-async def pwa_head_middleware(request, call_next):
-    """全HTMLページの <head> に PWA メタタグを一括注入（各画面を個別編集せず対応）
-
-    これにより社用端末（Jamf配信）で「ホーム画面に追加」するとアプリとして
-    フルスクリーン起動できる。
+async def html_rewrite_middleware(request, call_next):
+    """全HTMLに対して:
+    1) <head> に PWA メタ＋クリック委譲ディスパッチャを注入（Jamf配信のPWA化）
+    2) リクエストごとの nonce を全 <script> に付与し、CSP を nonce 付き strict で上書き
+       （script-src から unsafe-inline/eval・外部CDN を排除。インライン script は
+        nonce で許可、インライン onclick は data-act 方式へ移行済み）。
     """
+    import secrets
     response = await call_next(request)
     try:
         ctype = response.headers.get("content-type", "")
@@ -97,13 +101,19 @@ async def pwa_head_middleware(request, call_next):
             text = body.decode("utf-8", "ignore")
             if "</head>" in text and "manifest.json" not in text:
                 text = text.replace("</head>", _PWA_HEAD + "</head>", 1)
+            # 全 <script> に nonce を付与。属性付き(<script src= 等)を先に処理し、
+            # その後で裸の <script> を処理する（順序を逆にすると nonce が二重付与される）。
+            nonce = secrets.token_urlsafe(16)
+            text = text.replace("<script ", f'<script nonce="{nonce}" ')
+            text = text.replace("<script>", f'<script nonce="{nonce}">')
             from starlette.responses import Response as _Resp
             new = _Resp(content=text, status_code=response.status_code,
                         media_type="text/html")
-            # Set-Cookie 等のヘッダを引き継ぐ
             for k, v in response.headers.items():
-                if k.lower() not in ("content-length", "content-type"):
+                if k.lower() not in ("content-length", "content-type",
+                                     "content-security-policy"):
                     new.headers[k] = v
+            new.headers["Content-Security-Policy"] = _csp(nonce)
             return new
     except Exception:
         pass

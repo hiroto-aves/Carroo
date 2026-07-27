@@ -165,7 +165,7 @@ def _sidebar(active, user):
     users = (_nav_item(active, "users", "/admin/users", "i-users", "ユーザー管理")
              if is_admin else "")
     return f"""<aside class="rail">
-  <div class="top"><a class="logotype" href="/dashboard/"><svg class="logoC" viewBox="12 12 69 77"><use href="#cmarkC"/></svg><span class="rest">arroo</span></a><button class="railtoggle" type="button" onclick="cRailToggle()" aria-label="サイドバーを折り畳む"><svg><use href="#i-chev"/></svg></button></div>
+  <div class="top"><a class="logotype" href="/dashboard/"><svg class="logoC" viewBox="12 12 69 77"><use href="#cmarkC"/></svg><span class="rest">arroo</span></a><button class="railtoggle" type="button" data-act="cRailToggle" aria-label="サイドバーを折り畳む"><svg><use href="#i-chev"/></svg></button></div>
   <nav>
     {_nav_item(active,"dashboard","/dashboard/","i-dash","ダッシュボード")}
     <div class="group">出す</div>
