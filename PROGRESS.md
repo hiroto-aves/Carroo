@@ -16,6 +16,18 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-27 完全strict CSP（Tailwindセルフホスト＋nonce＋onclick廃止）（rev carroo-00042-ztj）
+- **Tailwind セルフホスト化**：Play CDN を撤去し standalone CLI で `static/tailwind.css` を生成・配信
+  （外部スクリプト依存と `unsafe-eval` の必要性を排除）。ビルド設定 `build_tools/`（content=app/**/*.py）。
+- **script-src を strict化**：`'self' 'nonce-…'` のみ（unsafe-inline/eval・CDN 全排除）。
+  `html_rewrite_middleware`（旧pwa）がリクエストごとに nonce を全 `<script>` へ付与し CSP を nonce付きで上書き。
+  非HTMLは base CSP（`script-src 'self'`）。
+- **インライン onclick を全廃（18個）**：`data-act`(関数名)＋`data-args`(JSON) 方式に変換し、_PWA_HEAD に
+  クリック委譲ディスパッチャを注入（`window[fn].apply(null,args)`）。対象関数は全て function 宣言＝window 参照可。
+- style-src のみ 'unsafe-inline' 維持（インライン style 104箇所が現行UIの基盤のため意図的。出力は全エスケープ済み）。
+- パスワード欄に `autocomplete` 付与（Chrome の DOM 助言メッセージ解消。CSPエラーではなかった）。
+- 本番でCSPヘッダーのnonceが body の script nonce と一致することを確認。ボタン/フォーム動作もユーザー確認済み。
+
 ### 🆕 2026-07-27 データ整理（管理者メンテナンス画面）＋テストダミー一掃（rev carroo-00039-tjs）
 - **管理者専用「データ整理」画面** `/admin/maintenance`（ユーザー管理から導線）：全案件・全空車を一覧
   （ID/経路/登録日/トラ・WebKit掲載状態）、掲載の無い（live/working でない）レコードのみ完全削除可。
