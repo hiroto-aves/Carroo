@@ -68,7 +68,7 @@ async def users_page(current_user: dict = Depends(get_current_user)):
   <h1 class="pt">ユーザー管理</h1>
   <p class="hl" style="margin:0 0 18px">社内ユーザーの一覧と、新規ユーザーの発行。
     · <a href="/admin/maintenance" style="color:var(--signal-ink);font-weight:600">🧹 データ整理</a>
-    · <a href="/admin/dead-letters" style="color:var(--signal-ink);font-weight:600">☠️ 失敗タスク{_dlq_badge()}</a></p>
+    · <a href="/failed/" style="color:var(--signal-ink);font-weight:600">☠️ 失敗した投稿{_dlq_badge()}</a></p>
 
   <div class="card" style="overflow:hidden;margin-bottom:22px">
     <table>
@@ -270,81 +270,3 @@ async def purge_safe(kind: str, current_user: dict = Depends(get_current_user)):
     audit("record_purge_bulk", kind=kind, deleted=deleted, by=current_user.get("username"))
     return {"status": "ok", "deleted": deleted}
 
-
-# ============ Dead Letter Queue（確定失敗タスクの確認・再投稿）============
-
-@router.get("/dead-letters", response_class=HTMLResponse)
-async def dead_letters_page(current_user: dict = Depends(get_current_user)):
-    """3回リトライしても失敗が確定した投稿タスクの一覧。再投稿／解決ができる（管理者のみ）。"""
-    _require_admin(current_user)
-    from app.db import store
-    from app.ui_shell import render_page, esc
-    items = store.list_dead_letters(include_resolved=False)
-    rows = ""
-    for d in items:
-        p = d.get("payload") or {}
-        cd = (p.get("case_data") or {})
-        tgt = cd.get("case_id") or p.get("case_id") or p.get("truck_id") or "-"
-        route = (f"{cd.get('pick_location','')} → {cd.get('drop_location','')}"
-                 if cd else f"{(p.get('truck_data') or {}).get('vacant_pref','')}…")
-        rows += (f'<tr><td class="mono" style="color:var(--faint)">#{d["id"]}</td>'
-                 f'<td style="color:var(--faint);white-space:nowrap">{esc(d.get("created_at",""))}</td>'
-                 f'<td>{esc(d.get("kind","case"))} / {esc(d.get("action","register"))}</td>'
-                 f'<td class="mono">{esc(tgt)}</td><td>{esc(route)}</td>'
-                 f'<td style="max-width:280px;color:var(--amber);font-size:12px">{esc((d.get("error") or "")[:160])}</td>'
-                 f'<td style="text-align:right;white-space:nowrap">'
-                 f'<button class="btn" style="padding:5px 12px;font-size:12px" data-act="dlqRetry" data-args="[{d["id"]}]">再投稿</button>'
-                 f'<button class="btn ghost" style="padding:5px 12px;font-size:12px;margin-left:6px" data-act="dlqResolve" data-args="[{d["id"]}]">解決済み</button>'
-                 f'</td></tr>')
-    if not rows:
-        rows = ('<tr><td colspan="7" style="text-align:center;color:var(--faint);padding:28px">'
-                '未解決の失敗タスクはありません 🎉</td></tr>')
-    body = f"""
-  <h1 class="pt">失敗タスク（DLQ）</h1>
-  <p class="hl" style="margin:0 0 6px">3回再試行しても投稿できなかったタスクです。原因を直したら「再投稿」、対応不要なら「解決済み」に。</p>
-  <p class="hl" style="margin:0 0 16px">· <a href="/admin/users" style="color:var(--signal-ink)">ユーザー管理</a> · <a href="/admin/maintenance" style="color:var(--signal-ink)">データ整理</a></p>
-  <div class="card" style="overflow-x:auto"><table>
-    <thead><tr><th>ID</th><th>発生</th><th>種別</th><th>対象</th><th>経路</th><th>エラー</th><th></th></tr></thead>
-    <tbody>{rows}</tbody></table></div>
-<script>
-async function dlqRetry(id){{ if(!confirm('この失敗タスクを再投稿しますか？'))return;
-  var r=await fetch('/admin/dead-letters/'+id+'/retry',{{method:'POST'}}); var j=await r.json();
-  if(r.ok) location.reload(); else alert('エラー: '+(j.detail||'失敗')); }}
-async function dlqResolve(id){{ if(!confirm('このタスクを解決済みにして一覧から消しますか？（再投稿はしません）'))return;
-  var r=await fetch('/admin/dead-letters/'+id+'/resolve',{{method:'POST'}});
-  if(r.ok) location.reload(); else alert('失敗'); }}
-</script>"""
-    return HTMLResponse(render_page(title="失敗タスク（DLQ）", active="users", body=body,
-                                    user=current_user, crumb="Carroo · 管理"))
-
-
-@router.post("/dead-letters/{did}/retry")
-async def dead_letter_retry(did: int, current_user: dict = Depends(get_current_user)):
-    """退避した元 payload をそのままキューへ再投入し、DLQ項目を解決済みにする。"""
-    _require_admin(current_user)
-    from app.db import store
-    from app.services.cloud_tasks import get_task_client
-    from app.utils.audit import audit
-    d = store.get_dead_letter(did)
-    if not d or d.get("resolved"):
-        raise HTTPException(404, "対象の失敗タスクが見つかりません")
-    payload = d.get("payload")
-    if not payload:
-        raise HTTPException(400, "再投稿に必要なデータがありません")
-    get_task_client().add_task(payload)
-    store.resolve_dead_letter(did, note="retried")
-    audit("dead_letter_retry", dead_letter_id=did, by=current_user.get("username"))
-    return {"status": "requeued", "dead_letter_id": did}
-
-
-@router.post("/dead-letters/{did}/resolve")
-async def dead_letter_resolve(did: int, current_user: dict = Depends(get_current_user)):
-    """再投稿せず解決済みにする（手動対応済み・不要など）。"""
-    _require_admin(current_user)
-    from app.db import store
-    from app.utils.audit import audit
-    if not store.get_dead_letter(did):
-        raise HTTPException(404, "対象の失敗タスクが見つかりません")
-    store.resolve_dead_letter(did, note="dismissed")
-    audit("dead_letter_resolve", dead_letter_id=did, by=current_user.get("username"))
-    return {"status": "resolved"}

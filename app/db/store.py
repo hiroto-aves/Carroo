@@ -102,22 +102,30 @@ def record_dead_letter(kind: str, action: str, payload: Dict[str, Any],
     後から管理者が原因調査・手動再投稿できるよう、元 payload とエラーを丸ごと残す。
     """
     did = _next_id("dead_letter")
+    # 投稿者本人に紐づけて、本人の画面に返せるよう user_id を保持
+    user_id = (payload or {}).get("user_id")
     _db().collection("dead_letter").document(str(did)).set({
         "kind": kind, "action": action, "payload": payload,
+        "user_id": int(user_id) if user_id is not None else None,
         "error": str(error) if error is not None else None,
         "retry_count": retry_count, "created_at": _now(), "resolved": False,
     })
     return did
 
 
-def list_dead_letters(include_resolved: bool = False) -> List[Dict[str, Any]]:
-    """DLQ（確定失敗タスク）の一覧。既定は未解決のみ。新しい順。"""
+def list_dead_letters(include_resolved: bool = False,
+                      user_id: int = None) -> List[Dict[str, Any]]:
+    """DLQ（確定失敗タスク）の一覧。既定は未解決のみ・新しい順。
+    user_id 指定時はその投稿者の分だけ（本人向け画面用）。"""
     out = []
     for snap in _db().collection("dead_letter").stream():
         d = snap.to_dict() or {}
         d["id"] = int(snap.id)
-        if include_resolved or not d.get("resolved"):
-            out.append(d)
+        if not include_resolved and d.get("resolved"):
+            continue
+        if user_id is not None and d.get("user_id") != int(user_id):
+            continue
+        out.append(d)
     out.sort(key=lambda r: r["id"], reverse=True)
     return out
 
@@ -137,10 +145,17 @@ def resolve_dead_letter(did: int, note: str = None) -> None:
         {"resolved": True, "resolved_at": _now(), "resolve_note": note})
 
 
-def count_dead_letters() -> int:
-    """未解決のDLQ件数（バッジ用）。"""
-    return sum(1 for s in _db().collection("dead_letter").stream()
-               if not (s.to_dict() or {}).get("resolved"))
+def count_dead_letters(user_id: int = None) -> int:
+    """未解決のDLQ件数（バッジ用）。user_id 指定でその本人分のみ。"""
+    n = 0
+    for s in _db().collection("dead_letter").stream():
+        d = s.to_dict() or {}
+        if d.get("resolved"):
+            continue
+        if user_id is not None and d.get("user_id") != int(user_id):
+            continue
+        n += 1
+    return n
 
 
 def _next_id(name: str) -> int:

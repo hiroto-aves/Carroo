@@ -92,19 +92,30 @@ async def execute_task_endpoint(request: Request):
 
 
 def _alert_dead_letter(payload: dict, results: dict, dead_letter_id) -> None:
-    """DLQ 退避を管理者へメール通知（mailer があれば利用、無ければログのみ）。"""
+    """DLQ 退避を通知。宛先は「投稿した本人の連絡先メール」を最優先し、
+    無ければ管理者（ADMIN_ALERT_EMAIL / MAIL_FROM）へ。"""
     try:
         from app.utils.mailer import send_email
     except Exception:
         return
-    admin_to = os.getenv("ADMIN_ALERT_EMAIL") or os.getenv("MAIL_FROM")
-    if not admin_to:
+    # 投稿者本人のメール（初期設定の連絡先）を最優先
+    to = None
+    try:
+        uid = payload.get("user_id")
+        if uid is not None:
+            from app.db import store
+            to = (store.get_credentials(uid) or {}).get("contact_email")
+    except Exception:
+        to = None
+    to = to or os.getenv("ADMIN_ALERT_EMAIL") or os.getenv("MAIL_FROM")
+    if not to:
         return
-    kind = payload.get("kind", "case")
+    kind = "荷物" if payload.get("kind", "case") == "case" else "空車"
     cid = (payload.get("case_data") or {}).get("case_id") or payload.get("case_id") \
         or payload.get("truck_id")
-    body = (f"投稿タスクがリトライ上限に達し失敗が確定しました。\n\n"
-            f"DLQ ID: {dead_letter_id}\n種別: {kind} / {payload.get('action')}\n"
-            f"対象ID: {cid}\n結果: {results}\n\n"
-            f"Firestore の dead_letter コレクションで詳細を確認できます。")
-    send_email(admin_to, "☠️ Carroo 投稿タスク失敗（DLQ退避）", body)
+    body = (f"投稿を3回試しましたが、投稿できませんでした（失敗が確定）。\n\n"
+            f"種別: {kind} / {payload.get('action')}\n対象ID: {cid}\n\n"
+            f"アプリの「失敗した投稿」画面から、原因を直して再投稿できます:\n"
+            f"  {os.getenv('APP_BASE_URL', '').rstrip('/')}/failed/\n\n"
+            f"（管理番号 DLQ #{dead_letter_id}）")
+    send_email(to, "【Carroo】投稿できませんでした（要確認）", body)

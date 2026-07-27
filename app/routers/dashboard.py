@@ -128,7 +128,7 @@ def _truck_dashboard(current_user: dict, store):
           {srows}
         </div>"""
 
-    body = f"""
+    body = _failed_banner(current_user["id"], current_user.get("is_admin", False)) + f"""
 <div class="stats" style="grid-template-columns:repeat(3,1fr)">
   <div class="cell"><div class="k">空車登録数</div><div class="v num">{len(trucks)}</div></div>
   <div class="cell"><div class="k">掲載中 <span class="sub">（現在）</span></div><div class="v num sig">{live_trucks}</div></div>
@@ -143,6 +143,22 @@ def _truck_dashboard(current_user: dict, store):
     actions = '<a class="btn" href="/trucks/register"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>空車を出す</a>'
     return render_page(title="ダッシュボード", active="dashboard", body=body,
                        user=current_user, topbar_actions=actions)
+
+
+def _failed_banner(user_id: int, is_admin: bool) -> str:
+    """投稿できなかったタスク（DLQ）が本人にあれば、上部に警告バナーを出す。"""
+    from app.db import store
+    try:
+        n = store.count_dead_letters(user_id=None if is_admin else user_id)
+    except Exception:
+        n = 0
+    if not n:
+        return ""
+    return (f'<a href="/failed/" style="display:flex;align-items:center;gap:10px;'
+            f'background:var(--amber-wash);border:1px solid var(--amber);border-radius:12px;'
+            f'padding:12px 15px;margin-bottom:16px;color:var(--amber);font-weight:600;font-size:13.5px">'
+            f'⚠️ 投稿できなかった{"" if is_admin else ""}タスクが {n} 件あります。'
+            f'<span style="margin-left:auto;font-weight:700">確認する →</span></a>')
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -197,7 +213,7 @@ async def dashboard(current_user: dict = Depends(get_current_user),
             rows_html = '<div style="padding:36px;text-align:center;color:var(--faint)">案件がまだありません。<a href="/cases/register" style="color:var(--signal-ink)">最初の荷物を出す →</a></div>'
 
         seg = _period_controls(period, date_from, date_to)
-        body = f"""
+        body = _failed_banner(user_id, is_admin) + f"""
 <div class="stats">
   <div class="cell"><div class="k">投稿数 <span class="sub">（{period_label}）</span></div><div class="v num">{st['total']}</div></div>
   <div class="cell"><div class="k">掲載中 <span class="sub">（現在）</span></div><div class="v num sig">{st['live']}</div></div>
