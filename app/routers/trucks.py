@@ -50,8 +50,13 @@ def _opts(values, selected=None):
 
 
 def _page(user) -> str:
+    from app.ui_shell import esc
     pref_opts = _opts(PREFS, "東京都")
     dpref_opts = _opts(PREFS, "大阪府")
+    # 担当者名・電話番号の初期値＝初期設定(credentials)。未設定ならログインユーザー名を担当者名に。
+    creds = store.get_credentials(user["id"]) or {}
+    def_name = esc(creds.get("contact_name") or user.get("username") or "")
+    def_phone = esc(creds.get("contact_phone") or "")
     body = f"""
 <div class="max-w-3xl">
   <p class="hl" style="margin:-4px 0 18px">空車情報を Trabox / WebKit に一括投稿します。</p>
@@ -94,6 +99,16 @@ def _page(user) -> str:
         <select name="vehicle_type" class="border rounded px-3 py-2 w-full">{_opts(VEHICLES, "平")}</select></div>
       <div><label class="block text-sm font-medium mb-1">最低運賃（税別・円）</label>
         <input name="min_freight" type="number" placeholder="任意" class="border rounded px-3 py-2 w-full"></div>
+    </div>
+    <div class="grid md:grid-cols-2 gap-6">
+      <div>
+        <label class="block text-sm font-medium mb-1">担当者名</label>
+        <input name="contact_name" value="{def_name}" required placeholder="山田太郎" class="border rounded px-3 py-2 w-full">
+      </div>
+      <div>
+        <label class="block text-sm font-medium mb-1">電話番号</label>
+        <input name="contact_phone" type="tel" value="{def_phone}" placeholder="09012345678" class="border rounded px-3 py-2 w-full">
+      </div>
     </div>
     <div>
       <label class="block text-sm font-medium mb-1">備考</label>
@@ -164,6 +179,7 @@ async def register_truck(
     dest_able: str = Form(""), vacant_able: str = Form(""),
     truck_weight: str = Form("問わず"), vehicle_type: str = Form("問わず"),
     min_freight: str = Form(""), remarks: str = Form(""),
+    contact_name: str = Form(""), contact_phone: str = Form(""),
     post_to_trabox: str = Form(None), post_to_webkit: str = Form(None),
 ):
     user_id = current_user["id"]
@@ -176,6 +192,8 @@ async def register_truck(
         raise HTTPException(400, "空車地の市区町村は必須です（例: 練馬区）")
     if not (dest_city or "").strip():
         raise HTTPException(400, "行先地の市区町村は必須です（例: 大阪市北区）")
+    # 担当者名は Trabox 空車では必須。空ならログインユーザー名で補完。
+    contact_name = (contact_name or "").strip() or current_user.get("username") or "担当"
 
     def _prefs(s):
         return [p.strip() for p in (s or "").replace("、", ",").split(",") if p.strip()]
@@ -188,7 +206,7 @@ async def register_truck(
         "dest_able_prefs": _prefs(dest_able), "vacant_able_prefs": _prefs(vacant_able),
         "truck_weight": truck_weight, "vehicle_type": vehicle_type,
         "min_freight": min_freight or None, "remarks": remarks,
-        "contact_name": current_user.get("username"),
+        "contact_name": contact_name, "contact_phone": (contact_phone or "").strip(),
         "post_to_trabox": want_trabox, "post_to_webkit": want_webkit,
     }
     truck_id = store.create_truck(user_id, data)
