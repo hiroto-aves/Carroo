@@ -51,117 +51,39 @@ def _login_rate_limit_reset(key: str) -> None:
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page():
-    return """
-    <!DOCTYPE html>
-    <html lang="ja">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Carroo - ログイン</title>
-        <link rel="stylesheet" href="/static/tailwind.css">
-    </head>
-    <body class="bg-gradient-to-br from-blue-50 via-white to-blue-50 min-h-screen">
-        <div class="min-h-screen flex items-center justify-center px-4 py-8">
-            <div class="w-full max-w-md">
-                <!-- ヘッダー -->
-                <div class="text-center mb-8">
-                    <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-600 mb-4">
-                        <span class="text-white text-xl font-bold">📦</span>
-                    </div>
-                    <h1 class="text-3xl font-bold text-gray-900">Carroo</h1>
-                    <p class="text-gray-600 text-sm mt-2">物流案件一括投稿アプリ</p>
-                </div>
-
-                <!-- ログインフォーム -->
-                <div class="bg-white rounded-2xl shadow-lg p-8 border border-gray-100">
-                    <h2 class="text-xl font-semibold text-gray-900 mb-6">ログイン</h2>
-
-                    <div id="error-message" class="hidden mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700"></div>
-
-                    <form id="login-form" class="space-y-5">
-                        <!-- ユーザー名 -->
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">
-                                ユーザー名
-                            </label>
-                            <input
-                                type="text"
-                                name="username"
-                                class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                                placeholder="ユーザー名を入力"
-                                required
-                            >
-                        </div>
-
-                        <!-- パスワード -->
-                        <div>
-                            <label class="block text-sm font-medium text-gray-700 mb-2">
-                                パスワード
-                            </label>
-                            <input
-                                type="password"
-                                name="password"
-                                autocomplete="current-password"
-                                class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-                                placeholder="パスワードを入力"
-                                required
-                            >
-                        </div>
-
-                        <!-- ログインボタン -->
-                        <button
-                            type="submit"
-                            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg transition duration-200 mt-6"
-                        >
-                            ログイン
-                        </button>
-                    </form>
-
-                    <!-- アカウント発行は管理者が行う方針のため、公開の新規登録リンクは無し -->
-                    <p class="text-center text-sm text-gray-500 mt-6">
-                        アカウントが必要な場合は管理者にお問い合わせください
-                    </p>
-                </div>
-
-                <!-- フッター -->
-                <p class="text-center text-xs text-gray-500 mt-8">
-                    © 2026 Carroo. All rights reserved.
-                </p>
-            </div>
-        </div>
-
-        <script>
-            document.getElementById('login-form').addEventListener('submit', async (e) => {
-                e.preventDefault();
-
-                const formData = new FormData(e.target);
-                const errorDiv = document.getElementById('error-message');
-
-                try {
-                    const response = await fetch('/auth/login', {
-                        method: 'POST',
-                        body: formData
-                    });
-
-                    const data = await response.json();
-
-                    if (response.ok) {
-                        // ログイン成功 → ダッシュボードにリダイレクト
-                        window.location.href = '/dashboard/';
-                    } else {
-                        // エラー表示
-                        errorDiv.textContent = data.detail || 'ログインに失敗しました';
-                        errorDiv.classList.remove('hidden');
-                    }
-                } catch (error) {
-                    errorDiv.textContent = 'エラーが発生しました: ' + error.message;
-                    errorDiv.classList.remove('hidden');
-                }
-            });
-        </script>
-    </body>
-    </html>
-    """
+    from app.ui_shell import brand_page
+    inner = """
+  <div class="panel">
+    <h2>ログイン</h2>
+    <div id="error-message" class="err"></div>
+    <form id="login-form">
+      <div class="field">
+        <label class="fl">ユーザー名</label>
+        <input type="text" name="username" placeholder="ユーザー名を入力" required>
+      </div>
+      <div class="field">
+        <label class="fl">パスワード</label>
+        <input type="password" name="password" autocomplete="current-password" placeholder="パスワードを入力" required>
+      </div>
+      <button type="submit" class="btn-primary">ログイン</button>
+    </form>
+    <p class="hint">アカウントが必要な場合は管理者にお問い合わせください</p>
+  </div>
+  <script>
+    document.getElementById('login-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorDiv = document.getElementById('error-message');
+      try {
+        const response = await fetch('/auth/login', { method: 'POST', body: new FormData(e.target) });
+        const data = await response.json();
+        if (response.ok) { window.location.href = '/dashboard/'; }
+        else { errorDiv.textContent = data.detail || 'ログインに失敗しました'; errorDiv.classList.add('show'); }
+      } catch (error) {
+        errorDiv.textContent = 'エラーが発生しました: ' + error.message; errorDiv.classList.add('show');
+      }
+    });
+  </script>"""
+    return brand_page(title="ログイン", inner=inner)
 
 @router.get("/register")
 async def register_page():

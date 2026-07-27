@@ -211,24 +211,15 @@ async def startup_event():
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
-    return """
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Carroo</title>
-        <link rel="stylesheet" href="/static/tailwind.css">
-    </head>
-    <body class="bg-gray-50">
-        <div class="min-h-screen flex items-center justify-center">
-            <div class="bg-white p-8 rounded-lg shadow-md">
-                <h1 class="text-3xl font-bold text-center mb-4">Carroo</h1>
-                <p class="text-gray-600 text-center mb-6">物流案件一括一元投稿アプリ</p>
-                <a href="/auth/login" class="block bg-blue-500 text-white py-2 px-4 rounded text-center hover:bg-blue-600">ログイン</a>
-            </div>
-        </div>
-    </body>
-    </html>
-    """
+    from app.ui_shell import brand_page
+    inner = """
+  <div class="panel">
+    <p style="color:var(--muted);font-size:14px;margin:0 0 18px;text-align:center">
+      荷物・空車を トラボックス と WebKit へまとめて投稿。<br>ログインして始めましょう。</p>
+    <a href="/auth/login" class="linkbtn">ログイン</a>
+    <p class="hint">アカウントが必要な場合は管理者にお問い合わせください</p>
+  </div>"""
+    return brand_page(title="ホーム", inner=inner)
 
 @app.get("/health")
 async def health_check():

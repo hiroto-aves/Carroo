@@ -188,6 +188,64 @@ def _sidebar(active, user):
 SHELL_CLOSE = "</div></main></div></body></html>"
 
 
+# ---- 未ログイン用ブランドページ（ホーム/ログイン）。本体と同じ意匠・ライト/ダーク対応 ----
+_BRAND_CSS = """
+*{box-sizing:border-box}html,body{margin:0;height:100%}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.55;
+ letter-spacing:-.006em;-webkit-font-smoothing:antialiased;
+ background-image:radial-gradient(120% 90% at 50% -10%,var(--signal-wash) 0%,transparent 55%)}
+.auth{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:32px 20px}
+.auth-in{width:100%;max-width:396px}
+.brand{display:flex;flex-direction:column;align-items:center;text-align:center;margin-bottom:26px}
+.cbadge{width:56px;height:56px;border-radius:16px;background:var(--rail);display:grid;place-items:center;
+ box-shadow:var(--shadow);margin-bottom:14px}
+.cbadge svg{height:30px;width:auto;transform:translateY(1px)}
+.wordmark{font-weight:680;letter-spacing:-.05em;font-size:32px;line-height:1;color:var(--ink)}
+.tagline{color:var(--muted);font-size:13.5px;margin-top:8px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);padding:28px}
+.panel h2{font-size:17px;margin:0 0 18px;letter-spacing:-.02em}
+label.fl{display:block;font-size:12.5px;color:var(--faint);margin-bottom:6px;font-weight:600}
+.field{margin-bottom:16px}
+.auth input{width:100%;font-size:15px;color:var(--ink);background:var(--surface);
+ border:1px solid var(--line);border-radius:11px;padding:11px 13px;font-family:var(--sans)}
+.auth input:focus{outline:none;border-color:var(--signal);box-shadow:0 0 0 3px var(--signal-wash)}
+.btn-primary{width:100%;border:0;border-radius:11px;background:var(--signal);color:#fff;font-weight:660;
+ font-size:14.5px;padding:12px;cursor:pointer;margin-top:6px;transition:filter .12s}
+.btn-primary:hover{filter:brightness(1.06)}
+.btn-primary:focus-visible{outline:2px solid var(--signal-ink);outline-offset:2px}
+.err{display:none;margin-bottom:16px;padding:11px 13px;border-radius:11px;font-size:13px;
+ background:var(--amber-wash);color:var(--amber);border:1px solid var(--line-soft)}
+.err.show{display:block}
+.hint{text-align:center;color:var(--faint);font-size:12.5px;margin:18px 0 0}
+.foot{text-align:center;color:var(--faint);font-size:11.5px;margin-top:22px;letter-spacing:.02em}
+.linkbtn{display:block;text-align:center;border-radius:11px;background:var(--signal);color:#fff;
+ font-weight:660;font-size:14.5px;padding:12px;margin-top:4px}
+.linkbtn:hover{filter:brightness(1.06)}
+"""
+
+
+def brand_page(*, title, inner, user=None) -> str:
+    """未ログインのブランドページ（ホーム・ログイン）の共通シェル。
+    本体のデザイントークン＋統一Cマークで、ライト/ダークに追従する。"""
+    _theme = (user or {}).get("theme") or "auto"
+    _dt = f' data-theme="{_theme}"' if _theme in ("light", "dark") else ""
+    return f"""<!DOCTYPE html><html lang="ja"{_dt}><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Carroo — {title}</title>
+<style>{CSS}</style><style>{_BRAND_CSS}</style></head>
+<body>{SVG_DEFS}
+<div class="auth"><div class="auth-in">
+  <div class="brand">
+    <span class="cbadge"><svg viewBox="12 12 69 77"><use href="#cmarkC"/></svg></span>
+    <div class="wordmark">Carroo</div>
+    <div class="tagline">物流案件を Trabox・WebKit へ一括投稿</div>
+  </div>
+  {inner}
+  <div class="foot">© 2026 Carroo</div>
+</div></div>
+</body></html>"""
+
+
 def shell_open(*, title, active, user=None, page_title=None, crumb="Carroo",
                topbar_center="", topbar_actions="", extra_head="") -> str:
     """シェルの先頭〜 <div class="body"> 開きまでを返す（大きな既存テンプレの包み込み用）。"""
