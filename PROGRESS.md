@@ -16,6 +16,15 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-27 都道府県マルチ選択ピッカー（Trabox準拠・地図なし）（rev carroo-00052-z7w）
+- `app/widgets.py` 新設：`pref_picker(field, selected_csv)` ＋ `PREF_PICKER_JS`（ページに1回）。
+  チップ表示・ポップオーバー・地域一括（11地域チェック＝北海道/東北/北関東/首都圏/甲信越/北陸/東海/近畿/中国/四国/九州沖縄、
+  indeterminate対応）・全国選択/全解除/確定・都道府県トグル(緑)・短縮名表示。
+- 空車を出す/空車定期登録の「その他対応可能行先・空車地」を text入力からこのピッカーに置換。
+  値は従来同様フルネームのカンマ区切りを hidden input に格納＝バックエンド無変更。
+- ライト/ダーク対応、strict CSP対応（onclick不使用・スクリプトは自動nonce）。CSSは ui_shell に集約。
+- 地理的な日本地図配置は不採用（地域グループ表示。ユーザー合意済み）。
+
 ### 🆕 2026-07-27 ホーム/ログイン刷新＋ロゴ/ファビコン統一＋日時入力ダーク対応（rev carroo-00051-smf）
 - **ホーム(/)・ログイン画面を本体意匠に統一**：未ログイン用共通シェル `ui_shell.brand_page()` を新設。
   サイドバーと同じ「Cマーク＋arroo」ロックアップ（明背景用に `cmarkInk`＝stroke currentColor＋緑ノードを追加）、
