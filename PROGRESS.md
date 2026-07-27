@@ -16,6 +16,14 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-27 DLQ（失敗タスク）をユーザー単位に＋常設導線（rev carroo-00063-xkd）
+- **失敗タスクを投稿者本人に返す**：dead_letter に user_id 保持。`/failed/`（routers/failed.py）で本人が自分の
+  失敗のみ閲覧＋再投稿/解決（管理者は全員分）。retry=元payloadをキュー再投入→resolved、resolve=手動解決。権限チェックつき。
+- **アラートメールを本人宛に**（tasks._alert_dead_letter：投稿者の contact_email 優先→無ければ管理者）。本文に /failed/ 直リンク（APP_BASE_URL）。
+- **導線**：サイドバー「見る・追う」に「失敗した投稿」(i-alert) 常設／ダッシュボード上部に本人の失敗件数バナー／管理者はユーザー管理からも（件数バッジ）。
+- store: list_dead_letters(user_id)/count_dead_letters(user_id)/get_dead_letter/resolve_dead_letter。admin.py の DLQ ルートは failed.py へ移設。
+- 本番 APP_BASE_URL=https://carroo-ep6pevwu4a-an.a.run.app を設定。
+
 ### 🆕 2026-07-27 定期の初期登録回数＋ヘルプ＋掲載取下げ削除＋履歴3種（rev carroo-00059-stp）
 - **初期登録回数**（空車定期登録フォーム）：作成時に直近N回分の該当日を lead無視で即materialize＝即投稿。
   `scheduler_service.materialize_schedule_initial(sid,count)`（_materialize_date に分解）。0なら従来のlead窓内のみ。
