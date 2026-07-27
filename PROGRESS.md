@@ -16,6 +16,16 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-27 課金設計確定＋履歴から再登録（Pro機能）（rev carroo-00065-5qp）
+- **課金・プラン設計 確定**：`docs/課金・プラン設計_ver1.0.html`（Artifact: https://claude.ai/code/artifact/b3348285-5865-4389-a43d-b5e17dee268f ）。
+  Standard ¥4,000＋¥2,000/人 / Pro ¥5,000＋¥3,000/人（基本料に1人目含む＝Stripeシート quantity=有効users−1）。
+  無料プラン無し・7日トライアル・**Stripeカードのみ**。Pro=空車定期登録＋複数日程＋履歴から再登録。実装は Stage1 の上に載せる（未着手）。
+- **履歴から再登録（Pro機能・実装済み）**：荷物/空車の履歴各行に「再登録」ボタン（`FEATURE_REREGISTER` ゲート）。
+  `/cases/register?from=ID`・`/trucks/register?from=ID` で過去内容をフォームにプリフィル（日付は除く）。
+  共通 `widgets.PREFILL_JS`（window.__prefill を各項目へ流し込み。pref→city 非同期セレクト＋pref_picker のチップにも対応、
+  pref_picker に pprefresh フック追加）。cases は `_case_prefill`（pick/drop を PREFECTURES/TraboxFormMapper.extract_city で分解）。
+  本番 env FEATURE_REREGISTER=on。
+
 ### 🆕 2026-07-27 DLQ（失敗タスク）をユーザー単位に＋常設導線（rev carroo-00063-xkd）
 - **失敗タスクを投稿者本人に返す**：dead_letter に user_id 保持。`/failed/`（routers/failed.py）で本人が自分の
   失敗のみ閲覧＋再投稿/解決（管理者は全員分）。retry=元payloadをキュー再投入→resolved、resolve=手動解決。権限チェックつき。
