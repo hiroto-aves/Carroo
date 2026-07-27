@@ -90,7 +90,10 @@ async def register_page(current_user: dict = Depends(_require_feature)):
       <div><label class="block text-sm mb-1">最低運賃(税別円)</label>
         <input name="min_freight" type="number" placeholder="任意" class="border rounded px-3 py-2 w-full"></div>
     </div>
-    <div class="grid md:grid-cols-3 gap-4">
+    <div class="grid md:grid-cols-4 gap-4">
+      <div><label class="block text-sm mb-1">初期登録回数</label>
+        <input name="initial_count" type="number" value="0" min="0" max="12" class="border rounded px-3 py-2 w-full">
+        <p class="text-xs text-gray-500 mt-1">作成時に直近この回数分を即投稿（0=しない）</p></div>
       <div><label class="block text-sm mb-1">何日前に投稿</label>
         <input name="lead_days" type="number" value="3" min="0" max="14" class="border rounded px-3 py-2 w-full"></div>
       <div><label class="block text-sm mb-1">有効開始日</label>
@@ -202,11 +205,18 @@ async def create_schedule(
     }
     sid = store.create_schedule(current_user["id"], data,
                                 tenant_id=current_tenant_id(current_user))
-    # 作成直後に lead_days 窓内の近い空車日を即マテリアライズ（＝即投稿）。
-    # これで「ルールを作ったのに何も投稿されない」体感を解消。窓外なら翌朝の日次待ち。
-    from app.services.scheduler_service import materialize_schedule
+    # 初期登録回数: >0 なら lead 無視で直近その回数分を即投稿。0 なら lead_days 窓内のみ即投稿。
     try:
-        immediate = materialize_schedule(sid)
+        initial_count = int(form.get("initial_count") or 0)
+    except ValueError:
+        initial_count = 0
+    from app.services.scheduler_service import (
+        materialize_schedule, materialize_schedule_initial)
+    try:
+        if initial_count > 0:
+            immediate = materialize_schedule_initial(sid, initial_count)
+        else:
+            immediate = materialize_schedule(sid)
     except Exception as e:
         logger.error(f"作成直後の即時マテリアライズ失敗 schedule_id={sid}: {e}")
         immediate = []
