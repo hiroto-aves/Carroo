@@ -110,6 +110,39 @@ def record_dead_letter(kind: str, action: str, payload: Dict[str, Any],
     return did
 
 
+def list_dead_letters(include_resolved: bool = False) -> List[Dict[str, Any]]:
+    """DLQ（確定失敗タスク）の一覧。既定は未解決のみ。新しい順。"""
+    out = []
+    for snap in _db().collection("dead_letter").stream():
+        d = snap.to_dict() or {}
+        d["id"] = int(snap.id)
+        if include_resolved or not d.get("resolved"):
+            out.append(d)
+    out.sort(key=lambda r: r["id"], reverse=True)
+    return out
+
+
+def get_dead_letter(did: int) -> Optional[Dict[str, Any]]:
+    snap = _db().collection("dead_letter").document(str(did)).get()
+    if not snap.exists:
+        return None
+    d = snap.to_dict() or {}
+    d["id"] = int(snap.id)
+    return d
+
+
+def resolve_dead_letter(did: int, note: str = None) -> None:
+    """DLQ項目を解決済みにする（再投稿成功／手動対応済みなど）。"""
+    _db().collection("dead_letter").document(str(did)).update(
+        {"resolved": True, "resolved_at": _now(), "resolve_note": note})
+
+
+def count_dead_letters() -> int:
+    """未解決のDLQ件数（バッジ用）。"""
+    return sum(1 for s in _db().collection("dead_letter").stream()
+               if not (s.to_dict() or {}).get("resolved"))
+
+
 def _next_id(name: str) -> int:
     """counters コレクションでトランザクション採番（連番の整数ID）"""
     from google.cloud import firestore
