@@ -218,28 +218,51 @@ def user_exists(username: str, email: str) -> bool:
 
 
 def create_user(username: str, email: str, hashed_password: str,
-                is_admin: bool = False) -> int:
+                is_admin: bool = False, tenant_id: str = None,
+                role: str = None, is_super: bool = False) -> int:
     uid = _next_id("users")
+    role = role or ("owner" if is_admin else "member")
     _db().collection("users").document(str(uid)).set({
         "username": username, "email": email,
         "hashed_password": hashed_password,
-        "is_admin": bool(is_admin), "created_at": _now(),
+        "is_admin": bool(is_admin), "role": role, "is_super": bool(is_super),
+        "tenant_id": tenant_id, "created_at": _now(),
     })
+    if tenant_id:
+        sync_tenant_seats(tenant_id)
     return uid
 
 
-def list_users() -> List[Dict[str, Any]]:
+def list_users(tenant_id=None) -> List[Dict[str, Any]]:
+    """ユーザー一覧。tenant_id 指定でそのテナントに限定（None=全件/super）。"""
     out = []
     for snap in _db().collection("users").stream():
         d = snap.to_dict()
         d["id"] = int(snap.id)
+        if tenant_id is not None and (d.get("tenant_id") or "takeuchi") != tenant_id:
+            continue
         out.append(d)
     out.sort(key=lambda u: u["id"])
     return out
 
 
 def delete_user(user_id: int) -> None:
+    snap = _db().collection("users").document(str(user_id)).get()
+    tid = (snap.to_dict() or {}).get("tenant_id") if snap.exists else None
     _db().collection("users").document(str(user_id)).delete()
+    if tid:
+        sync_tenant_seats(tid)
+
+
+def sync_tenant_seats(tenant_id: str) -> int:
+    """テナントの seats を有効ユーザー数に同期し、その値を返す（課金の基礎値）。"""
+    n = sum(1 for _ in _db().collection("users")
+            .where("tenant_id", "==", tenant_id).stream())
+    try:
+        update_tenant(tenant_id, {"seats": n})
+    except Exception as e:
+        logger.warning(f"[Seats] {tenant_id} 同期失敗: {e}")
+    return n
 
 
 def set_user_password(user_id: int, hashed_password: str) -> None:

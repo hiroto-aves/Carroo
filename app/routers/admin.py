@@ -46,28 +46,44 @@ async def users_page(current_user: dict = Depends(get_current_user)):
     _require_admin(current_user)
     from app.db import store
     from app.ui_shell import render_page, esc
-    users = [
-        (u["id"], u["username"], u.get("email"), u.get("is_admin"),
-         u.get("created_at"), store.count_user_cases(u["id"]))
-        for u in store.list_users()
-    ]
+    # owner は自テナントのみ／運営者(super)は全ユーザー
+    _tid = None if current_user.get("is_super") else current_user.get("tenant_id")
+    users = store.list_users(tenant_id=_tid)
 
     rows = ""
-    for uid, uname, email, is_admin, created, ncases in users:
+    for u in users:
+        uid = u["id"]
+        is_admin = u.get("is_admin")
         badge = ('<span class="chip met" style="margin-left:6px">管理者</span>'
                  if is_admin else '<span class="chip off" style="margin-left:6px">一般</span>')
+        sup = ('<span class="chip live" style="margin-left:4px">運営</span>'
+               if u.get("is_super") else "")
+        ncases = store.count_user_cases(uid)
+        # 自分自身・運営者は削除不可。運営者(super)は誰でも削除可（自分以外）。
+        can_del = uid != current_user["id"] and (current_user.get("is_super") or not u.get("is_super"))
+        del_btn = (f'<button class="btn danger" style="padding:4px 11px;font-size:12px" '
+                   f'data-act="delUser" data-args=\'[{uid},"{esc(u.get("username",""))}"]\'>削除</button>'
+                   if can_del else '<span class="hl" style="font-size:12px">—</span>')
         rows += f"""
         <tr>
           <td class="mono" style="color:var(--faint)">{uid}</td>
-          <td style="font-weight:600">{esc(uname)}{badge}</td>
-          <td style="color:var(--muted)">{esc(email)}</td>
+          <td style="font-weight:600">{esc(u.get("username",""))}{badge}{sup}</td>
+          <td style="color:var(--muted)">{esc(u.get("email"))}</td>
           <td class="num" style="text-align:right">{ncases} 件</td>
-          <td style="color:var(--faint)">{esc(created)}</td>
+          <td style="color:var(--faint)">{esc(u.get("created_at"))}</td>
+          <td style="text-align:right">{del_btn}</td>
         </tr>"""
+
+    # 課金の基礎: 有効ユーザー数（2人目以降が従量課金）
+    seat_note = ""
+    if not current_user.get("is_super"):
+        n = len(users)
+        seat_note = (f'<span style="color:var(--faint)"> ・ 現在のユーザー数 <b style="color:var(--ink)">{n}</b>'
+                     f'（1人目は基本料に含む／2人目以降が従量課金）</span>')
 
     body = f"""
   <h1 class="pt">ユーザー管理</h1>
-  <p class="hl" style="margin:0 0 18px">社内ユーザーの一覧と、新規ユーザーの発行。
+  <p class="hl" style="margin:0 0 18px">社内ユーザーの一覧と、新規ユーザーの発行。{seat_note}
     · <a href="/admin/maintenance" style="color:var(--signal-ink);font-weight:600">🧹 データ整理</a>
     · <a href="/failed/" style="color:var(--signal-ink);font-weight:600">☠️ 失敗した投稿{_dlq_badge()}</a></p>
 
@@ -75,11 +91,18 @@ async def users_page(current_user: dict = Depends(get_current_user)):
     <table>
       <thead><tr>
         <th>ID</th><th>ユーザー名</th><th>メール</th>
-        <th style="text-align:right">登録案件</th><th>作成日</th>
+        <th style="text-align:right">登録案件</th><th>作成日</th><th></th>
       </tr></thead>
       <tbody>{rows}</tbody>
     </table>
   </div>
+  <script>
+  async function delUser(id, name){{
+    if(!confirm('ユーザー「'+name+'」を削除しますか？（このユーザーはログインできなくなります。登録した案件は残ります）'))return;
+    var r=await fetch('/admin/users/'+id+'/delete',{{method:'POST'}});
+    if(r.ok) location.reload(); else {{ var j=await r.json(); alert('エラー: '+(j.detail||'失敗')); }}
+  }}
+  </script>
 
   <style>.uform input{{padding:12px 15px}}.uform input::placeholder{{color:var(--faint)}}</style>
   <div class="card" style="padding:22px;max-width:680px">
@@ -120,13 +143,43 @@ async def create_user(
             status_code=400,
             detail="同じユーザー名またはメールが既に存在します",
         )
+    # 発行先テナント＝発行者のテナント（運営者は既定テナントに発行）。super は付与しない。
+    tenant_id = current_user.get("tenant_id") or "takeuchi"
+    make_admin = (is_admin == "yes")
     store.create_user(username, email, hash_password(password),
-                      is_admin=(is_admin == "yes"))
+                      is_admin=make_admin, tenant_id=tenant_id,
+                      role=("owner" if make_admin else "member"), is_super=False)
     from app.utils.audit import audit
-    audit("user_create", new_username=username, is_admin=(is_admin == "yes"),
-          by=current_user.get("username"))
+    audit("user_create", new_username=username, is_admin=make_admin,
+          tenant_id=tenant_id, by=current_user.get("username"))
     logger.info(f"[Admin] ユーザー発行: {username} (by {current_user['username']})")
     return RedirectResponse(url="/admin/users", status_code=302)
+
+
+@router.post("/users/{target_id}/delete")
+async def delete_user_route(target_id: int,
+                            current_user: dict = Depends(get_current_user)):
+    """ユーザー削除（owner=自テナントのみ・自分と運営者は不可／super=自分以外可）。
+    削除後にテナントの seats を再同期（課金反映）。"""
+    _require_admin(current_user)
+    from app.db import store
+    from app.utils.audit import audit
+    if target_id == current_user["id"]:
+        raise HTTPException(400, "自分自身は削除できません")
+    target = store.get_user_by_id(target_id)
+    if not target:
+        raise HTTPException(404, "ユーザーが見つかりません")
+    is_super = current_user.get("is_super")
+    if not is_super:
+        # owner: 自テナントのみ・運営者ユーザーは消せない
+        if (target.get("tenant_id") or "takeuchi") != current_user.get("tenant_id"):
+            raise HTTPException(403, "他テナントのユーザーは削除できません")
+        if target.get("is_super"):
+            raise HTTPException(403, "運営者ユーザーは削除できません")
+    store.delete_user(target_id)
+    audit("user_delete", target_id=target_id,
+          target_username=target.get("username"), by=current_user.get("username"))
+    return {"status": "deleted"}
 
 
 # ============ データ整理（テストダミー案件の完全削除）============
