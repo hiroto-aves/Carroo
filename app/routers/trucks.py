@@ -158,6 +158,7 @@ document.getElementById('f').addEventListener('submit', async (e) => {{
   const j = await r.json();
   msg.className = 'mb-4 p-3 rounded-lg ' + (r.ok ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700');
   msg.textContent = r.ok ? ('✅ 空車ID ' + j.truck_id + ' をキューに追加しました。数分後にメール通知が届きます。') : ('エラー: ' + (j.detail||'失敗'));
+  if (!r.ok) window.__idle(e.target.__busyBtn);
   msg.classList.remove('hidden');
   if (r.ok) setTimeout(()=>location.href='/trucks/', 1500);
 }});

@@ -80,7 +80,16 @@ _PWA_HEAD = (
     'document.addEventListener("click",function(e){var el=e.target.closest("[data-act]");'
     'if(!el)return;var f=window[el.getAttribute("data-act")];if(typeof f!=="function")return;'
     'e.preventDefault();var a=[];try{a=JSON.parse(el.getAttribute("data-args")||"[]");}catch(_){}'
-    'f.apply(null,a);});</script>'
+    'f.apply(null,a);});'
+    # 送信ボタンの即時フィードバック（押した瞬間にスピナー＋無効化。二度押し防止）
+    'window.__busy=function(b){if(!b||b.dataset.busy)return;b.dataset.busy="1";b.dataset.lbl=b.innerHTML;'
+    'b.disabled=true;b.classList.add("is-busy");'
+    'b.innerHTML=\'<span class="spin"></span>\'+(b.getAttribute("data-busy-text")||"処理中…");};'
+    'window.__idle=function(b){if(!b||!b.dataset.busy)return;b.disabled=false;b.classList.remove("is-busy");'
+    'b.innerHTML=b.dataset.lbl;delete b.dataset.busy;};'
+    'document.addEventListener("submit",function(e){var f=e.target;if(!f||f.tagName!=="FORM")return;'
+    'var b=f.querySelector(\'button[type=submit],input[type=submit],button:not([type])\');'
+    'if(b){f.__busyBtn=b;window.__busy(b);}},true);</script>'
 )
 
 

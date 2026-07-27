@@ -148,6 +148,7 @@ document.getElementById('f').addEventListener('submit', async (e)=>{{
   if(r.ok){{ const now=j.posted_now>0?('・今すぐ'+j.posted_now+'件を投稿しました'):('・直近の投稿予定は '+(j.next||'-')+'（当日朝に自動投稿）');
     msg.textContent='✅ ルール作成: '+j.describe+now; }}
   else msg.textContent='エラー: '+(j.detail||'失敗');
+  if(!r.ok) window.__idle(e.target.__busyBtn);
   msg.classList.remove('hidden'); if(r.ok) setTimeout(()=>location.href='/schedules/',2200);
 }});
 </script>""" + PREF_PICKER_JS

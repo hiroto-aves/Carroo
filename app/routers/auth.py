@@ -77,9 +77,9 @@ async def login_page():
         const response = await fetch('/auth/login', { method: 'POST', body: new FormData(e.target) });
         const data = await response.json();
         if (response.ok) { window.location.href = '/dashboard/'; }
-        else { errorDiv.textContent = data.detail || 'ログインに失敗しました'; errorDiv.classList.add('show'); }
+        else { errorDiv.textContent = data.detail || 'ログインに失敗しました'; errorDiv.classList.add('show'); window.__idle(e.target.__busyBtn); }
       } catch (error) {
-        errorDiv.textContent = 'エラーが発生しました: ' + error.message; errorDiv.classList.add('show');
+        errorDiv.textContent = 'エラーが発生しました: ' + error.message; errorDiv.classList.add('show'); window.__idle(e.target.__busyBtn);
       }
     });
   </script>"""

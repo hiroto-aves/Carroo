@@ -147,6 +147,12 @@ h1.pt{font-size:26px;margin:0 0 4px;letter-spacing:-.03em}
 .track .d.met{border-color:var(--signal);background:var(--signal)}
 .track .node{position:absolute;top:50%;width:8px;height:8px;border-radius:50%;background:var(--surface);border:2px solid var(--signal);transform:translate(-50%,-50%);box-shadow:0 0 0 4px var(--signal-wash)}
 .perseg a{text-decoration:none}
+/* 送信ボタンのスピナー（押下即時フィードバック・二度押し防止） */
+.spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);
+ border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px;margin-right:7px}
+@keyframes spin{to{transform:rotate(360deg)}}
+button.is-busy,.is-busy{opacity:.9;cursor:progress}
+@media(prefers-reduced-motion:reduce){.spin{animation:none}}
 /* ==== 都道府県マルチ選択ピッカー（Trabox準拠） ==== */
 .prefpick{position:relative}
 .pp-box{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:42px;padding:7px 10px;

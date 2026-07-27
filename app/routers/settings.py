@@ -204,10 +204,12 @@ def get_settings_html(
                     else if (d && typeof d === 'object') d = JSON.stringify(d);
                     errorDiv.textContent = d || '保存に失敗しました';
                     errorDiv.classList.remove('hidden');
+                    window.__idle(e.target.__busyBtn);
                 }}
             }} catch (error) {{
                 errorDiv.textContent = 'エラーが発生しました: ' + error.message;
                 errorDiv.classList.remove('hidden');
+                window.__idle(e.target.__busyBtn);
             }}
         }});
 
