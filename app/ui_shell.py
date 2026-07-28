@@ -219,17 +219,21 @@ def _sidebar(active, user):
     is_admin = user.get("is_admin") if user else False
     uname = esc((user or {}).get("username", "") or "ゲスト")
     initial = esc(((user or {}).get("username", "") or "C")[0])
-    recurring = (_nav_item(active, "schedules", "/schedules/", "i-repeat", "空車定期登録")
-                 if feature_enabled("recurring") else "")
-    users = (_nav_item(active, "users", "/admin/users", "i-users", "ユーザー管理")
-             if is_admin else "")
-    ops = (_nav_item(active, "ops", "/ops/", "i-ops", "運営コンソール")
-           if (user and user.get("is_super")) else "")
-    billing_nav = (_nav_item(active, "billing", "/billing/", "i-card", "お支払い")
-                   if (user and (user.get("role") == "owner" or user.get("is_super"))) else "")
-    return f"""<aside class="rail">
-  <div class="top"><a class="logotype" href="/dashboard/"><svg class="logoC" viewBox="12 12 69 77"><use href="#cmarkC"/></svg><span class="rest">arroo</span></a><button class="railtoggle" type="button" data-act="cRailToggle" aria-label="サイドバーを折り畳む"><svg><use href="#i-chev"/></svg></button></div>
-  <nav>
+    is_super = bool(user and user.get("is_super"))
+    home = "/ops/" if is_super else "/dashboard/"
+
+    if is_super:
+        # 運営者は運営機能のみ（荷物/空車を出す等のテナント業務は非表示）
+        nav = f'{_nav_item(active,"ops","/ops/","i-ops","運営コンソール")}'
+        foot_extra = ""
+    else:
+        recurring = (_nav_item(active, "schedules", "/schedules/", "i-repeat", "空車定期登録")
+                     if feature_enabled("recurring", user) else "")
+        users = (_nav_item(active, "users", "/admin/users", "i-users", "ユーザー管理")
+                 if is_admin else "")
+        billing_nav = (_nav_item(active, "billing", "/billing/", "i-card", "お支払い")
+                       if (user and user.get("role") == "owner") else "")
+        nav = f"""
     {_nav_item(active,"dashboard","/dashboard/","i-dash","ダッシュボード")}
     <div class="group">出す</div>
     {_nav_item(active,"load_new","/cases/register","i-load","荷物を出す")}
@@ -238,13 +242,15 @@ def _sidebar(active, user):
     {_nav_item(active,"load_list","/dashboard/cases","i-list","荷物一覧")}
     {_nav_item(active,"truck_list","/trucks/","i-truck","空車一覧")}
     {recurring}
-    {_nav_item(active,"failed","/failed/","i-alert","失敗した投稿")}
-  </nav>
+    {_nav_item(active,"failed","/failed/","i-alert","失敗した投稿")}"""
+        foot_extra = f"{billing_nav}{users}"
+
+    return f"""<aside class="rail">
+  <div class="top"><a class="logotype" href="{home}"><svg class="logoC" viewBox="12 12 69 77"><use href="#cmarkC"/></svg><span class="rest">arroo</span></a><button class="railtoggle" type="button" data-act="cRailToggle" aria-label="サイドバーを折り畳む"><svg><use href="#i-chev"/></svg></button></div>
+  <nav>{nav}</nav>
   <div class="foot">
     {_nav_item(active,"settings","/settings/","i-gear","設定")}
-    {billing_nav}
-    {users}
-    {ops}
+    {foot_extra}
     <a class="nav" href="/auth/logout" data-tip="ログアウト"><svg><use href="#i-out"/></svg><span class="lbl">ログアウト</span></a>
     <a class="who" href="/auth/me" data-tip="アカウント"><span class="ava">{initial}</span><div><div class="nm">{uname}</div><div class="rl">アカウント設定</div></div></a>
   </div>

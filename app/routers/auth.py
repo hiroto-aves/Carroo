@@ -78,7 +78,7 @@ async def login_page():
       try {
         const response = await fetch('/auth/login', { method: 'POST', body: new FormData(e.target) });
         const data = await response.json();
-        if (response.ok) { window.location.href = '/dashboard/'; }
+        if (response.ok) { window.location.href = data.redirect || '/dashboard/'; }
         else { errorDiv.textContent = data.detail || 'ログインに失敗しました'; errorDiv.classList.add('show'); window.__idle(e.target.__busyBtn); }
       } catch (error) {
         errorDiv.textContent = 'エラーが発生しました: ' + error.message; errorDiv.classList.add('show'); window.__idle(e.target.__busyBtn);
@@ -286,8 +286,11 @@ async def login(request: Request, username: str = Form(...), password: str = For
     access_token, max_age = issue_access_token(user["id"], remember=True)
     set_auth_cookie(response, access_token, max_age)
 
+    # 運営者(super)は運営コンソールへ、それ以外はダッシュボードへ
+    redirect = "/ops/" if user.get("is_super") else "/dashboard/"
     return {
         "status": "success",
+        "redirect": redirect,
         "user": {
             "id": user["id"],
             "username": user["username"],
