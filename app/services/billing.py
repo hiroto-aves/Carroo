@@ -32,8 +32,12 @@ def _stripe():
         return None
     try:
         import stripe
-    except Exception:
-        logger.error("[Billing] stripe パッケージが未インストール")
+        # stripe 7.x は `import stripe` だけだと checkout/billing_portal サブモジュールが
+        # None のことがある。使うサブモジュールを明示的にロードする。
+        import stripe.checkout  # noqa: F401
+        import stripe.billing_portal  # noqa: F401
+    except Exception as e:
+        logger.error(f"[Billing] stripe のロード失敗: {e}")
         return None
     stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
     return stripe
