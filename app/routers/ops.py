@@ -27,7 +27,7 @@ def _require_super(current_user: dict = Depends(get_current_user)) -> dict:
     return current_user
 
 
-def _users_panel() -> str:
+def _users_panel(current_user: dict) -> str:
     """全ユーザー一覧＋機能の個別付与＋ユーザー単位のデータ閲覧（運営者専用）。"""
     users = store.list_users()  # 全テナント横断
     rows = ""
@@ -60,7 +60,10 @@ def _users_panel() -> str:
           f'<td>{sup_toggle}</td>'
           f'<td style="text-align:right;white-space:nowrap">'
           f'<a href="/dashboard/cases?q_user={uid}" style="color:var(--signal-ink);font-size:12px">案件</a>'
-          f'</td></tr>')
+          + (f' <button class="btn danger" style="padding:3px 9px;font-size:11px;margin-left:8px" '
+             f'data-act="opsDelUser" data-args=\'[{uid},"{esc(u.get("username",""))}"]\'>削除</button>'
+             if uid != current_user["id"] else '')
+          + '</td></tr>')
     if not rows:
         rows = '<tr><td colspan="7" style="text-align:center;color:var(--faint);padding:20px">ユーザーがいません</td></tr>'
     opts_users = "".join(
@@ -132,7 +135,7 @@ async def ops_home(current_user: dict = Depends(_require_super)):
       <th style="text-align:right">シート</th><th>課金状態</th><th>作成日</th></tr></thead>
     <tbody>{rows}</tbody></table></div>
 
-  {_users_panel()}
+  {_users_panel(current_user)}
 
   <div class="card" style="padding:22px;max-width:720px">
     <h2 style="font-size:16px;margin:0 0 4px">新しいテナントを発行</h2>
@@ -150,7 +153,14 @@ async def ops_home(current_user: dict = Depends(_require_super)):
       </div>
       <button type="submit" class="btn" style="margin-top:16px">テナントを発行</button>
     </form>
-  </div>"""
+  </div>
+<script>
+async function opsDelUser(id, name){{
+  if(!confirm('ユーザー「'+name+'」を完全に削除しますか？（ログインできなくなります。取り消せません）'))return;
+  var r=await fetch('/ops/users/'+id+'/delete',{{method:'POST'}});
+  if(r.ok) location.reload(); else {{ var j=await r.json(); alert('エラー: '+(j.detail||'失敗')); }}
+}}
+</script>"""
     return HTMLResponse(render_page(title="運営コンソール", active="ops", body=body,
                                     user=current_user, crumb="Carroo · 運営"))
 
@@ -218,6 +228,21 @@ async def set_user_super_route(user_id: int, value: str = Form("0"),
     audit("user_super_set", target_id=user_id, is_super=make, by=current_user.get("username"))
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/ops/", status_code=302)
+
+
+@router.post("/users/{user_id}/delete")
+async def ops_delete_user(user_id: int, current_user: dict = Depends(_require_super)):
+    """運営者が任意ユーザーを削除（テナント不問）。自分自身は不可。"""
+    from app.utils.audit import audit
+    if user_id == current_user["id"]:
+        raise HTTPException(400, "自分自身は削除できません")
+    target = store.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(404, "ユーザーが見つかりません")
+    store.delete_user(user_id)
+    audit("ops_user_delete", target_id=user_id,
+          target_username=target.get("username"), by=current_user.get("username"))
+    return {"status": "deleted"}
 
 
 @router.post("/users/credentials")
