@@ -5,7 +5,7 @@
 """
 import logging
 
-from fastapi import APIRouter, Depends, Form, HTTPException
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from app.db import store
@@ -17,12 +17,47 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/ops", tags=["ops"])
 
 _PLANS = ["standard", "pro"]
+# 個別付与できる Pro 機能（key, ラベル）
+_GRANTABLE = [("recurring", "空車定期登録"), ("multidate", "複数日程"), ("reregister", "履歴から再登録")]
 
 
 def _require_super(current_user: dict = Depends(get_current_user)) -> dict:
     if not current_user.get("is_super"):
         raise HTTPException(403, "運営コンソールは運営者のみアクセスできます")
     return current_user
+
+
+def _users_panel() -> str:
+    """全ユーザー一覧＋機能の個別付与＋ユーザー単位のデータ閲覧（運営者専用）。"""
+    users = store.list_users()  # 全テナント横断
+    rows = ""
+    for u in users:
+        uid = u["id"]
+        feats = u.get("features") or {}
+        checks = ""
+        for key, label in _GRANTABLE:
+            ck = " checked" if feats.get(key) else ""
+            checks += (f'<label style="display:inline-flex;gap:4px;align-items:center;font-size:12px;margin-right:10px">'
+                       f'<input type="checkbox" name="feat" value="{key}"{ck} style="width:auto"> {esc(label)}</label>')
+        sup = ' <span class="chip live" style="font-size:10px">運営</span>' if u.get("is_super") else ""
+        rows += (
+          f'<tr><td class="mono" style="color:var(--faint)">{uid}</td>'
+          f'<td style="font-weight:600">{esc(u.get("username",""))}{sup}</td>'
+          f'<td style="color:var(--faint)">{esc(u.get("tenant_id") or "-")}</td>'
+          f'<td style="color:var(--faint)">{esc(u.get("role") or "-")}</td>'
+          f'<td><form method="post" action="/ops/users/{uid}/features" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+          f'{checks}<button class="btn ghost" style="padding:4px 10px;font-size:12px" type="submit">保存</button></form></td>'
+          f'<td style="text-align:right;white-space:nowrap">'
+          f'<a href="/dashboard/cases?q_user={uid}" style="color:var(--signal-ink);font-size:12px">案件</a>'
+          f'</td></tr>')
+    if not rows:
+        rows = '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:20px">ユーザーがいません</td></tr>'
+    return f"""
+  <h2 style="font-size:16px;margin:26px 0 4px">ユーザー別 機能付与・データ閲覧（運営者のみ）</h2>
+  <p class="hl" style="margin:0 0 12px;font-size:12.5px">Pro機能を<b>1ユーザー単位で付与</b>できます（テナントのプランに関係なく最優先で有効化）。「案件」でそのユーザーのデータを閲覧。</p>
+  <div class="card" style="overflow-x:auto;margin-bottom:22px"><table>
+    <thead><tr><th>ID</th><th>ユーザー</th><th>テナント</th><th>ロール</th><th>個別機能付与</th><th>データ</th></tr></thead>
+    <tbody>{rows}</tbody></table></div>"""
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -57,6 +92,8 @@ async def ops_home(current_user: dict = Depends(_require_super)):
     <thead><tr><th>テナントID</th><th>会社名</th><th>プラン</th>
       <th style="text-align:right">シート</th><th>課金状態</th><th>作成日</th></tr></thead>
     <tbody>{rows}</tbody></table></div>
+
+  {_users_panel()}
 
   <div class="card" style="padding:22px;max-width:720px">
     <h2 style="font-size:16px;margin:0 0 4px">新しいテナントを発行</h2>
@@ -103,6 +140,24 @@ async def create_tenant_route(
                       is_admin=True, tenant_id=tid, role="owner", is_super=False)
     audit("tenant_create", tenant_id=tid, plan=plan, by=current_user.get("username"))
     logger.info(f"[Ops] テナント発行: {tid} plan={plan}")
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/ops/", status_code=302)
+
+
+@router.post("/users/{user_id}/features")
+async def set_user_features_route(user_id: int, request: Request,
+                                  current_user: dict = Depends(_require_super)):
+    """ユーザー個別の機能付与を保存（チェックした機能を true で付与・他は継承）。"""
+    from app.utils.audit import audit
+    form = await request.form()
+    checked = set(form.getlist("feat"))
+    valid = {k for k, _ in _GRANTABLE}
+    features = {k: True for k in checked if k in valid}
+    if not store.get_user_by_id(user_id):
+        raise HTTPException(404, "ユーザーが見つかりません")
+    store.set_user_features(user_id, features)
+    audit("user_features_set", target_id=user_id, features=list(features.keys()),
+          by=current_user.get("username"))
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/ops/", status_code=302)
 

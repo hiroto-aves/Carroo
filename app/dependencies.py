@@ -61,6 +61,8 @@ async def get_current_user(access_token: Optional[str] = Cookie(None)):
         "role": role,
         "is_super": is_super,
         "tenant_id": tenant_id,
+        # ユーザー個別の機能付与（運営者が /ops で設定）。feature_enabled が最優先で参照。
+        "features": user.get("features") or {},
         "tenant_features": tenant_features,
         "tenant_plan": tenant_plan,
         # 表示設定（ユーザー別）: theme=auto|light|dark, dashboard_mode=freight|truck

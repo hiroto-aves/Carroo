@@ -271,6 +271,11 @@ def count_tenant_users(tenant_id: str) -> int:
                .where("tenant_id", "==", tenant_id).stream())
 
 
+def set_user_features(user_id: int, features: Dict[str, Any]) -> None:
+    """ユーザー個別の機能付与を設定（運営者専用）。feature_enabled が最優先で参照。"""
+    _db().collection("users").document(str(user_id)).update({"features": features or {}})
+
+
 def set_user_password(user_id: int, hashed_password: str) -> None:
     """ハッシュ済みパスワードを更新（旧SHA-256→bcrypt 再ハッシュ移行に使用）。"""
     _db().collection("users").document(str(user_id)).update(
