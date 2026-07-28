@@ -34,7 +34,9 @@ def _csp(nonce: str) -> str:
         "style-src 'self' 'unsafe-inline'; "
         "img-src 'self' data:; font-src 'self' data:; "
         "connect-src 'self'; "
-        "object-src 'none'; base-uri 'self'; form-action 'self'; "
+        "object-src 'none'; base-uri 'self'; "
+        # Stripe Checkout / Customer Portal への外部リダイレクトを許可（課金導線）
+        "form-action 'self' https://checkout.stripe.com https://billing.stripe.com; "
         "frame-ancestors 'none'"
     )
 
