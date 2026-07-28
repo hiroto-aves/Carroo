@@ -76,8 +76,10 @@ def get_or_create_customer(tenant: dict):
     return cust.id
 
 
-def create_checkout_session(tenant: dict, plan: str, seats: int) -> str:
-    """サブスク契約用の Stripe Checkout Session を作り、URL を返す（カードのみ・7日トライアル）。"""
+def create_checkout_session(tenant: dict, plan: str, seat_limit: int) -> str:
+    """サブスク契約用の Checkout Session を作り URL を返す。
+    seat_limit = 契約シート数（=課金対象の人数）。1人目は基本料に含むので
+    シート数量 = seat_limit − 1。"""
     stripe = _stripe()
     if not stripe:
         raise RuntimeError("課金が有効化されていません")
@@ -86,7 +88,7 @@ def create_checkout_session(tenant: dict, plan: str, seats: int) -> str:
         raise RuntimeError(f"{plan} の Price ID が未設定です")
     customer = get_or_create_customer(tenant)
     line_items = [{"price": base_price, "quantity": 1}]
-    extra = _extra_seats(seats)
+    extra = _extra_seats(seat_limit)
     if extra > 0:
         line_items.append({"price": seat_price, "quantity": extra})
     sess = stripe.checkout.Session.create(
@@ -103,6 +105,67 @@ def create_checkout_session(tenant: dict, plan: str, seats: int) -> str:
     return sess.url
 
 
+def _seat_price_ids() -> set:
+    return {os.getenv("STRIPE_PRICE_STANDARD_SEAT"), os.getenv("STRIPE_PRICE_PRO_SEAT")}
+
+
+def _sub_seat_quantity(sub) -> int:
+    seat_ids = _seat_price_ids()
+    for it in sub["items"]["data"]:
+        if it["price"]["id"] in seat_ids:
+            return int(it["quantity"] or 0)
+    return 0
+
+
+def _sub_plan(sub) -> str:
+    for it in sub["items"]["data"]:
+        pid = it["price"]["id"]
+        if pid == os.getenv("STRIPE_PRICE_PRO_BASE"):
+            return "pro"
+        if pid == os.getenv("STRIPE_PRICE_STANDARD_BASE"):
+            return "standard"
+    return (sub.get("metadata") or {}).get("plan")
+
+
+def set_subscription_seats(tenant: dict, seat_limit: int) -> None:
+    """既存サブスクの契約シート数を変更（買い増し/減）。数量 = seat_limit − 1。"""
+    stripe = _stripe()
+    if not stripe:
+        raise RuntimeError("課金が有効化されていません")
+    sub_id = tenant.get("stripe_subscription_id")
+    if not sub_id:
+        raise RuntimeError("契約中のサブスクがありません")
+    _, seat_price = _price_ids(tenant.get("plan") or "standard")
+    extra = _extra_seats(seat_limit)
+    sub = stripe.Subscription.retrieve(sub_id)
+    seat_item = next((it for it in sub["items"]["data"]
+                      if it["price"]["id"] == seat_price), None)
+    if seat_item:
+        stripe.SubscriptionItem.modify(seat_item["id"], quantity=extra,
+                                       proration_behavior="create_prorations")
+    elif extra > 0:
+        stripe.SubscriptionItem.create(subscription=sub_id, price=seat_price,
+                                       quantity=extra,
+                                       proration_behavior="create_prorations")
+    # 反映後の状態を tenant に取り込む
+    refresh_tenant(tenant)
+
+
+def refresh_tenant(tenant: dict) -> dict:
+    """Stripe の最新サブスクを取得して tenant の課金状態を同期し、更新後 dict を返す。"""
+    stripe = _stripe()
+    from app.db import store
+    if not stripe or not tenant.get("stripe_subscription_id"):
+        return tenant
+    try:
+        sub = stripe.Subscription.retrieve(tenant["stripe_subscription_id"])
+        apply_subscription_to_tenant(sub)
+        return store.get_tenant(tenant["id"]) or tenant
+    except Exception as e:
+        logger.error(f"[Billing] refresh_tenant 失敗 {tenant.get('id')}: {e}")
+        return tenant
+
+
 def create_portal_session(tenant: dict) -> str:
     """顧客ポータル（解約・カード変更）のURLを返す。"""
     stripe = _stripe()
@@ -114,33 +177,6 @@ def create_portal_session(tenant: dict) -> str:
     ps = stripe.billing_portal.Session.create(
         customer=cid, return_url=f"{_base_url()}/billing/")
     return ps.url
-
-
-def sync_seats(tenant: dict) -> None:
-    """有効ユーザー数の変化をサブスクのシート数量に反映（日割り精算は Stripe 任せ）。"""
-    stripe = _stripe()
-    if not stripe:
-        return
-    sub_id = tenant.get("stripe_subscription_id")
-    if not sub_id:
-        return
-    plan = tenant.get("plan") or "standard"
-    _, seat_price = _price_ids(plan)
-    extra = _extra_seats(tenant.get("seats", 0))
-    try:
-        sub = stripe.Subscription.retrieve(sub_id)
-        seat_item = next((it for it in sub["items"]["data"]
-                          if it["price"]["id"] == seat_price), None)
-        if seat_item:
-            stripe.SubscriptionItem.modify(seat_item["id"], quantity=extra,
-                                           proration_behavior="create_prorations")
-        elif extra > 0:
-            stripe.SubscriptionItem.create(subscription=sub_id, price=seat_price,
-                                           quantity=extra,
-                                           proration_behavior="create_prorations")
-        logger.info(f"[Billing] seats同期 tenant={tenant['id']} extra={extra}")
-    except Exception as e:
-        logger.error(f"[Billing] seats同期失敗 tenant={tenant.get('id')}: {e}")
 
 
 def verify_and_parse_webhook(payload: bytes, sig_header: str):
@@ -168,13 +204,17 @@ def apply_subscription_to_tenant(subscription: dict) -> None:
     if not tenant_id:
         logger.warning("[Billing] subscription に紐づくテナント不明")
         return
-    plan = (subscription.get("metadata") or {}).get("plan")
+    plan = _sub_plan(subscription)
+    status = subscription.get("status")
     patch = {
         "stripe_subscription_id": subscription.get("id"),
-        "subscription_status": subscription.get("status"),
+        "subscription_status": status,
         "current_period_end": subscription.get("current_period_end"),
+        # 契約シート数 = 基本料の1人 + シート数量。解約済みなら制限を最小(1)に。
+        "seat_limit": (1 + _sub_seat_quantity(subscription)) if status in (
+            "trialing", "active", "past_due") else 1,
     }
     if plan:
         patch["plan"] = plan
     store.update_tenant(tenant_id, patch)
-    logger.info(f"[Billing] tenant={tenant_id} status={subscription.get('status')} 更新")
+    logger.info(f"[Billing] tenant={tenant_id} status={status} seat_limit={patch['seat_limit']} 更新")

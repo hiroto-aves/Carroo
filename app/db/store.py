@@ -256,20 +256,19 @@ def delete_user(user_id: int) -> None:
 
 def sync_tenant_seats(tenant_id: str) -> int:
     """テナントの seats を有効ユーザー数に同期し、その値を返す（課金の基礎値）。"""
+    # 実際の在籍ユーザー数（表示用「使用中」）。課金対象は seat_limit（契約シート数）で別管理。
     n = sum(1 for _ in _db().collection("users")
             .where("tenant_id", "==", tenant_id).stream())
     try:
         update_tenant(tenant_id, {"seats": n})
     except Exception as e:
         logger.warning(f"[Seats] {tenant_id} 同期失敗: {e}")
-    # 課金稼働中なら Stripe のシート数量にも反映（未契約/未有効化なら no-op）
-    try:
-        from app.services import billing
-        if billing.billing_enabled():
-            billing.sync_seats(get_tenant(tenant_id) or {"id": tenant_id, "seats": n})
-    except Exception as e:
-        logger.warning(f"[Seats] Stripe同期スキップ {tenant_id}: {e}")
     return n
+
+
+def count_tenant_users(tenant_id: str) -> int:
+    return sum(1 for _ in _db().collection("users")
+               .where("tenant_id", "==", tenant_id).stream())
 
 
 def set_user_password(user_id: int, hashed_password: str) -> None:

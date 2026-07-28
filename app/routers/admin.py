@@ -145,6 +145,18 @@ async def create_user(
         )
     # 発行先テナント＝発行者のテナント（運営者は既定テナントに発行）。super は付与しない。
     tenant_id = current_user.get("tenant_id") or "takeuchi"
+    # 契約シート数の上限チェック（課金稼働時）。超える場合はお支払い画面でシート追加が必要。
+    from app.services import billing
+    if billing.billing_enabled():
+        tenant = store.get_tenant(tenant_id) or {}
+        cap = tenant.get("seat_limit")
+        cap = cap if cap is not None else 1
+        used = store.count_tenant_users(tenant_id)
+        if used >= cap:
+            raise HTTPException(
+                status_code=400,
+                detail=f"契約シート数（{cap}人）に達しています。『お支払い』画面でシートを追加してから発行してください。",
+            )
     make_admin = (is_admin == "yes")
     store.create_user(username, email, hash_password(password),
                       is_admin=make_admin, tenant_id=tenant_id,

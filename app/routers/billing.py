@@ -33,19 +33,27 @@ def _require_owner(current_user: dict = Depends(get_current_user)) -> dict:
     return current_user
 
 
+def _base_per(plan: str):
+    return (5000, 3000) if plan == "pro" else (4000, 2000)
+
+
 @router.get("/", response_class=HTMLResponse)
 async def billing_home(current_user: dict = Depends(_require_owner)):
-    tenant = store.get_tenant(current_tenant_id(current_user)) or {}
+    tid = current_tenant_id(current_user)
+    tenant = store.get_tenant(tid) or {}
+    tenant.setdefault("id", tid)
+    on = billing.billing_enabled()
+    # 契約中なら Stripe の最新状態を取り込み（seat_limit 等を自己修復）
+    if on and tenant.get("stripe_subscription_id"):
+        tenant = billing.refresh_tenant(tenant)
+
     plan = tenant.get("plan") or "standard"
     status = tenant.get("subscription_status")
-    seats = tenant.get("seats", 0)
-    extra = max(int(seats or 0) - 1, 0)
-    on = billing.billing_enabled()
-
-    def _amt(p):
-        base, per = (5000, 3000) if p == "pro" else (4000, 2000)
-        return base + per * extra
-    est = _amt(plan)
+    used = store.count_tenant_users(tid)                 # 使用中（在籍ユーザー数）
+    active = status in ("active", "trialing", "past_due")
+    seat_limit = tenant.get("seat_limit") if tenant.get("seat_limit") is not None else (used if not active else used)
+    base, per = _base_per(plan)
+    est = base + per * max(int(seat_limit or 1) - 1, 0)
 
     status_chip = {
         "active": '<span class="chip live">有効</span>',
@@ -54,36 +62,46 @@ async def billing_home(current_user: dict = Depends(_require_owner)):
         "canceled": '<span class="chip off">解約済み</span>',
     }.get(status, '<span class="chip off">未契約</span>')
 
+    notice = ""
     if not on:
         notice = ('<div style="background:var(--amber-wash);border:1px solid var(--amber);'
                   'color:var(--amber);border-radius:12px;padding:12px 15px;margin-bottom:16px;font-size:13px">'
-                  '課金は現在テスト準備中です（未有効化）。この画面の内容は参考表示です。</div>')
+                  '課金は現在テスト準備中です（未有効化）。参考表示です。</div>')
+
+    # 契約 or シート変更フォーム
+    min_seats = max(used, 1)
+    if not on:
         action = ""
+    elif active:
+        # シート数変更（買い増し/減）＋ 支払い管理
+        action = (
+          f'<form method="post" action="/billing/seats" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-bottom:12px">'
+          f'<div><label class="fl">契約シート数（課金対象の人数）</label>'
+          f'<input type="number" name="seats" value="{int(seat_limit or min_seats)}" min="{min_seats}" max="200" style="width:120px"></div>'
+          f'<button class="btn" type="submit">シート数を変更</button></form>'
+          f'<p class="hl" style="font-size:12px;margin:0 0 14px">※ 使用中 {used} 人より少なくはできません。減らす場合は先にユーザーを削除してください。</p>'
+          '<form method="post" action="/billing/portal"><button class="btn ghost" type="submit">お支払い・カードの管理／解約</button></form>')
     else:
-        notice = ""
-        if status in ("active", "trialing", "past_due"):
-            action = ('<form method="post" action="/billing/portal">'
-                      '<button class="btn" type="submit">お支払い・プランの管理</button></form>')
-        else:
-            action = (
-              '<form method="post" action="/billing/checkout" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">'
-              '<div><label class="fl">プラン</label>'
-              '<select name="plan" style="width:auto">'
-              f'<option value="standard"{" selected" if plan=="standard" else ""}>Standard</option>'
-              f'<option value="pro"{" selected" if plan=="pro" else ""}>Pro</option></select></div>'
-              '<button class="btn" type="submit">契約する（7日間無料）</button></form>')
+        action = (
+          '<form method="post" action="/billing/checkout" style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">'
+          '<div><label class="fl">プラン</label><select name="plan" style="width:auto">'
+          f'<option value="standard"{" selected" if plan=="standard" else ""}>Standard（¥4,000＋¥2,000/人）</option>'
+          f'<option value="pro"{" selected" if plan=="pro" else ""}>Pro（¥5,000＋¥3,000/人）</option></select></div>'
+          f'<div><label class="fl">契約シート数</label><input type="number" name="seats" value="{min_seats}" min="{min_seats}" max="200" style="width:120px"></div>'
+          '<button class="btn" type="submit">契約する（7日間無料）</button></form>'
+          f'<p class="hl" style="font-size:12px;margin:10px 0 0">まず利用人数分のシートを契約し、その枠内でユーザーを発行します。追加したくなったらここでシートを増やせます。</p>')
 
     body = f"""
   <h1 class="pt">お支払い・プラン</h1>
-  <p class="hl" style="margin:0 0 16px">会社（テナント）単位のご契約です。1人目は基本料に含み、2人目以降が従量課金。</p>
+  <p class="hl" style="margin:0 0 16px">会社単位のご契約。<b>契約シート数の枠内でユーザーを発行</b>できます（1人目は基本料に含む）。</p>
   {notice}
-  <div class="card" style="padding:22px;max-width:640px">
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+  <div class="card" style="padding:22px;max-width:660px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
       <div style="font-size:18px;font-weight:700">{esc(_PLAN_JA.get(plan, plan))}</div>{status_chip}</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:13.5px;margin-bottom:18px">
-      <div><span class="hl">ユーザー数</span><div style="font-weight:600">{seats} 人（従量 {extra} 人分）</div></div>
-      <div><span class="hl">今月の目安</span><div style="font-weight:600">¥{est:,} / 月</div></div>
-      <div><span class="hl">状態</span><div style="font-weight:600">{esc(_STATUS_JA.get(status, status or '未契約'))}</div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;font-size:13.5px;margin-bottom:20px">
+      <div><span class="hl">契約シート</span><div style="font-weight:600">{int(seat_limit or min_seats)} 人</div></div>
+      <div><span class="hl">使用中</span><div style="font-weight:600">{used} 人</div></div>
+      <div><span class="hl">月額</span><div style="font-weight:600">¥{est:,} / 月</div></div>
     </div>
     {action}
   </div>"""
@@ -92,18 +110,41 @@ async def billing_home(current_user: dict = Depends(_require_owner)):
 
 
 @router.post("/checkout")
-async def checkout(plan: str = Form("standard"),
+async def checkout(plan: str = Form("standard"), seats: int = Form(1),
                    current_user: dict = Depends(_require_owner)):
     if not billing.billing_enabled():
         raise HTTPException(400, "課金は現在有効化されていません")
-    tenant = store.get_tenant(current_tenant_id(current_user)) or {}
-    tenant.setdefault("id", current_tenant_id(current_user))
+    tid = current_tenant_id(current_user)
+    tenant = store.get_tenant(tid) or {}
+    tenant.setdefault("id", tid)
+    used = store.count_tenant_users(tid)
+    seat_limit = max(int(seats or 1), used, 1)   # 使用中人数を下回れない
     try:
-        url = billing.create_checkout_session(tenant, plan if plan in ("standard", "pro") else "standard",
-                                              tenant.get("seats", 0))
+        url = billing.create_checkout_session(
+            tenant, plan if plan in ("standard", "pro") else "standard", seat_limit)
     except Exception as e:
         raise HTTPException(400, f"決済ページの作成に失敗しました: {e}")
     return RedirectResponse(url=url, status_code=303)
+
+
+@router.post("/seats")
+async def change_seats(seats: int = Form(...),
+                       current_user: dict = Depends(_require_owner)):
+    """契約シート数の変更（買い増し/減）。使用中人数は下回れない。"""
+    if not billing.billing_enabled():
+        raise HTTPException(400, "課金は現在有効化されていません")
+    tid = current_tenant_id(current_user)
+    tenant = store.get_tenant(tid) or {}
+    tenant.setdefault("id", tid)
+    used = store.count_tenant_users(tid)
+    want = int(seats or 1)
+    if want < used:
+        raise HTTPException(400, f"使用中の {used} 人より少なくはできません。先にユーザーを削除してください。")
+    try:
+        billing.set_subscription_seats(tenant, max(want, 1))
+    except Exception as e:
+        raise HTTPException(400, f"シート数の変更に失敗しました: {e}")
+    return RedirectResponse(url="/billing/?seats_changed=1", status_code=303)
 
 
 @router.post("/portal")
