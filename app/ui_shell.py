@@ -102,7 +102,8 @@ a{color:inherit;text-decoration:none}
 .nav.on svg{opacity:1;color:var(--signal-br)}
 .nav .badge{margin-left:auto;font-size:11px;font-weight:700;color:var(--signal-br);background:var(--signal-wash);padding:1px 7px;border-radius:999px}
 .rail .foot{border-top:1px solid var(--rail-line);padding:12px}
-.who{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:10px}
+.who{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:10px;cursor:pointer;position:relative}
+.who:hover{background:var(--rail-2)}
 .ava{width:30px;height:30px;border-radius:8px;background:linear-gradient(150deg,#2b3237,#1a1f22);display:grid;place-items:center;color:var(--cream);font-size:12px;font-weight:700;flex:0 0 auto}
 .who .nm{font-size:13px;color:var(--cream);font-weight:600}.who .rl{font-size:11px;color:var(--rail-txt-dim)}
 /* content */
@@ -245,7 +246,7 @@ def _sidebar(active, user):
     {users}
     {ops}
     <a class="nav" href="/auth/logout" data-tip="ログアウト"><svg><use href="#i-out"/></svg><span class="lbl">ログアウト</span></a>
-    <div class="who"><span class="ava">{initial}</span><div><div class="nm">{uname}</div><div class="rl">Carroo</div></div></div>
+    <a class="who" href="/auth/me" data-tip="アカウント"><span class="ava">{initial}</span><div><div class="nm">{uname}</div><div class="rl">アカウント設定</div></div></a>
   </div>
 </aside>"""
 
