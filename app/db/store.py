@@ -217,6 +217,33 @@ def user_exists(username: str, email: str) -> bool:
     return False
 
 
+def _taken_by_other(field: str, value: str, exclude_id: int) -> bool:
+    for snap in _db().collection("users").where(field, "==", value).limit(2).stream():
+        if int(snap.id) != int(exclude_id):
+            return True
+    return False
+
+
+def update_user_account(user_id: int, username: str = None, email: str = None) -> None:
+    """ログイン用のユーザー名・メールを更新（重複チェックは呼び出し側）。"""
+    patch = {}
+    if username is not None:
+        patch["username"] = username
+    if email is not None:
+        patch["email"] = email
+    if patch:
+        _db().collection("users").document(str(user_id)).update(patch)
+
+
+def account_conflict(user_id: int, username: str, email: str) -> str:
+    """自分以外に同じユーザー名/メールがあれば理由文字列、無ければ空。"""
+    if username and _taken_by_other("username", username, user_id):
+        return "そのユーザー名は既に使われています"
+    if email and _taken_by_other("email", email, user_id):
+        return "そのメールアドレスは既に使われています"
+    return ""
+
+
 def create_user(username: str, email: str, hashed_password: str,
                 is_admin: bool = False, tenant_id: str = None,
                 role: str = None, is_super: bool = False) -> int:

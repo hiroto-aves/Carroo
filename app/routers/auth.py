@@ -10,6 +10,8 @@ from app.config import settings
 from app.utils.security import hash_password, verify_password, create_access_token
 from app.dependencies import get_current_user
 from app.ui_shell import esc
+from pydantic import BaseModel
+from typing import Optional
 from datetime import timedelta
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -329,59 +331,71 @@ async def profile_page(access_token: str = Cookie(None)):
         return RedirectResponse(url="/auth/login", status_code=302)
 
     username, email, created_at = user["username"], user.get("email"), user.get("created_at")
-    return f"""<!DOCTYPE html>
-<html lang="ja">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Carroo - プロフィール</title>
-    <link rel="stylesheet" href="/static/tailwind.css">
-</head>
-<body class="bg-gray-50">
-    <nav class="bg-white shadow-sm border-b border-gray-200">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="flex justify-between h-16 items-center">
-                <a href="/dashboard/" class="text-2xl font-bold text-blue-600 hover:opacity-80 transition">📦 Carroo</a>
-                <div class="flex items-center gap-4">
-                    <a href="/dashboard/" class="text-gray-600 hover:text-blue-600 transition">ダッシュボード</a>
-                    <a href="/auth/logout" class="text-red-600 hover:text-red-700">ログアウト</a>
-                </div>
-            </div>
-        </div>
-    </nav>
+    from app.ui_shell import render_page
+    _u = {"id": user_id, "username": username, "email": email,
+          "is_admin": user.get("is_admin"), "role": user.get("role"),
+          "is_super": user.get("is_super"), "tenant_id": user.get("tenant_id"),
+          "theme": user.get("theme") or "auto", "dashboard_mode": user.get("dashboard_mode") or "freight"}
+    body = f"""
+  <h1 class="pt">アカウント</h1>
+  <p class="hl" style="margin:0 0 18px">ログインに使うユーザー名・メール・パスワードを変更できます。登録日: {esc(created_at) or '-'}</p>
+  <div id="msg" class="hidden mb-4 p-3 rounded-lg" style="font-size:13px"></div>
+  <div class="card" style="padding:22px;max-width:560px">
+    <form id="acct">
+      <div style="display:grid;gap:14px">
+        <div><label class="fl">ユーザー名</label><input name="username" value="{esc(username)}" required></div>
+        <div><label class="fl">メールアドレス</label><input type="email" name="email" value="{esc(email)}" required></div>
+        <div><label class="fl">新しいパスワード（変更する場合のみ）</label>
+          <input type="password" name="password" autocomplete="new-password" placeholder="空欄なら変更しません"></div>
+      </div>
+      <button type="submit" class="btn" style="margin-top:16px">保存する</button>
+    </form>
+  </div>
+  <div style="margin-top:16px"><a class="btn ghost" href="/settings/">⚙ 初期設定（連絡先・認証情報）へ</a></div>
+  <script>
+  document.getElementById('acct').addEventListener('submit', async (e)=>{{
+    e.preventDefault();
+    const msg=document.getElementById('msg');
+    const data=Object.fromEntries(new FormData(e.target).entries());
+    try{{
+      const r=await fetch('/auth/account',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify(data)}});
+      const j=await r.json();
+      if(r.ok){{ msg.className='mb-4 p-3 rounded-lg bg-green-50 text-green-700'; msg.textContent='✅ 保存しました'; msg.classList.remove('hidden'); }}
+      else {{ msg.className='mb-4 p-3 rounded-lg bg-red-50 text-red-700'; msg.textContent=(j.detail||'保存に失敗しました'); msg.classList.remove('hidden'); window.__idle(e.target.__busyBtn); }}
+    }}catch(err){{ msg.className='mb-4 p-3 rounded-lg bg-red-50 text-red-700'; msg.textContent='エラー: '+err.message; msg.classList.remove('hidden'); window.__idle(e.target.__busyBtn); }}
+  }});
+  </script>"""
+    return HTMLResponse(render_page(title="アカウント", active="settings", body=body,
+                                    user=_u, crumb="Carroo"))
 
-    <div class="max-w-2xl mx-auto px-4 py-12">
-        <h1 class="text-3xl font-bold text-gray-900 mb-8">プロフィール</h1>
-        <div class="bg-white rounded-2xl shadow-lg p-8 space-y-6">
-            <div class="flex items-center gap-4 pb-6 border-b">
-                <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center text-3xl">👤</div>
-                <div>
-                    <p class="text-xl font-bold text-gray-900">{username}</p>
-                    <p class="text-gray-500">{email}</p>
-                </div>
-            </div>
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                <div class="p-4 bg-gray-50 rounded-lg">
-                    <p class="text-gray-500 mb-1">ユーザー名</p>
-                    <p class="font-semibold text-gray-900">{esc(username)}</p>
-                </div>
-                <div class="p-4 bg-gray-50 rounded-lg">
-                    <p class="text-gray-500 mb-1">メールアドレス</p>
-                    <p class="font-semibold text-gray-900">{esc(email)}</p>
-                </div>
-                <div class="p-4 bg-gray-50 rounded-lg md:col-span-2">
-                    <p class="text-gray-500 mb-1">登録日</p>
-                    <p class="font-semibold text-gray-900">{esc(created_at) or "-"}</p>
-                </div>
-            </div>
-            <div class="flex gap-4 pt-4">
-                <a href="/settings/" class="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 px-6 rounded-lg transition">⚙ 初期設定を編集</a>
-                <a href="/cases/register" class="bg-gray-100 hover:bg-gray-200 text-gray-900 font-semibold py-2.5 px-6 rounded-lg transition">案件登録へ</a>
-            </div>
-        </div>
-    </div>
-</body>
-</html>"""
+
+class AccountUpdate(BaseModel):
+    username: Optional[str] = None
+    email: Optional[str] = None
+    password: Optional[str] = None
+
+
+@router.post("/account")
+async def update_account(data: AccountUpdate,
+                         current_user: dict = Depends(get_current_user)):
+    """自分のログイン情報（ユーザー名・メール・パスワード）を更新。"""
+    from app.db import store
+    uid = current_user["id"]
+    username = (data.username or "").strip()
+    email = (data.email or "").strip()
+    if not username or not email:
+        raise HTTPException(400, "ユーザー名とメールアドレスは必須です")
+    conflict = store.account_conflict(uid, username, email)
+    if conflict:
+        raise HTTPException(400, conflict)
+    store.update_user_account(uid, username=username, email=email)
+    if data.password:
+        if len(data.password) < 4:
+            raise HTTPException(400, "パスワードは4文字以上にしてください")
+        store.set_user_password(uid, hash_password(data.password))
+    from app.utils.audit import audit
+    audit("account_update", user_id=uid, username=username)
+    return {"status": "ok"}
 
 
 @router.get("/api/me")
