@@ -63,6 +63,9 @@ def _users_panel() -> str:
           f'</td></tr>')
     if not rows:
         rows = '<tr><td colspan="7" style="text-align:center;color:var(--faint);padding:20px">ユーザーがいません</td></tr>'
+    opts_users = "".join(
+        f'<option value="{u["id"]}">#{u["id"]} {esc(u.get("username",""))}'
+        f'（{esc(u.get("tenant_id") or "-")}）</option>' for u in users)
     return f"""
   <h2 style="font-size:16px;margin:26px 0 4px">ユーザー別 機能付与・運営者権限・データ閲覧（運営者のみ）</h2>
   <p class="hl" style="margin:0 0 12px;font-size:12.5px">Pro機能を<b>1ユーザー単位で付与</b>／<b>運営者(super)権限のON/OFF</b>／「案件」でデータ閲覧。</p>
@@ -78,9 +81,22 @@ def _users_panel() -> str:
       <p class="hl" style="margin:10px 0 0;font-size:12px">発行後、その運営者でログイン → この一覧で竹内の管理者の「運営者を外す」を押すと、権限がきれいに分かれます。</p>
     </form>
   </div>
-  <div class="card" style="overflow-x:auto;margin-bottom:22px"><table>
+  <div class="card" style="overflow-x:auto;margin-bottom:14px"><table>
     <thead><tr><th>ID</th><th>ユーザー</th><th>テナント</th><th>ロール</th><th>個別機能付与</th><th>運営者</th><th>データ</th></tr></thead>
-    <tbody>{rows}</tbody></table></div>"""
+    <tbody>{rows}</tbody></table></div>
+  <div class="card" style="padding:16px 18px;max-width:720px;margin-bottom:22px">
+    <h3 style="font-size:14px;margin:0 0 4px">🔑 ユーザーのログイン情報を修正（パスワード再設定）</h3>
+    <p class="hl" style="margin:0 0 12px;font-size:12px">ログインできなくなったユーザーの復旧に。空欄の項目は変更しません。</p>
+    <form method="post" action="/ops/users/credentials">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div><label class="fl">対象ユーザー *</label><select name="user_id" required>{opts_users}</select></div>
+        <div><label class="fl">新しいパスワード</label><input name="password" placeholder="空欄なら変更しない"></div>
+        <div><label class="fl">新しいユーザー名</label><input name="username" placeholder="空欄なら変更しない"></div>
+        <div><label class="fl">新しいメール</label><input type="email" name="email" placeholder="空欄なら変更しない"></div>
+      </div>
+      <button type="submit" class="btn" style="margin-top:12px">保存する</button>
+    </form>
+  </div>"""
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -200,6 +216,31 @@ async def set_user_super_route(user_id: int, value: str = Form("0"),
         raise HTTPException(400, "自分自身の運営者権限は外せません（別の運営者アカウントから操作してください）")
     store.set_user_super(user_id, make)
     audit("user_super_set", target_id=user_id, is_super=make, by=current_user.get("username"))
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/ops/", status_code=302)
+
+
+@router.post("/users/credentials")
+async def ops_set_credentials(
+    user_id: int = Form(...), username: str = Form(""), email: str = Form(""),
+    password: str = Form(""), current_user: dict = Depends(_require_super),
+):
+    """運営者が任意ユーザーのログイン情報を再設定（ロックアウト復旧）。空欄は変更なし。"""
+    from app.utils.audit import audit
+    target = store.get_user_by_id(user_id)
+    if not target:
+        raise HTTPException(404, "ユーザーが見つかりません")
+    new_username = (username or "").strip() or target.get("username")
+    new_email = (email or "").strip() or target.get("email")
+    conflict = store.account_conflict(user_id, new_username, new_email)
+    if conflict:
+        raise HTTPException(400, conflict)
+    store.update_user_account(user_id, username=new_username, email=new_email)
+    if password:
+        if len(password) < 4:
+            raise HTTPException(400, "パスワードは4文字以上にしてください")
+        store.set_user_password(user_id, hash_password(password))
+    audit("ops_reset_credentials", target_id=user_id, by=current_user.get("username"))
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/ops/", status_code=302)
 
