@@ -16,6 +16,18 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-28 Stripe課金 本番テスト完動＋ライセンス型シート＋確認画面＋法務ページ（rev carroo-00078-7t5）
+- **課金 本番テストモードで完動**：stripe==11.1.0（7.8.0はyankedでサブモジュールNoneのバグ→更新）。CSP form-action に
+  checkout.stripe.com/billing.stripe.com 追加（外部リダイレクト許可）。Checkout→7日トライアル→Webhookでtenant同期(trialing) 確認済み。
+  Secret Manager: STRIPE_SECRET_KEY/STRIPE_WEBHOOK_SECRET、env: 4 price ID・BILLING_ENABLED=on・APP_BASE_URL。竹内テナントは pro に設定。
+- **ライセンス型シートに変更**（勝手に課金増を廃止）：tenant.seat_limit（契約シート数）。ユーザー発行は seat_limit まで（超過は400）。
+  ユーザー増減で Stripe 自動変更しない。seat_limit は Webhook/画面表示時に Stripe から同期(billing.refresh_tenant)。
+- **シート変更に最終確認画面**（特商法対応）：/billing/seats=確認画面→/billing/seats/confirm=適用。現行→変更後の人数・月額・差額・
+  支払時期・自動継続・解約条件を明示。監査ログ seats_change。
+- **法務ページ3点**（routers/legal.py・公開）：/legal/tokushoho（特商法表記）・/legal/terms（利用規約）・/legal/privacy。
+  いずれも【雛形】〔 〕を実値へ・公開前に専門家レビュー必須。ブランドページ＋課金画面フッターにリンク。
+- 未対応(要ユーザー): 特商法表記等の実記入・専門家レビュー・インボイス番号のStripe請求書設定・トライアル終了/未払い時の投稿ロック。
+
 ### 🆕 2026-07-27 Stripe 課金連携コード一式（BILLING_ENABLED OFF で眠り）（rev carroo-00070-bjs）
 - **services/billing.py**：Checkout(サブスク・7日トライアル・カードのみ・基本料+シートquantity=人数-1)／Customer Portal／
   sync_seats(ユーザー増減→Stripeシート数量, 日割り)／Webhook署名検証(verify_and_parse_webhook)／apply_subscription_to_tenant。

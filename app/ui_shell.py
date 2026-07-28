@@ -304,7 +304,14 @@ def brand_page(*, title, inner, user=None) -> str:
     <div class="tagline">物流案件を Trabox・WebKit へ一括投稿</div>
   </div>
   {inner}
-  <div class="foot">© 2026 Carroo</div>
+  <div class="foot" style="display:flex;flex-direction:column;gap:8px;align-items:center">
+    <div style="display:flex;gap:14px;flex-wrap:wrap;justify-content:center">
+      <a href="/legal/tokushoho" style="color:var(--faint)">特定商取引法に基づく表記</a>
+      <a href="/legal/terms" style="color:var(--faint)">利用規約</a>
+      <a href="/legal/privacy" style="color:var(--faint)">プライバシーポリシー</a>
+    </div>
+    <div>© 2026 Carroo</div>
+  </div>
 </div></div>
 </body></html>"""
 

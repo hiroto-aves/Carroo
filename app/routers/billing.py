@@ -104,7 +104,11 @@ async def billing_home(current_user: dict = Depends(_require_owner)):
       <div><span class="hl">月額</span><div style="font-weight:600">¥{est:,} / 月</div></div>
     </div>
     {action}
-  </div>"""
+  </div>
+  <p style="margin:16px 2px 0;font-size:12px;color:var(--faint)">
+    <a href="/legal/tokushoho" style="color:var(--faint)">特定商取引法に基づく表記</a> ·
+    <a href="/legal/terms" style="color:var(--faint)">利用規約</a> ·
+    <a href="/legal/privacy" style="color:var(--faint)">プライバシーポリシー</a></p>"""
     return HTMLResponse(render_page(title="お支払い・プラン", active="billing",
                                     body=body, user=current_user, crumb="Carroo · 課金"))
 
