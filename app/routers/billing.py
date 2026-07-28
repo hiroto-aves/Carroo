@@ -127,23 +127,75 @@ async def checkout(plan: str = Form("standard"), seats: int = Form(1),
     return RedirectResponse(url=url, status_code=303)
 
 
-@router.post("/seats")
-async def change_seats(seats: int = Form(...),
-                       current_user: dict = Depends(_require_owner)):
-    """契約シート数の変更（買い増し/減）。使用中人数は下回れない。"""
+@router.post("/seats", response_class=HTMLResponse)
+async def change_seats_confirm(seats: int = Form(...),
+                               current_user: dict = Depends(_require_owner)):
+    """シート数変更の【最終確認画面】。ここでは課金しない（特商法の確認導線）。"""
+    if not billing.billing_enabled():
+        raise HTTPException(400, "課金は現在有効化されていません")
+    tid = current_tenant_id(current_user)
+    tenant = store.get_tenant(tid) or {}
+    used = store.count_tenant_users(tid)
+    want = int(seats or 1)
+    if want < used:
+        raise HTTPException(400, f"使用中の {used} 人より少なくはできません。先にユーザーを削除してください。")
+    want = max(want, 1)
+    plan = tenant.get("plan") or "standard"
+    cur = int(tenant.get("seat_limit") or used or 1)
+    base, per = _base_per(plan)
+    cur_amt = base + per * max(cur - 1, 0)
+    new_amt = base + per * max(want - 1, 0)
+    diff = new_amt - cur_amt
+    up = diff >= 0
+    diff_txt = (f'増額 <b style="color:#C9503E">+¥{diff:,}</b>' if diff > 0
+                else (f'減額 <b>−¥{-diff:,}</b>' if diff < 0 else '変更なし'))
+    proration = ('今回の変更ぶんは<b>日割りで計算</b>され、次回以降のご請求に反映されます。'
+                 if up else '減額ぶんは次回以降のご請求に反映されます（日割りクレジット）。')
+    body = f"""
+  <h1 class="pt">契約内容の変更 確認</h1>
+  <p class="hl" style="margin:0 0 16px">下記の内容で契約シート数を変更します。ご確認のうえ「この内容で変更する」を押してください。</p>
+  <div class="card" style="padding:22px;max-width:560px">
+    <table style="width:100%;font-size:14px">
+      <tr><td class="hl" style="padding:6px 0">プラン</td><td style="text-align:right;font-weight:600">{esc(_PLAN_JA.get(plan, plan))}</td></tr>
+      <tr><td class="hl" style="padding:6px 0">契約シート数</td><td style="text-align:right;font-weight:600">{cur} 人 → <b style="color:var(--signal-ink)">{want} 人</b></td></tr>
+      <tr><td class="hl" style="padding:6px 0">月額（税別）</td><td style="text-align:right;font-weight:600">¥{cur_amt:,} → <b>¥{new_amt:,}</b> / 月</td></tr>
+      <tr><td class="hl" style="padding:6px 0">差額</td><td style="text-align:right">{diff_txt}</td></tr>
+    </table>
+    <div style="background:var(--raise);border:1px solid var(--line-soft);border-radius:10px;padding:12px 14px;margin:14px 0;font-size:12.5px;color:var(--muted);line-height:1.7">
+      ・支払方法：登録済みのクレジットカード<br>
+      ・支払時期：{proration}<br>
+      ・以後、毎月自動で継続課金されます（金額は上記「変更後」）。<br>
+      ・解約・カード変更は「お支払い管理」からいつでも可能です。
+    </div>
+    <form method="post" action="/billing/seats/confirm" style="display:flex;gap:10px">
+      <input type="hidden" name="seats" value="{want}">
+      <button class="btn" type="submit">この内容で変更する</button>
+      <a class="btn ghost" href="/billing/">キャンセル</a>
+    </form>
+  </div>"""
+    return HTMLResponse(render_page(title="契約変更の確認", active="billing",
+                                    body=body, user=current_user, crumb="Carroo · 課金"))
+
+
+@router.post("/seats/confirm")
+async def change_seats_apply(seats: int = Form(...),
+                             current_user: dict = Depends(_require_owner)):
+    """確認後にシート数を実際に変更（ここで初めて課金内容が変わる）。"""
     if not billing.billing_enabled():
         raise HTTPException(400, "課金は現在有効化されていません")
     tid = current_tenant_id(current_user)
     tenant = store.get_tenant(tid) or {}
     tenant.setdefault("id", tid)
     used = store.count_tenant_users(tid)
-    want = int(seats or 1)
+    want = max(int(seats or 1), 1)
     if want < used:
-        raise HTTPException(400, f"使用中の {used} 人より少なくはできません。先にユーザーを削除してください。")
+        raise HTTPException(400, f"使用中の {used} 人より少なくはできません。")
     try:
-        billing.set_subscription_seats(tenant, max(want, 1))
+        billing.set_subscription_seats(tenant, want)
     except Exception as e:
         raise HTTPException(400, f"シート数の変更に失敗しました: {e}")
+    from app.utils.audit import audit
+    audit("seats_change", tenant_id=tid, seats=want, by=current_user.get("username"))
     return RedirectResponse(url="/billing/?seats_changed=1", status_code=303)
 
 
