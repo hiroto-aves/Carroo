@@ -16,6 +16,13 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-28 運営者(super)の全知全能化＋オーナー作業TODO運用（rev carroo-00079-2bp）
+- **ユーザー個別の機能付与**：`user.features` を dependencies.get_current_user が付与、feature_enabled が最優先で参照
+  （個別付与 > tenant_features > plan > env）。standardテナントのユーザーにもPro機能を1つ単位で解放可。store.set_user_features。
+- **/ops に「ユーザー別 機能付与・データ閲覧」**（super専用）：全テナント横断の全ユーザー一覧、機能チェック(recurring/multidate/reregister)保存、
+  「案件」リンクで /dashboard/cases?q_user=ID そのユーザーのデータをテナント横断閲覧。POST /ops/users/{id}/features、監査ログ user_features_set。
+- **オーナー作業TODO運用**：`docs/オーナー作業TODO.md`（生きたチェックリスト）新設。CLAUDE.md＋メモリに「ユーザー側作業は必ず同ファイルに記録」ルール明文化。
+
 ### 🆕 2026-07-28 Stripe課金 本番テスト完動＋ライセンス型シート＋確認画面＋法務ページ（rev carroo-00078-7t5）
 - **課金 本番テストモードで完動**：stripe==11.1.0（7.8.0はyankedでサブモジュールNoneのバグ→更新）。CSP form-action に
   checkout.stripe.com/billing.stripe.com 追加（外部リダイレクト許可）。Checkout→7日トライアル→Webhookでtenant同期(trialing) 確認済み。
