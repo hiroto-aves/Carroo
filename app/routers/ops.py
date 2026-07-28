@@ -39,7 +39,17 @@ def _users_panel() -> str:
             ck = " checked" if feats.get(key) else ""
             checks += (f'<label style="display:inline-flex;gap:4px;align-items:center;font-size:12px;margin-right:10px">'
                        f'<input type="checkbox" name="feat" value="{key}"{ck} style="width:auto"> {esc(label)}</label>')
-        sup = ' <span class="chip live" style="font-size:10px">運営</span>' if u.get("is_super") else ""
+        is_sup = u.get("is_super")
+        sup = ' <span class="chip live" style="font-size:10px">運営</span>' if is_sup else ""
+        # 運営者ON/OFF トグル
+        if is_sup:
+            sup_toggle = (f'<form method="post" action="/ops/users/{uid}/super">'
+                          f'<input type="hidden" name="value" value="0">'
+                          f'<button class="btn ghost" style="padding:4px 10px;font-size:12px" type="submit">運営者を外す</button></form>')
+        else:
+            sup_toggle = (f'<form method="post" action="/ops/users/{uid}/super">'
+                          f'<input type="hidden" name="value" value="1">'
+                          f'<button class="btn ghost" style="padding:4px 10px;font-size:12px" type="submit">運営者にする</button></form>')
         rows += (
           f'<tr><td class="mono" style="color:var(--faint)">{uid}</td>'
           f'<td style="font-weight:600">{esc(u.get("username",""))}{sup}</td>'
@@ -47,16 +57,29 @@ def _users_panel() -> str:
           f'<td style="color:var(--faint)">{esc(u.get("role") or "-")}</td>'
           f'<td><form method="post" action="/ops/users/{uid}/features" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
           f'{checks}<button class="btn ghost" style="padding:4px 10px;font-size:12px" type="submit">保存</button></form></td>'
+          f'<td>{sup_toggle}</td>'
           f'<td style="text-align:right;white-space:nowrap">'
           f'<a href="/dashboard/cases?q_user={uid}" style="color:var(--signal-ink);font-size:12px">案件</a>'
           f'</td></tr>')
     if not rows:
-        rows = '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:20px">ユーザーがいません</td></tr>'
+        rows = '<tr><td colspan="7" style="text-align:center;color:var(--faint);padding:20px">ユーザーがいません</td></tr>'
     return f"""
-  <h2 style="font-size:16px;margin:26px 0 4px">ユーザー別 機能付与・データ閲覧（運営者のみ）</h2>
-  <p class="hl" style="margin:0 0 12px;font-size:12.5px">Pro機能を<b>1ユーザー単位で付与</b>できます（テナントのプランに関係なく最優先で有効化）。「案件」でそのユーザーのデータを閲覧。</p>
+  <h2 style="font-size:16px;margin:26px 0 4px">ユーザー別 機能付与・運営者権限・データ閲覧（運営者のみ）</h2>
+  <p class="hl" style="margin:0 0 12px;font-size:12.5px">Pro機能を<b>1ユーザー単位で付与</b>／<b>運営者(super)権限のON/OFF</b>／「案件」でデータ閲覧。</p>
+  <div class="card" style="padding:16px 18px;max-width:720px;margin-bottom:14px">
+    <h3 style="font-size:14px;margin:0 0 10px">運営者アカウントを発行（竹内の管理者と分ける用）</h3>
+    <form method="post" action="/ops/operators">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div><label class="fl">ユーザー名 *</label><input name="username" required placeholder="例: 運営"></div>
+        <div><label class="fl">メール *</label><input type="email" name="email" required placeholder="ops@example.com"></div>
+        <div><label class="fl">初期パスワード *</label><input name="password" required placeholder="4文字以上"></div>
+      </div>
+      <button type="submit" class="btn" style="margin-top:12px">運営者を発行</button>
+      <p class="hl" style="margin:10px 0 0;font-size:12px">発行後、その運営者でログイン → この一覧で竹内の管理者の「運営者を外す」を押すと、権限がきれいに分かれます。</p>
+    </form>
+  </div>
   <div class="card" style="overflow-x:auto;margin-bottom:22px"><table>
-    <thead><tr><th>ID</th><th>ユーザー</th><th>テナント</th><th>ロール</th><th>個別機能付与</th><th>データ</th></tr></thead>
+    <thead><tr><th>ID</th><th>ユーザー</th><th>テナント</th><th>ロール</th><th>個別機能付与</th><th>運営者</th><th>データ</th></tr></thead>
     <tbody>{rows}</tbody></table></div>"""
 
 
@@ -140,6 +163,43 @@ async def create_tenant_route(
                       is_admin=True, tenant_id=tid, role="owner", is_super=False)
     audit("tenant_create", tenant_id=tid, plan=plan, by=current_user.get("username"))
     logger.info(f"[Ops] テナント発行: {tid} plan={plan}")
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/ops/", status_code=302)
+
+
+@router.post("/operators")
+async def create_operator_route(
+    username: str = Form(...), email: str = Form(...), password: str = Form(...),
+    current_user: dict = Depends(_require_super),
+):
+    """運営者(super)アカウントを発行。運営用テナント carroo-ops に所属。"""
+    from app.utils.audit import audit
+    if len(password) < 4:
+        raise HTTPException(400, "初期パスワードは4文字以上にしてください")
+    if store.user_exists(username, email):
+        raise HTTPException(400, "同じユーザー名またはメールが既に存在します")
+    ops_tid = "carroo-ops"
+    if not store.get_tenant(ops_tid):
+        store.create_tenant(ops_tid, "Carroo 運営", plan="pro")
+    store.create_user(username, email, hash_password(password),
+                      is_admin=True, tenant_id=ops_tid, role="owner", is_super=True)
+    audit("operator_create", new_username=username, by=current_user.get("username"))
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/ops/", status_code=302)
+
+
+@router.post("/users/{user_id}/super")
+async def set_user_super_route(user_id: int, value: str = Form("0"),
+                               current_user: dict = Depends(_require_super)):
+    """運営者(super)権限の付与/剥奪。自分自身の剥奪は不可（ロックアウト防止）。"""
+    from app.utils.audit import audit
+    if not store.get_user_by_id(user_id):
+        raise HTTPException(404, "ユーザーが見つかりません")
+    make = value in ("1", "yes", "true", "on")
+    if not make and user_id == current_user["id"]:
+        raise HTTPException(400, "自分自身の運営者権限は外せません（別の運営者アカウントから操作してください）")
+    store.set_user_super(user_id, make)
+    audit("user_super_set", target_id=user_id, is_super=make, by=current_user.get("username"))
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/ops/", status_code=302)
 

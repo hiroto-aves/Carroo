@@ -271,6 +271,11 @@ def count_tenant_users(tenant_id: str) -> int:
                .where("tenant_id", "==", tenant_id).stream())
 
 
+def set_user_super(user_id: int, is_super: bool) -> None:
+    """ユーザーの運営者(super)権限を付与/剥奪。"""
+    _db().collection("users").document(str(user_id)).update({"is_super": bool(is_super)})
+
+
 def set_user_features(user_id: int, features: Dict[str, Any]) -> None:
     """ユーザー個別の機能付与を設定（運営者専用）。feature_enabled が最優先で参照。"""
     _db().collection("users").document(str(user_id)).update({"features": features or {}})
