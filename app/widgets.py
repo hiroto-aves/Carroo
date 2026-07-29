@@ -191,8 +191,17 @@ PREFILL_JS = """
   var form=document.getElementById('f')||document.querySelector('form'); if(!form) return;
   var cityPairs=[['vacant_pref','vacant_city'],['dest_pref','dest_city'],['pick_pref','pick_city'],['drop_pref','drop_city']];
   var cityNames=cityPairs.map(function(p){return p[1];});
-  function setSimple(name,val){ if(val==null)return; var el=form.querySelector('[name="'+name+'"]'); if(!el)return;
-    if(el.type==='checkbox'){ el.checked=(val===true||val==='yes'||val==='1'); } else { el.value=val; } }
+  function setSimple(name,val){ if(val==null)return;
+    var els=form.querySelectorAll('[name="'+name+'"]'); if(!els.length)return;
+    if(Array.isArray(val)){
+      // チェックボックス配列（例: byday の複数選択）
+      var vals=val.map(String);
+      els.forEach(function(el){ el.checked = vals.indexOf(String(el.value))>=0; });
+      return;
+    }
+    var el=els[0];
+    if(el.type==='checkbox'){ el.checked=(val===true||val==='yes'||val==='1'); }
+    else { el.value=val; el.dispatchEvent(new Event('change')); } }
   Object.keys(pf).forEach(function(k){ if(cityNames.indexOf(k)<0 && k!=='dest_able' && k!=='vacant_able') setSimple(k,pf[k]); });
   cityPairs.forEach(function(p){
     var ps=form.querySelector('[name="'+p[0]+'"]'); if(!ps||pf[p[0]]==null) return;

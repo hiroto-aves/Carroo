@@ -7,7 +7,7 @@
 import logging
 import os
 from datetime import date, timedelta
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request, Query
 from fastapi.responses import HTMLResponse
 
 from app.dependencies import get_current_user
@@ -18,7 +18,7 @@ from app.services.scheduler_service import materialize
 from app.routers.trucks import PREFS, WEIGHTS, VEHICLES, _nav, _opts
 from app.ui_shell import render_page
 from app.tenancy import scope_tenant
-from app.widgets import pref_picker, PREF_PICKER_JS
+from app.widgets import pref_picker, PREF_PICKER_JS, PREFILL_JS
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/schedules", tags=["schedules"])
@@ -35,8 +35,30 @@ def _require_feature(current_user: dict = Depends(get_current_user)) -> dict:
 
 
 @router.get("/register", response_class=HTMLResponse)
-async def register_page(current_user: dict = Depends(_require_feature)):
+async def register_page(current_user: dict = Depends(_require_feature),
+                        from_id: int = Query(None, alias="from")):
     today = date.today().isoformat()
+    prefill = None
+    # 履歴から再登録（Pro機能）: 既存の定期ルールを元にフォームを埋める（有効期間は引き継がない）
+    if from_id and feature_enabled("reregister", current_user):
+        src = store.get_schedule(from_id, None if current_user.get("is_admin") else current_user["id"])
+        if src:
+            prefill = {
+                "name": src.get("name"), "freq": src.get("freq"),
+                "byday": [str(d) for d in (src.get("byday") or [])],
+                "bymonthday": src.get("bymonthday"),
+                "skip_holidays": bool(src.get("skip_holidays")),
+                "vacant_time": src.get("vacant_time"), "vacant_pref": src.get("vacant_pref"),
+                "vacant_city": src.get("vacant_city"),
+                "dest_offset_days": src.get("dest_offset_days"), "dest_time": src.get("dest_time"),
+                "dest_pref": src.get("dest_pref"), "dest_city": src.get("dest_city"),
+                "dest_able": ",".join(src.get("dest_able_prefs") or []),
+                "truck_weight": src.get("truck_weight"), "vehicle_type": src.get("vehicle_type"),
+                "min_freight": src.get("min_freight"), "lead_days": src.get("lead_days"),
+                "post_to_trabox": bool(src.get("post_to_trabox")),
+                "post_to_webkit": bool(src.get("post_to_webkit")),
+            }
+            prefill = {k: v for k, v in prefill.items() if v not in (None, "", [])}
     days = "".join(
         f'<label class="inline-flex items-center gap-1 mr-3"><input type="checkbox" '
         f'name="byday" value="{v}"> {lbl}</label>' for v, lbl in WEEKDAYS
@@ -176,6 +198,10 @@ document.getElementById('f').addEventListener('submit', async (e)=>{{
   msg.classList.remove('hidden'); if(r.ok) setTimeout(()=>location.href='/schedules/',2200);
 }});
 </script>""" + PREF_PICKER_JS
+    if prefill:
+        import json as _json
+        body += (f'<script>window.__prefill={_json.dumps(prefill, ensure_ascii=False)};</script>'
+                 + PREFILL_JS)
     return render_page(title="空車定期登録の作成", active="schedules", body=body,
                        user=current_user, crumb="Carroo / 空車定期登録")
 
@@ -332,8 +358,9 @@ async def schedules_history(current_user: dict = Depends(_require_feature),
             continue
         tb = _STATE.get(store.get_truck_platform_state(tid, "trabox"), "—")
         wk = _STATE.get(store.get_truck_platform_state(tid, "webkit"), "—")
+        sid = t.get("schedule_id")
         re_btn = (f'<a class="btn ghost" style="padding:4px 10px;font-size:12px;margin-left:6px" '
-                  f'href="/trucks/register?from={tid}">再登録</a>' if can_re else "")
+                  f'href="/schedules/register?from={sid}">定期ルールとして再登録</a>' if can_re and sid else "")
         rows += (f'<tr><td class="mono" style="color:var(--faint)">#{tid}</td>'
                  f'<td style="color:var(--faint);white-space:nowrap">ルール#{t.get("schedule_id","")}</td>'
                  f'<td style="white-space:nowrap">{esc(t.get("vacant_date",""))}</td><td>{esc(route)}</td>'
