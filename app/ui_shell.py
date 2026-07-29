@@ -347,6 +347,8 @@ LANDING_CSS = """
 .hero{background:var(--rail);color:var(--rail-txt);position:relative;overflow:hidden}
 .hero::before{content:"";position:absolute;inset:0;background:radial-gradient(120% 70% at 15% 0%,rgba(31,190,131,.14) 0%,transparent 55%)}
 .hero-in{position:relative;padding:96px 24px 84px;max-width:1080px;margin:0 auto}
+.lp-wordmark{display:inline-flex;align-items:center;font-weight:680;letter-spacing:-.05em;font-size:34px;color:var(--cream);line-height:1;margin-bottom:28px}
+.lp-wordmark svg{height:.9em;width:auto;margin-right:.02em;transform:translateY(.05em)}
 .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--signal-br);font-weight:700;margin-bottom:26px}
 .eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--signal-br);box-shadow:0 0 0 3px rgba(31,190,131,.25)}
 .hero h1{font-size:clamp(34px,5.4vw,64px);font-weight:700;letter-spacing:-.035em;line-height:1.12;margin:0 0 22px;color:var(--cream);max-width:15ch;text-wrap:balance}
@@ -445,6 +447,7 @@ _LANDING_DEFS = """
 _LANDING_BODY = """
 <section class="hero">
   <div class="hero-in">
+    <div class="lp-wordmark"><svg viewBox="12 12 69 77"><use href="#lp-cmark"/></svg>arroo</div>
     <div class="eyebrow"><span class="dot"></span>物流案件 一括投稿ソフトウェア</div>
     <h1>積む場所から卸す場所まで、<br><b>二度打ちしない。</b></h1>
     <p class="lede">積地・卸地・重量・車種・運賃を一度入力すれば、トラボックスとWebKitへ同時に投稿。空車情報も、定期便もまとめて自動化します。</p>
