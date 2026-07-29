@@ -16,6 +16,19 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-28〜29 運営者アカウント分離＋アカウント自己編集＋運営者専用ナビ＋復旧手段（rev carroo-00085-kwh）
+- **運営者アカウントの発行/分離**：`/ops` に運営者アカウント発行フォーム（運営専用テナント `carroo-ops`）＋各ユーザーの
+  「運営者にする／外す」トグル（自分自身の剥奪は不可）。store.set_user_super。監査ログ operator_create/user_super_set。
+- **アカウント自己編集**：`/auth/me` を左レール・シェルの「アカウント」画面に刷新、ユーザー名・メール・パスワードを自分で変更可
+  （POST /auth/account、store.update_user_account/account_conflict/set_user_password）。サイドバー左下の名前がクリック可能に。
+- **運営者専用サイドバー**：is_super は「運営コンソール」のみ表示（荷物/空車/ユーザー管理/課金など業務系を非表示）、
+  ロゴ・ログイン後リダイレクトも /ops/ へ。owner/member は従来通り。
+- **ロックアウト復旧手段**：/ops に「🔑 ユーザーのログイン情報を修正」（対象ユーザー選択→パスワード/ユーザー名/メール再設定、
+  空欄は変更なし）。POST /ops/users/credentials、監査ログ ops_reset_credentials。
+- **運営コンソールからのユーザー削除**：一覧に削除ボタン（自分以外・テナント不問）。POST /ops/users/{id}/delete、監査ログ ops_user_delete。
+- 実運用：竹内テナントに重複していた owner（takeuchiihroto）をユーザー側で削除、管理者アカウント1本に整理。
+- 未実装（オーナー作業TODOに記載）：ログイン画面のセルフパスワードリセット（メール送信式）。
+
 ### 🆕 2026-07-28 運営者(super)の全知全能化＋オーナー作業TODO運用（rev carroo-00079-2bp）
 - **ユーザー個別の機能付与**：`user.features` を dependencies.get_current_user が付与、feature_enabled が最優先で参照
   （個別付与 > tenant_features > plan > env）。standardテナントのユーザーにもPro機能を1つ単位で解放可。store.set_user_features。
