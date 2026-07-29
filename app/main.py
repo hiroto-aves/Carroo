@@ -232,15 +232,8 @@ async def startup_event():
 
 @app.get("/", response_class=HTMLResponse)
 async def read_root():
-    from app.ui_shell import brand_page
-    inner = """
-  <div class="panel">
-    <p style="color:var(--muted);font-size:14px;margin:0 0 18px;text-align:center">
-      荷物・空車を トラボックス と WebKit へまとめて投稿。<br>ログインして始めましょう。</p>
-    <a href="/auth/login" class="linkbtn">ログイン</a>
-    <p class="hint">アカウントが必要な場合は管理者にお問い合わせください</p>
-  </div>"""
-    return brand_page(title="ホーム", inner=inner)
+    from app.ui_shell import landing_page
+    return landing_page()
 
 @app.get("/health")
 async def health_check():
