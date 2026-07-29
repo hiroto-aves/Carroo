@@ -52,13 +52,16 @@ def _login_rate_limit_reset(key: str) -> None:
         _login_attempts.pop(key, None)
 
 @router.get("/login", response_class=HTMLResponse)
-async def login_page():
+async def login_page(next: str = ""):
     from app.ui_shell import brand_page
-    inner = """
+    # next はオープンリダイレクト対策で「/」始まり・「//」ではないパスのみ許可
+    safe_next = next if (next.startswith("/") and not next.startswith("//")) else ""
+    inner = f"""
   <div class="panel">
     <h2>ログイン</h2>
     <div id="error-message" class="err"></div>
     <form id="login-form">
+      <input type="hidden" name="_next" value="{esc(safe_next)}">
       <div class="field">
         <label class="fl">ユーザー名</label>
         <input type="text" name="username" placeholder="ユーザー名を入力" required>
@@ -73,18 +76,20 @@ async def login_page():
     <p class="hint">アカウントが必要な場合は管理者にお問い合わせください</p>
   </div>
   <script>
-    document.getElementById('login-form').addEventListener('submit', async (e) => {
+    document.getElementById('login-form').addEventListener('submit', async (e) => {{
       e.preventDefault();
       const errorDiv = document.getElementById('error-message');
-      try {
-        const response = await fetch('/auth/login', { method: 'POST', body: new FormData(e.target) });
+      const fd = new FormData(e.target);
+      const nextPath = fd.get('_next'); fd.delete('_next');
+      try {{
+        const response = await fetch('/auth/login', {{ method: 'POST', body: fd }});
         const data = await response.json();
-        if (response.ok) { window.location.href = data.redirect || '/dashboard/'; }
-        else { errorDiv.textContent = data.detail || 'ログインに失敗しました'; errorDiv.classList.add('show'); window.__idle(e.target.__busyBtn); }
-      } catch (error) {
+        if (response.ok) {{ window.location.href = nextPath || data.redirect || '/dashboard/'; }}
+        else {{ errorDiv.textContent = data.detail || 'ログインに失敗しました'; errorDiv.classList.add('show'); window.__idle(e.target.__busyBtn); }}
+      }} catch (error) {{
         errorDiv.textContent = 'エラーが発生しました: ' + error.message; errorDiv.classList.add('show'); window.__idle(e.target.__busyBtn);
-      }
-    });
+      }}
+    }});
   </script>"""
     return brand_page(title="ログイン", inner=inner)
 

@@ -181,6 +181,30 @@ async def _validation_handler(request: _Req, exc: RequestValidationError):
                                  "code": "E-VALIDATION"})
 
 
+@app.exception_handler(_StarletteHTTPException)
+async def _http_exception_handler(request: _Req, exc: _StarletteHTTPException):
+    """401（未認証）はブラウザのページ遷移ならログイン画面へリダイレクトする。
+
+    Jamf の Web Clip や直接URLアクセスで /dashboard/ 等を開いた際、Cookie が
+    無い/失効していると get_current_user が 401 を投げるが、そのままだと
+    {"detail":"Not authenticated"} という JSON が画面に出るだけで迷子になる。
+    fetch/XHR からの 401（画面内の非同期呼び出し）はこれまで通り JSON のまま返す
+    （JS 側が data.detail を見て処理するため）。
+    """
+    if exc.status_code == 401:
+        accept = request.headers.get("accept", "")
+        is_navigation = "text/html" in accept and request.headers.get(
+            "sec-fetch-mode", "navigate") == "navigate"
+        if is_navigation:
+            from fastapi.responses import RedirectResponse
+            next_path = request.url.path
+            return RedirectResponse(
+                url=f"/auth/login?next={next_path}", status_code=302)
+    return JSONResponse(status_code=exc.status_code,
+                        content={"detail": exc.detail},
+                        headers=getattr(exc, "headers", None))
+
+
 @app.exception_handler(Exception)
 async def _unhandled_handler(request: _Req, exc: Exception):
     """未捕捉の例外(500): 参照IDを発行し、全文をログに残す（管理者が追える）。
