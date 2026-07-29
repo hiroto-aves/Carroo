@@ -69,6 +69,7 @@ async def login_page():
       </div>
       <button type="submit" class="btn-primary">ログイン</button>
     </form>
+    <p class="hint"><a href="/auth/forgot" style="color:var(--signal-ink)">パスワードをお忘れですか？</a></p>
     <p class="hint">アカウントが必要な場合は管理者にお問い合わせください</p>
   </div>
   <script>
@@ -86,6 +87,120 @@ async def login_page():
     });
   </script>"""
     return brand_page(title="ログイン", inner=inner)
+
+
+@router.get("/forgot", response_class=HTMLResponse)
+async def forgot_page():
+    from app.ui_shell import brand_page
+    inner = """
+  <div class="panel">
+    <h2>パスワードの再設定</h2>
+    <div id="error-message" class="err"></div>
+    <div id="done" class="hint" style="display:none">✅ ご登録のメールアドレス宛に、再設定用のリンクをお送りしました（届かない場合は管理者にご確認ください）。</div>
+    <form id="forgot-form">
+      <div class="field">
+        <label class="fl">登録済みのメールアドレス</label>
+        <input type="email" name="email" placeholder="example@domain.com" required>
+      </div>
+      <button type="submit" class="btn-primary">再設定リンクを送る</button>
+    </form>
+    <p class="hint"><a href="/auth/login" style="color:var(--signal-ink)">← ログインへ戻る</a></p>
+  </div>
+  <script>
+    document.getElementById('forgot-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const errorDiv = document.getElementById('error-message');
+      const form = e.target;
+      try {
+        await fetch('/auth/forgot', { method: 'POST', body: new FormData(form) });
+        form.style.display = 'none';
+        document.getElementById('done').style.display = 'block';
+      } catch (error) {
+        errorDiv.textContent = 'エラーが発生しました: ' + error.message; errorDiv.classList.add('show');
+        window.__idle(form.__busyBtn);
+      }
+    });
+  </script>"""
+    return brand_page(title="パスワードの再設定", inner=inner)
+
+
+@router.post("/forgot")
+async def forgot_request(email: str = Form(...)):
+    """登録メールアドレス宛に再設定リンクを送信。アカウントの有無に関わらず同じ応答（列挙対策）。"""
+    from app.db import store
+    from app.utils.mailer import send_email
+    import secrets
+    users = [u for u in store.list_users() if (u.get("email") or "").lower() == email.strip().lower()]
+    if users:
+        user = users[0]
+        token = secrets.token_urlsafe(32)
+        store.create_password_reset(user["id"], token, ttl_minutes=30)
+        import os
+        base = (os.getenv("APP_BASE_URL", "") or "").rstrip("/")
+        link = f"{base}/auth/reset?token={token}"
+        body = (f"Carroo のパスワード再設定リクエストを受け付けました。\n\n"
+                f"以下のリンクから新しいパスワードを設定してください（30分間有効）:\n{link}\n\n"
+                f"心当たりがない場合は、このメールを無視してください。")
+        try:
+            send_email(user["email"], "【Carroo】パスワードの再設定", body)
+        except Exception as e:
+            logging.getLogger(__name__).error(f"パスワードリセットメール送信失敗: {e}")
+    # アカウントの有無を外部から判別されないよう、常に同じ応答を返す
+    return {"status": "ok"}
+
+
+@router.get("/reset", response_class=HTMLResponse)
+async def reset_page(token: str = ""):
+    from app.ui_shell import brand_page
+    inner = f"""
+  <div class="panel">
+    <h2>新しいパスワードを設定</h2>
+    <div id="error-message" class="err"></div>
+    <form id="reset-form">
+      <input type="hidden" name="token" value="{esc(token)}">
+      <div class="field">
+        <label class="fl">新しいパスワード</label>
+        <input type="password" name="password" autocomplete="new-password" placeholder="4文字以上" required>
+      </div>
+      <button type="submit" class="btn-primary">パスワードを更新</button>
+    </form>
+  </div>
+  <script>
+    document.getElementById('reset-form').addEventListener('submit', async (e) => {{
+      e.preventDefault();
+      const errorDiv = document.getElementById('error-message');
+      const data = Object.fromEntries(new FormData(e.target).entries());
+      try {{
+        const r = await fetch('/auth/reset', {{method:'POST', headers:{{'Content-Type':'application/json'}}, body: JSON.stringify(data)}});
+        const j = await r.json();
+        if (r.ok) {{ window.location.href = '/auth/login'; }}
+        else {{ errorDiv.textContent = j.detail || '更新に失敗しました'; errorDiv.classList.add('show'); window.__idle(e.target.__busyBtn); }}
+      }} catch (error) {{
+        errorDiv.textContent = 'エラーが発生しました: ' + error.message; errorDiv.classList.add('show'); window.__idle(e.target.__busyBtn);
+      }}
+    }});
+  </script>"""
+    return brand_page(title="パスワードの再設定", inner=inner)
+
+
+class PasswordResetApply(BaseModel):
+    token: str
+    password: str
+
+
+@router.post("/reset")
+async def reset_apply(data: PasswordResetApply):
+    from app.db import store
+    if len(data.password) < 4:
+        raise HTTPException(400, "パスワードは4文字以上にしてください")
+    user_id = store.consume_password_reset(data.token)
+    if not user_id:
+        raise HTTPException(400, "リンクが無効か期限切れです。もう一度お手続きください。")
+    store.set_user_password(user_id, hash_password(data.password))
+    from app.utils.audit import audit
+    audit("password_reset_self", user_id=user_id)
+    return {"status": "ok"}
+
 
 @router.get("/register")
 async def register_page():

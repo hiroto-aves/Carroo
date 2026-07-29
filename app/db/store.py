@@ -308,6 +308,30 @@ def set_user_features(user_id: int, features: Dict[str, Any]) -> None:
     _db().collection("users").document(str(user_id)).update({"features": features or {}})
 
 
+def create_password_reset(user_id: int, token: str, ttl_minutes: int = 30) -> None:
+    """パスワードリセット用のワンタイムトークンを保存（有効期限つき）。"""
+    from datetime import datetime, timedelta as _td
+    expires = (datetime.now(_JST) + _td(minutes=ttl_minutes)).strftime("%Y-%m-%d %H:%M:%S")
+    _db().collection("password_resets").document(token).set({
+        "user_id": int(user_id), "expires_at": expires, "used": False, "created_at": _now(),
+    })
+
+
+def consume_password_reset(token: str) -> Optional[int]:
+    """トークンを検証・使用済みにし、有効なら user_id を返す（無効/期限切れ/使用済みは None）。"""
+    ref = _db().collection("password_resets").document(token)
+    snap = ref.get()
+    if not snap.exists:
+        return None
+    d = snap.to_dict() or {}
+    if d.get("used"):
+        return None
+    if d.get("expires_at") and _now() > d["expires_at"]:
+        return None
+    ref.update({"used": True})
+    return d.get("user_id")
+
+
 def set_user_password(user_id: int, hashed_password: str) -> None:
     """ハッシュ済みパスワードを更新（旧SHA-256→bcrypt 再ハッシュ移行に使用）。"""
     _db().collection("users").document(str(user_id)).update(

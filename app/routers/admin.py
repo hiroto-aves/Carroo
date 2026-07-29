@@ -8,6 +8,7 @@ import logging
 
 from fastapi import APIRouter, Depends, Form, HTTPException, status
 from fastapi.responses import HTMLResponse, RedirectResponse
+from pydantic import BaseModel
 
 from app.db.database import get_db_connection
 from app.dependencies import get_current_user
@@ -64,6 +65,10 @@ async def users_page(current_user: dict = Depends(get_current_user)):
         del_btn = (f'<button class="btn danger" style="padding:4px 11px;font-size:12px" '
                    f'data-act="delUser" data-args=\'[{uid},"{esc(u.get("username",""))}"]\'>削除</button>'
                    if can_del else '<span class="hl" style="font-size:12px">—</span>')
+        # 自分以外のパスワードを再設定可（自分は /auth/me から自分で変更）
+        pw_btn = (f'<button class="btn ghost" style="padding:4px 11px;font-size:12px" '
+                  f'data-act="resetPw" data-args=\'[{uid},"{esc(u.get("username",""))}"]\'>PW再設定</button>'
+                  if uid != current_user["id"] else '')
         rows += f"""
         <tr>
           <td class="mono" style="color:var(--faint)">{uid}</td>
@@ -71,7 +76,7 @@ async def users_page(current_user: dict = Depends(get_current_user)):
           <td style="color:var(--muted)">{esc(u.get("email"))}</td>
           <td class="num" style="text-align:right">{ncases} 件</td>
           <td style="color:var(--faint)">{esc(u.get("created_at"))}</td>
-          <td style="text-align:right">{del_btn}</td>
+          <td style="text-align:right;white-space:nowrap">{pw_btn} {del_btn}</td>
         </tr>"""
 
     # 課金の基礎: 有効ユーザー数（2人目以降が従量課金）
@@ -101,6 +106,12 @@ async def users_page(current_user: dict = Depends(get_current_user)):
     if(!confirm('ユーザー「'+name+'」を削除しますか？（このユーザーはログインできなくなります。登録した案件は残ります）'))return;
     var r=await fetch('/admin/users/'+id+'/delete',{{method:'POST'}});
     if(r.ok) location.reload(); else {{ var j=await r.json(); alert('エラー: '+(j.detail||'失敗')); }}
+  }}
+  async function resetPw(id, name){{
+    var pw=prompt('「'+name+'」の新しいパスワードを入力してください（4文字以上）');
+    if(!pw)return;
+    var r=await fetch('/admin/users/'+id+'/reset-password',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{password:pw}})}});
+    if(r.ok) alert('パスワードを再設定しました'); else {{ var j=await r.json(); alert('エラー: '+(j.detail||'失敗')); }}
   }}
   </script>
 
@@ -192,6 +203,33 @@ async def delete_user_route(target_id: int,
     audit("user_delete", target_id=target_id,
           target_username=target.get("username"), by=current_user.get("username"))
     return {"status": "deleted"}
+
+
+class PasswordReset(BaseModel):
+    password: str
+
+
+@router.post("/users/{target_id}/reset-password")
+async def reset_user_password_route(target_id: int, data: PasswordReset,
+                                    current_user: dict = Depends(get_current_user)):
+    """メンバーのパスワードを管理者が再設定（owner=自テナントのみ・super=誰でも可）。自分自身は不可。"""
+    _require_admin(current_user)
+    from app.db import store
+    from app.utils.audit import audit
+    if target_id == current_user["id"]:
+        raise HTTPException(400, "自分自身のパスワードは「アカウント」画面から変更してください")
+    target = store.get_user_by_id(target_id)
+    if not target:
+        raise HTTPException(404, "ユーザーが見つかりません")
+    if not current_user.get("is_super"):
+        if (target.get("tenant_id") or "takeuchi") != current_user.get("tenant_id"):
+            raise HTTPException(403, "他テナントのユーザーは操作できません")
+    if len(data.password) < 4:
+        raise HTTPException(400, "パスワードは4文字以上にしてください")
+    store.set_user_password(target_id, hash_password(data.password))
+    audit("user_password_reset", target_id=target_id,
+          target_username=target.get("username"), by=current_user.get("username"))
+    return {"status": "ok"}
 
 
 # ============ データ整理（テストダミー案件の完全削除）============
