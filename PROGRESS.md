@@ -16,6 +16,15 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-29 パスワードリセット一式＋「初期設定が必要です」画面刷新（rev carroo-00087-qw7）
+- **セルフパスワードリセット**：ログイン画面に「パスワードをお忘れですか？」→ `/auth/forgot`（登録メール入力→ワンタイムトークンをメール送信・30分有効）
+  → `/auth/reset?token=`（新パスワード設定）。アカウント有無に関わらず同一応答（列挙対策）。store.create_password_reset/consume_password_reset
+  （Firestore `password_resets`）。監査ログ password_reset_self。
+- **owner/super による他ユーザーのパスワード再設定**：`/admin/users` 各行に「PW再設定」ボタン（自分の行は非表示）。
+  owner=自テナントのみ・super=誰でも。POST /admin/users/{id}/reset-password。監査ログ user_password_reset。
+- **「初期設定が必要です」画面を本体デザインに刷新**：cases.py の SETUP_REQUIRED_HTML（旧・独自HTML）を廃し
+  `_setup_required_html()` で左レール・シェル(render_page)に統一。
+
 ### 🆕 2026-07-28〜29 運営者アカウント分離＋アカウント自己編集＋運営者専用ナビ＋復旧手段（rev carroo-00085-kwh）
 - **運営者アカウントの発行/分離**：`/ops` に運営者アカウント発行フォーム（運営専用テナント `carroo-ops`）＋各ユーザーの
   「運営者にする／外す」トグル（自分自身の剥奪は不可）。store.set_user_super。監査ログ operator_create/user_super_set。
