@@ -16,6 +16,15 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-29 社内リリース前対応：課金対象外フラグ＋PWAブランド色（rev carroo-00094-hqq）
+- **テナントの課金対象外(billing_exempt)フラグ**：/ops に「課金対象外にする/対象にする」トグル追加。ONだと
+  Stripe Webhook(apply_subscription_to_tenant)が plan/seat_limit/subscription_status を一切上書きしなくなる。
+  トライアル終了(8/4)等でユーザー追加枠が縮小する実運用リスクを解消。admin.py の seat_limit チェックも exempt なら
+  スキップ。監査ログ tenant_billing_exempt。**竹内テナントに適用済み（ユーザー実施）**。
+- **PWAマニフェストのブランド色修正**：static/manifest.json の background_color/theme_color を旧・青系(#2563eb)から
+  現行ブランド(墨#15181C／シグナルグリーン#0FA36B)に更新。Jamf Web Clip 配信の準備が整った（アイコン/PWA機構は既存）。
+- 社内リリース判断：機能面は完了。残るオーナー作業は Jamf Web Clip 設定（運用作業・コード対応不要）のみ。
+
 ### 🆕 2026-07-29 ダークモード旧フォーム対応＋定期登録の担当者名バグ修正＋ランディングページ公開（rev carroo-00093-fg7）
 - **ダークモード「旧Tailwindフォーム橋渡し」**：荷物/空車/定期登録などの旧Tailwind色クラス(bg-white/text-gray-*/
   border-gray-*/shadow/bg-blue-*等)を、ダークテーマ時のみアプリのトークンへ上書きする共通CSSを ui_shell.py に追加
