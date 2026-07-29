@@ -16,6 +16,20 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-29 ダークモード旧フォーム対応＋定期登録の担当者名バグ修正＋ランディングページ公開（rev carroo-00093-fg7）
+- **ダークモード「旧Tailwindフォーム橋渡し」**：荷物/空車/定期登録などの旧Tailwind色クラス(bg-white/text-gray-*/
+  border-gray-*/shadow/bg-blue-*等)を、ダークテーマ時のみアプリのトークンへ上書きする共通CSSを ui_shell.py に追加
+  （フォーム側は無改修）。ライトモードは影響なし。
+- **空車定期登録の担当者名バグ修正**：フォームに担当者名・電話番号欄が無く、作成時に強制でログインユーザー名
+  （例:「管理者」）が入っていた。単発空車登録と同様、初期設定の担当者名をプリフィルする欄を追加。
+  recurrence.py に contact_phone の受け渡しも追加（漏れていた）。履歴からの再登録プリフィルにも反映。
+- **定期登録の「履歴から再登録」の行き先修正**：誤って単発の /trucks/register に飛んでいたのを
+  /schedules/register?from=<ルールID> に修正。ルール内容（頻度・曜日・地域・担当者等）を正しくプリフィル
+  （複数チェックボックス配列のプリフィルにも widgets.PREFILL_JS を対応）。
+- **公開ランディングページ（`/`）**：ui_shell.landing_page() を新設し、旧・簡素なログイン誘導カードから差し替え。
+  ヒーロー(常に墨色・Cマーク+arrooワードマーク・Route Ledgerアニメーション)/できること/なぜCarrooか/つかいかた/
+  料金(Standard・Pro実料金)/CTA/フッター(法務リンク)。CSP・nonce・PWA全て正常動作確認済み。
+
 ### 🆕 2026-07-29 デザインディレクション資料（人に見せる用）
 - `docs/デザインディレクション_ver1.0.html`（Artifact: https://claude.ai/code/artifact/51e82779-a360-4be4-b006-e3e48a81a370 ）。
   app/ui_shell.py の実CSSトークン・実コンポーネントをそのまま使用（架空リブランドではなく現行デザイン言語の正式まとめ）。

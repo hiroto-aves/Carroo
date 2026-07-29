@@ -1,0 +1,275 @@
+<title>Carroo — 物流案件を、二度打ちしない。</title>
+<style>
+:root{
+ --ink:#14171A;--paper:#F2F4F1;--surface:#FFFFFF;--raise:#FAFBF9;
+ --line:#E2E5DF;--line-soft:#ECEEE8;--muted:#6E756F;--faint:#9AA19A;--ink-2:#333A36;
+ --signal:#0FA36B;--signal-br:#1FBE83;--signal-wash:#E6F4EC;--signal-ink:#0B7D53;
+ --amber:#C8892B;--amber-wash:#F6ECD9;--route:#C2C9C3;
+ --rail:#15181C;--rail-2:#1B2024;--rail-line:#282E31;--rail-txt:#C7CEC8;--rail-txt-dim:#7E867F;--cream:#F4F2EC;
+ --shadow:0 1px 2px rgba(20,23,26,.05),0 18px 46px -20px rgba(20,23,26,.22);
+ --sans:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic","Segoe UI",system-ui,sans-serif;
+ --mono:ui-monospace,"SF Mono",Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+ --ink:#E9ECE9;--paper:#0C0E10;--surface:#15181B;--raise:#1A1E21;
+ --line:#282D2F;--line-soft:#20241F;--muted:#8A918B;--faint:#666C67;--ink-2:#C4CBC5;
+ --signal:#22C58A;--signal-br:#33D398;--signal-wash:#13271F;--signal-ink:#7FE3BC;
+ --amber:#E0B060;--amber-wash:#2A2416;--route:#39413C;
+ --shadow:0 1px 2px rgba(0,0,0,.5),0 26px 64px -26px rgba(0,0,0,.75);
+}}
+:root[data-theme="dark"]{
+ --ink:#E9ECE9;--paper:#0C0E10;--surface:#15181B;--raise:#1A1E21;
+ --line:#282D2F;--line-soft:#20241F;--muted:#8A918B;--faint:#666C67;--ink-2:#C4CBC5;
+ --signal:#22C58A;--signal-br:#33D398;--signal-wash:#13271F;--signal-ink:#7FE3BC;
+ --amber:#E0B060;--amber-wash:#2A2416;--route:#39413C;
+ --shadow:0 1px 2px rgba(0,0,0,.5),0 26px 64px -26px rgba(0,0,0,.75);
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.6;letter-spacing:-.006em;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit}
+.mono{font-family:var(--mono)}.num{font-variant-numeric:tabular-nums}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+
+/* ===== Hero: 常に墨色（アプリの左レールと同じ固定トーン）===== */
+.hero{background:var(--rail);color:var(--rail-txt);position:relative;overflow:hidden}
+.hero::before{content:"";position:absolute;inset:0;background:radial-gradient(120% 70% at 15% 0%,rgba(31,190,131,.14) 0%,transparent 55%)}
+.hero-in{position:relative;padding:96px 24px 84px;max-width:1080px;margin:0 auto}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--signal-br);font-weight:700;margin-bottom:26px}
+.eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--signal-br);box-shadow:0 0 0 3px rgba(31,190,131,.25)}
+.hero h1{font-size:clamp(34px,5.4vw,64px);font-weight:700;letter-spacing:-.035em;line-height:1.12;margin:0 0 22px;color:var(--cream);max-width:15ch;text-wrap:balance}
+.hero h1 b{color:var(--signal-br);font-weight:700}
+.hero p.lede{font-size:17px;color:var(--rail-txt);max-width:46ch;margin:0 0 38px;line-height:1.75}
+.cta-row{display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:64px}
+.btn-p{background:var(--signal);color:#fff;font-weight:650;font-size:14.5px;padding:13px 26px;border-radius:11px;display:inline-flex;align-items:center;gap:8px;text-decoration:none;transition:filter .15s}
+.btn-p:hover{filter:brightness(1.08)}
+.btn-s{color:var(--cream);font-weight:600;font-size:14px;padding:13px 22px;border-radius:11px;border:1px solid var(--rail-line);text-decoration:none}
+.btn-s:hover{background:var(--rail-2)}
+
+/* ルート可視化（ダッシュボードの Route Ledger を踏襲した hero ビジュアル） */
+.routecard{background:var(--rail-2);border:1px solid var(--rail-line);border-radius:16px;padding:22px 24px;max-width:560px}
+.routecard .rhead{display:flex;justify-content:space-between;align-items:center;font-size:11.5px;color:var(--rail-txt-dim);margin-bottom:16px}
+.routecard .rchip{font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;background:rgba(31,190,131,.16);color:var(--signal-br)}
+.rtrack{position:relative;height:22px;margin:6px 0 14px}
+.rtrack .base{position:absolute;top:50%;left:0;right:0;height:2px;background:var(--rail-line);transform:translateY(-50%)}
+.rtrack .fill{position:absolute;top:50%;left:0;height:2px;background:var(--signal-br);transform:translateY(-50%);width:0;animation:fillRoute 2.2s .3s ease-out forwards}
+.rtrack .o{position:absolute;top:50%;left:0;width:9px;height:9px;border-radius:50%;background:var(--cream);transform:translate(-50%,-50%)}
+.rtrack .d{position:absolute;top:50%;left:100%;width:9px;height:9px;border-radius:50%;border:2px solid var(--rail-line);background:var(--rail-2);transform:translate(-50%,-50%);transition:all .4s .6s}
+.rtrack.done .d{border-color:var(--signal-br);background:var(--signal-br)}
+.rplaces{display:flex;justify-content:space-between;font-size:13px;color:var(--cream);font-weight:600}
+.rplaces small{display:block;color:var(--rail-txt-dim);font-weight:500;font-size:11px;margin-top:2px}
+.rmeta{display:flex;gap:18px;margin-top:16px;padding-top:16px;border-top:1px solid var(--rail-line);font-size:12px;color:var(--rail-txt-dim)}
+.rmeta b{color:var(--cream);font-weight:650}
+@keyframes fillRoute{to{width:100%}}
+@media(prefers-reduced-motion:reduce){.rtrack .fill{animation:none;width:100%}}
+
+/* ===== Body: 通常トークン（テーマ追従）===== */
+.sec{padding:76px 0}
+.sec-head{max-width:640px;margin:0 0 44px}
+.k{font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--signal-ink);font-weight:700;margin-bottom:12px}
+.sec h2{font-size:clamp(24px,3vw,34px);letter-spacing:-.025em;margin:0 0 12px;text-wrap:balance}
+.sec p.sub{color:var(--muted);font-size:15px;line-height:1.8;margin:0}
+
+.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:16px;overflow:hidden}
+@media(max-width:860px){.feat-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.feat-grid{grid-template-columns:1fr}}
+.feat{background:var(--surface);padding:28px 26px}
+.feat .ic{width:38px;height:38px;border-radius:10px;background:var(--signal-wash);color:var(--signal-ink);display:grid;place-items:center;margin-bottom:16px}
+.feat h3{font-size:15.5px;margin:0 0 8px;letter-spacing:-.01em}
+.feat p{font-size:13.5px;color:var(--muted);margin:0;line-height:1.7}
+.feat.pro .ic{background:var(--amber-wash);color:var(--amber)}
+.feat .tag{display:inline-block;margin-left:8px;font-size:9.5px;font-weight:700;letter-spacing:.05em;color:var(--amber);background:var(--amber-wash);padding:1px 7px;border-radius:999px;vertical-align:2px}
+
+.origin{display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:start}
+@media(max-width:800px){.origin{grid-template-columns:1fr}}
+.origin blockquote{margin:0;font-size:20px;line-height:1.65;color:var(--ink);letter-spacing:-.01em;font-weight:500}
+.origin .attr{margin-top:18px;font-size:12.5px;color:var(--faint)}
+.origin ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:20px}
+.origin li{display:flex;gap:14px}
+.origin li .n{flex:0 0 auto;width:26px;height:26px;border-radius:8px;background:var(--raise);border:1px solid var(--line);color:var(--muted);font-size:11px;font-weight:700;display:grid;place-items:center;font-family:var(--mono)}
+.origin li div{font-size:13.5px;color:var(--ink-2);line-height:1.7}
+.origin li b{color:var(--ink)}
+
+.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:24px}
+@media(max-width:760px){.flow{grid-template-columns:1fr}}
+.flow .step{position:relative;padding-left:0}
+.flow .num{font-family:var(--mono);font-size:12px;color:var(--faint);margin-bottom:10px;display:block}
+.flow h3{font-size:16px;margin:0 0 8px}
+.flow p{font-size:13.5px;color:var(--muted);margin:0;line-height:1.75}
+.flow .arrow{display:none}
+@media(min-width:761px){.flow .step:not(:last-child)::after{content:"";position:absolute;top:6px;right:-16px;width:12px;height:12px;border-top:1.5px solid var(--line);border-right:1.5px solid var(--line);transform:rotate(45deg)}}
+
+.plans{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:700px){.plans{grid-template-columns:1fr}}
+.plan{border:1px solid var(--line);border-radius:16px;background:var(--surface);padding:26px;box-shadow:var(--shadow)}
+.plan.pro{border-color:var(--signal);box-shadow:0 0 0 3px var(--signal-wash)}
+.plan .pname{font-size:12.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.plan.pro .pname{color:var(--signal-ink)}
+.plan .price{font-size:28px;font-weight:700;letter-spacing:-.02em;margin:8px 0 2px}
+.plan .price small{font-size:13px;color:var(--faint);font-weight:500}
+.plan .seat{font-size:12.5px;color:var(--muted);margin-bottom:16px}
+.plan ul{list-style:none;margin:0;padding:0;font-size:13.5px}
+.plan li{display:flex;gap:9px;padding:6px 0;color:var(--ink-2)}
+.plan li b{color:var(--signal);flex:0 0 auto}
+.plan .trial{display:inline-block;margin-top:16px;font-size:11.5px;color:var(--signal-ink);background:var(--signal-wash);padding:4px 10px;border-radius:999px;font-weight:650}
+
+.cta-band{background:var(--rail);color:var(--cream);border-radius:20px;padding:56px 44px;text-align:center;position:relative;overflow:hidden}
+.cta-band::before{content:"";position:absolute;inset:0;background:radial-gradient(90% 100% at 50% 0%,rgba(31,190,131,.14),transparent 60%)}
+.cta-band .in{position:relative}
+.cta-band h2{font-size:clamp(22px,3vw,30px);letter-spacing:-.02em;margin:0 0 12px}
+.cta-band p{color:var(--rail-txt);font-size:14.5px;margin:0 0 26px}
+
+footer{background:var(--rail);color:var(--rail-txt-dim);padding:40px 24px;font-size:12.5px}
+.foot-in{max-width:1080px;margin:0 auto;display:flex;justify-content:space-between;flex-wrap:wrap;gap:16px;align-items:center}
+.foot-links{display:flex;gap:18px;flex-wrap:wrap}
+.foot-links a{color:var(--rail-txt-dim);text-decoration:none}
+.foot-links a:hover{color:var(--rail-txt)}
+.foot-brand{display:inline-flex;align-items:center;font-weight:680;letter-spacing:-.05em;font-size:16px;color:var(--cream)}
+.foot-brand svg{height:.9em;margin-right:2px;transform:translateY(.05em)}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+ <g id="cmark"><path d="M70.9 27.9 A30 30 0 1 0 70.9 72.1" fill="none" stroke="var(--cream)" stroke-width="15.5" stroke-linecap="round"/><circle cx="70.9" cy="27.9" r="9.6" fill="var(--signal-br)"/></g>
+ <g id="ic-sync" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9a7 7 0 0 1 12-3l2 2"/><path d="M20 15A7 7 0 0 1 8 18l-2-2"/><path d="M18 4v4h-4M6 20v-4h4"/></g>
+ <g id="ic-repeat" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.1 21 6l-4 3.9M3 12a9 9 0 0 1 15-6.7L21 6M7 21.9 3 18l4-3.9M21 12a9 9 0 0 1-15 6.7L3 18"/></g>
+ <g id="ic-calendar" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M16 3v4M8 3v4M3 10h18"/></g>
+ <g id="ic-alert" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></g>
+ <g id="ic-chart" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-4 3 3 5-6"/></g>
+ <g id="ic-history" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l4 2"/></g>
+ <g id="ic-shield" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 4 5v6c0 5 3.4 8.7 8 11 4.6-2.3 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></g>
+ <g id="ic-users" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3.2"/><path d="M3 20a6 6 0 0 1 12 0M16 5.5a3 3 0 0 1 0 5.6M15 20a6 6 0 0 1 6-.2"/></g>
+</defs></svg>
+
+<section class="hero">
+  <div class="hero-in">
+    <div class="eyebrow"><span class="dot"></span>物流案件 一括投稿ソフトウェア</div>
+    <h1>積む場所から卸す場所まで、<br><b>二度打ちしない。</b></h1>
+    <p class="lede">積地・卸地・重量・車種・運賃を一度入力すれば、トラボックスとWebKitへ同時に投稿。空車情報も、定期便もまとめて自動化します。</p>
+    <div class="cta-row">
+      <a class="btn-p" href="/auth/login">ログインして始める<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+      <a class="btn-s" href="#features">できることを見る</a>
+    </div>
+    <div class="routecard">
+      <div class="rhead"><span>案件 #1042</span><span class="rchip">掲載中</span></div>
+      <div class="rplaces">
+        <div>東京都港区<small>7/29 09:00 積</small></div>
+        <div style="text-align:right">大阪府北区<small>7/30 09:00 卸</small></div>
+      </div>
+      <div class="rtrack" id="rtrack"><div class="base"></div><div class="fill"></div><span class="o"></span><span class="d"></span></div>
+      <div class="rmeta">
+        <div>投稿先 <b>トラボックス・WebKit</b></div>
+        <div>担当 <b>竹内運送</b></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<main class="wrap">
+  <section class="sec" id="features">
+    <div class="sec-head">
+      <div class="k">できること</div>
+      <h2>一括投稿から、失敗の見える化まで</h2>
+      <p class="sub">投稿ボタンを押すところで終わらせない。定期化、複数日程、そして「投稿できていなかった」を放置しない仕組みまで一体で提供します。</p>
+    </div>
+    <div class="feat-grid">
+      <div class="feat"><div class="ic"><svg width="19" height="19" viewBox="0 0 24 24"><use href="#ic-sync"/></svg></div>
+        <h3>トラボックス・WebKit 一括投稿</h3><p>1つのフォームから両サービスへ同時に投稿。項目のマッピングと必須条件の違いはCarrooが吸収します。</p></div>
+      <div class="feat pro"><div class="ic"><svg width="19" height="19" viewBox="0 0 24 24"><use href="#ic-repeat"/></svg></div>
+        <h3>空車定期登録<span class="tag">PRO</span></h3><p>毎週・隔週・毎日・毎月のパターンで空車情報を自動投稿。祝日スキップや先行投稿日数も設定できます。</p></div>
+      <div class="feat pro"><div class="ic"><svg width="19" height="19" viewBox="0 0 24 24"><use href="#ic-calendar"/></svg></div>
+        <h3>複数日程一括登録<span class="tag">PRO</span></h3><p>日程が流動的な荷物を、最大5パターン同時投稿。1件成約したら残りをワンクリックで取り下げ。</p></div>
+      <div class="feat"><div class="ic"><svg width="19" height="19" viewBox="0 0 24 24"><use href="#ic-alert"/></svg></div>
+        <h3>失敗の見える化</h3><p>投稿が3回失敗すると本人にメール通知＋専用画面に表示。原因を直して、その場で再投稿できます。</p></div>
+      <div class="feat"><div class="ic"><svg width="19" height="19" viewBox="0 0 24 24"><use href="#ic-chart"/></svg></div>
+        <h3>成約トラッキング</h3><p>掲載中・成約・成約率をダッシュボードで常時把握。経路は線一本で、成約すると緑の点に変わります。</p></div>
+      <div class="feat pro"><div class="ic"><svg width="19" height="19" viewBox="0 0 24 24"><use href="#ic-history"/></svg></div>
+        <h3>履歴から再登録<span class="tag">PRO</span></h3><p>過去の案件・空車をワンクリックで呼び出し、日付だけ変えて再投稿。同じ経路の反復入力をなくします。</p></div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><div class="k">なぜ Carroo か</div><h2>現場の入力ミスと、二度打ちから生まれた</h2></div>
+    <div class="origin">
+      <div>
+        <blockquote>「毎日同じ経路を、トラボックスとWebKitに別々に打ち込んでいた」——そこから始まったソフトウェアです。</blockquote>
+        <div class="attr">竹内運送・自社の物流案件投稿業務より</div>
+      </div>
+      <ul>
+        <li><div class="n">01</div><div><b>現場発の設計。</b>物流会社が自分たちの反復作業を解決するために作り、実際の投稿業務で検証を重ねています。</div></li>
+        <li><div class="n">02</div><div><b>外部サイトの変化に強い。</b>トラボックス・WebKit側の画面変更やタイムアウトに耐えるよう、自動化を作り直し続けています。</div></li>
+        <li><div class="n">03</div><div><b>失敗を握りつぶさない。</b>投稿できなかった案件は必ず本人に返る設計。「実は投稿されていなかった」を起こしません。</div></li>
+        <li><div class="n">04</div><div><b>チームで使える。</b>会社単位の契約で、担当者ごとにアカウントを分けて運用できます。</div></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><div class="k">つかいかた</div><h2>登録して、まかせる</h2></div>
+    <div class="flow">
+      <div class="step"><span class="num">01 / 登録</span><h3>案件・空車を入力</h3><p>積地・卸地・重量・車種などを一度入力。担当者情報は初期設定から自動で入ります。</p><div class="arrow"></div></div>
+      <div class="step"><span class="num">02 / 自動投稿</span><h3>Carrooが同時に投稿</h3><p>トラボックス・WebKitへバックグラウンドで投稿。定期便や複数日程もこの時点で自動化されます。</p></div>
+      <div class="step"><span class="num">03 / 結果通知</span><h3>成否をメールと画面で確認</h3><p>成功・失敗をダッシュボードと通知メールで確認。失敗はその場で再投稿できます。</p></div>
+    </div>
+  </section>
+
+  <section class="sec">
+    <div class="sec-head"><div class="k">料金</div><h2>会社単位の契約、7日間無料</h2><p class="sub">1人目のアカウント料は基本料に含みます。2人目以降は人数分の従量課金。カード決済のみ、いつでも解約できます。</p></div>
+    <div class="plans">
+      <div class="plan">
+        <div class="pname">Standard</div>
+        <div class="price">¥4,000<small> / 月</small></div>
+        <div class="seat">＋ ユーザー追加 ¥2,000 / 人・月</div>
+        <ul>
+          <li><b>✓</b>トラボックス・WebKit 一括投稿</li>
+          <li><b>✓</b>空車の単発登録</li>
+          <li><b>✓</b>成約トラッキング・ダッシュボード</li>
+          <li><b>✓</b>失敗の見える化・再投稿</li>
+        </ul>
+        <span class="trial">7日間無料トライアル</span>
+      </div>
+      <div class="plan pro">
+        <div class="pname">Pro</div>
+        <div class="price">¥5,000<small> / 月</small></div>
+        <div class="seat">＋ ユーザー追加 ¥3,000 / 人・月</div>
+        <ul>
+          <li><b>✓</b>Standard の全機能</li>
+          <li><b>✓</b>空車定期登録（自動化）</li>
+          <li><b>✓</b>複数日程一括登録</li>
+          <li><b>✓</b>履歴から再登録</li>
+        </ul>
+        <span class="trial">7日間無料トライアル</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" style="padding-top:0">
+    <div class="cta-band">
+      <div class="in">
+        <h2>今日の入力を、最後の二度打ちに。</h2>
+        <p>7日間は無料でお試しいただけます。カード登録は必要ですが、期間中はいつでも解約できます。</p>
+        <a class="btn-p" href="/auth/login">ログインして始める</a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="foot-in">
+    <span class="foot-brand"><svg width="18" height="18" viewBox="12 12 69 77"><use href="#cmark"/></svg>arroo</span>
+    <div class="foot-links">
+      <a href="/legal/tokushoho">特定商取引法に基づく表記</a>
+      <a href="/legal/terms">利用規約</a>
+      <a href="/legal/privacy">プライバシーポリシー</a>
+      <a href="/auth/login">ログイン</a>
+    </div>
+    <div>© 2026 Carroo</div>
+  </div>
+</footer>
+
+<script>
+(function(){
+  // ヒーローのルート線は初回のみ再生（reduced-motion は CSS 側で無効化済み）
+  var t = document.getElementById('rtrack');
+  if(t){ setTimeout(function(){ t.classList.add('done'); }, 900); }
+})();
+</script>
