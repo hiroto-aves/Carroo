@@ -1,0 +1,320 @@
+<title>Carroo — Design Direction</title>
+<style>
+/* ============================================================
+   ここから: 本番 app/ui_shell.py の CSS をそのまま移植（改変なし）
+   ============================================================ */
+:root{
+ --ink:#14171A;--paper:#F2F4F1;--surface:#FFFFFF;--raise:#FAFBF9;
+ --line:#E2E5DF;--line-soft:#ECEEE8;--muted:#6E756F;--faint:#9AA19A;--ink-2:#333A36;
+ --signal:#0FA36B;--signal-br:#1FBE83;--signal-wash:#E6F4EC;--signal-ink:#0B7D53;
+ --amber:#C8892B;--amber-wash:#F6ECD9;--route:#C2C9C3;
+ --rail:#15181C;--rail-2:#1B2024;--rail-line:#282E31;--rail-txt:#C7CEC8;--rail-txt-dim:#7E867F;--cream:#F4F2EC;
+ --shadow:0 1px 2px rgba(20,23,26,.05),0 18px 46px -20px rgba(20,23,26,.22);
+ --sans:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Yu Gothic","Segoe UI",system-ui,sans-serif;
+ --mono:ui-monospace,"SF Mono",Menlo,monospace;--r:14px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+ --ink:#E9ECE9;--paper:#0C0E10;--surface:#15181B;--raise:#1A1E21;
+ --line:#282D2F;--line-soft:#20241F;--muted:#8A918B;--faint:#666C67;--ink-2:#C4CBC5;
+ --signal:#22C58A;--signal-br:#33D398;--signal-wash:#13271F;--signal-ink:#7FE3BC;
+ --amber:#E0B060;--amber-wash:#2A2416;--route:#39413C;
+ --rail:#0E1113;--rail-2:#161A1D;--rail-line:#242A2D;--rail-txt:#C2C9C3;--rail-txt-dim:#727A74;
+ --shadow:0 1px 2px rgba(0,0,0,.5),0 26px 64px -26px rgba(0,0,0,.75);
+}}
+:root[data-theme="dark"]{
+ --ink:#E9ECE9;--paper:#0C0E10;--surface:#15181B;--raise:#1A1E21;
+ --line:#282D2F;--line-soft:#20241F;--muted:#8A918B;--faint:#666C67;--ink-2:#C4CBC5;
+ --signal:#22C58A;--signal-br:#33D398;--signal-wash:#13271F;--signal-ink:#7FE3BC;
+ --amber:#E0B060;--amber-wash:#2A2416;--route:#39413C;
+ --rail:#0E1113;--rail-2:#161A1D;--rail-line:#242A2D;--rail-txt:#C2C9C3;--rail-txt-dim:#727A74;
+ --shadow:0 1px 2px rgba(0,0,0,.5),0 26px 64px -26px rgba(0,0,0,.75);
+}
+.num{font-variant-numeric:tabular-nums}.mono{font-family:var(--mono)}
+.btn{border:0;border-radius:10px;background:var(--signal);color:#fff;font-weight:640;font-size:13px;padding:9px 15px;display:inline-flex;gap:7px;align-items:center;cursor:pointer}
+.btn:hover{filter:brightness(1.05)}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.danger{background:transparent;color:#C9503E;border:1px solid var(--line)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow)}
+.hl{color:var(--muted);font-size:13px}
+.chip{font-size:11.5px;font-weight:650;padding:4px 10px;border-radius:999px;display:inline-block}
+.chip.live{color:var(--signal-ink);background:var(--signal-wash)}.chip.wait{color:var(--amber);background:var(--amber-wash)}
+.chip.met{color:#fff;background:var(--signal)}.chip.off{color:var(--muted);background:var(--line-soft)}
+label.fl{font-size:12px;color:var(--faint);display:block;margin-bottom:5px}
+input,select,textarea{font-family:var(--sans);font-size:15px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--signal);box-shadow:0 0 0 3px var(--signal-wash)}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;color:var(--muted);font-weight:600;padding:11px 14px;background:var(--raise);border-bottom:1px solid var(--line-soft)}
+td{padding:12px 14px;border-top:1px solid var(--line-soft)}
+h1.pt{font-size:26px;margin:0 0 4px;letter-spacing:-.03em}
+.stats{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--surface)}
+@media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr)}}
+.cell{padding:14px 16px;border-right:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft)}
+.cell .k{font-size:11.5px;color:var(--muted)} .cell .v{font-size:26px;font-weight:660;letter-spacing:-.03em;margin-top:2px}
+.cell .v.sig{color:var(--signal)} .cell .v.amb{color:var(--amber)} .cell .k .sub{font-size:11px;color:var(--faint)}
+.ledger{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.lhead{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line-soft)}
+.lhead .t{font-weight:620;font-size:14px}.lhead .a{font-size:12px;color:var(--signal-ink);font-weight:600}
+.rrow{display:grid;grid-template-columns:150px 1fr 130px;gap:16px;align-items:center;padding:13px 16px;border-top:1px solid var(--line-soft)}
+.rrow:first-child{border-top:0}
+.place{font-size:13px;font-weight:560}.place small{display:block;color:var(--faint);font-weight:500;font-size:11px;margin-top:1px}
+.track{position:relative;height:20px}
+.track .base{position:absolute;top:50%;left:0;right:0;height:2px;background:var(--route);transform:translateY(-50%);border-radius:2px}
+.track .fill{position:absolute;top:50%;left:0;height:2px;transform:translateY(-50%);border-radius:2px}
+.track .o{position:absolute;top:50%;left:0;width:9px;height:9px;border-radius:50%;background:var(--ink);transform:translate(-50%,-50%)}
+.track .d{position:absolute;top:50%;left:100%;width:9px;height:9px;border-radius:50%;border:2px solid var(--route);background:var(--surface);transform:translate(-50%,-50%)}
+.track .d.met{border-color:var(--signal);background:var(--signal)}
+.track .node{position:absolute;top:50%;width:8px;height:8px;border-radius:50%;background:var(--surface);border:2px solid var(--signal);transform:translate(-50%,-50%);box-shadow:0 0 0 4px var(--signal-wash)}
+.helpbox{border:1px solid var(--signal);background:var(--signal-wash);border-radius:12px;overflow:hidden}
+.helpbox>summary{cursor:pointer;list-style:none;display:flex;align-items:center;gap:9px;padding:12px 15px;font-weight:650;font-size:13.5px;color:var(--signal-ink);user-select:none}
+.helpbox>summary::-webkit-details-marker{display:none}
+.helpbox>summary .chev{margin-left:auto;transition:transform .18s;flex:0 0 auto;color:var(--signal-ink)}
+.helpbox[open]>summary .chev{transform:rotate(90deg)}
+.helpbox[open]>summary{border-bottom:1px solid var(--signal)}
+.helpbox .help-body{padding:12px 16px 14px;font-size:13px;color:var(--ink-2);line-height:1.7;background:var(--surface)}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px;margin-right:7px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.pp-box{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-height:42px;padding:7px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+.pp-chip{display:inline-flex;align-items:center;gap:5px;background:var(--signal-wash);color:var(--signal-ink);border:1px solid var(--line-soft);border-radius:8px;padding:3px 6px 3px 9px;font-size:12.5px;font-weight:600}
+.pp-x{border:0;background:transparent;color:var(--signal-ink);font-size:14px;line-height:1;padding:0 2px}
+.rail-mock{background:var(--rail);color:var(--rail-txt);border-radius:16px;padding:14px 10px;width:220px}
+.rail-mock .top{display:flex;align-items:center;gap:8px;padding:6px 8px 14px}
+.rail-mock .logotype{display:inline-flex;align-items:center;font-weight:680;letter-spacing:-.05em;font-size:20px;color:var(--cream)}
+.rail-mock .group{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--rail-txt-dim);padding:12px 10px 5px;font-weight:650}
+.rail-mock .nav{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:9px;color:var(--rail-txt);font-size:13px;font-weight:500;position:relative}
+.rail-mock .nav svg{width:16px;height:16px;flex:0 0 auto;opacity:.9}
+.rail-mock .nav.on{background:var(--rail-2);color:var(--cream);font-weight:600}
+.rail-mock .nav.on::before{content:"";position:absolute;left:-8px;top:6px;bottom:6px;width:3px;border-radius:3px;background:var(--signal-br)}
+.rail-mock .nav.on svg{opacity:1;color:var(--signal-br)}
+/* ============================================================
+   ここまで本番CSS。以下はドキュメント自体のレイアウト（独立namespace: .dd*）
+   ============================================================ */
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);line-height:1.55;letter-spacing:-.006em;-webkit-font-smoothing:antialiased}
+.dd-wrap{max-width:1080px;margin:0 auto;padding:0 24px 100px}
+.dd-hero{padding:72px 0 44px;text-align:center;border-bottom:1px solid var(--line);margin-bottom:48px}
+.dd-eyebrow{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--signal-ink);font-weight:700;margin-bottom:18px}
+.dd-mark{display:inline-flex;align-items:center;gap:.02em;font-weight:680;letter-spacing:-.05em;font-size:56px;color:var(--ink);line-height:1}
+.dd-mark svg{height:.9em;width:auto;transform:translateY(.05em)}
+.dd-tag{color:var(--muted);font-size:15px;margin:14px 0 0}
+.dd-toggle{margin-top:26px;display:inline-flex;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px}
+.dd-toggle button{border:0;background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;padding:7px 16px;border-radius:999px;cursor:pointer}
+.dd-toggle button.on{background:var(--ink);color:var(--paper)}
+.dd-sec{margin-bottom:64px}
+.dd-sec h2{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--signal-ink);font-weight:700;margin:0 0 6px}
+.dd-sec h3{font-size:24px;letter-spacing:-.02em;margin:0 0 10px;text-wrap:balance}
+.dd-sec>p.dd-lede{color:var(--muted);font-size:14px;max-width:64ch;margin:0 0 26px;line-height:1.75}
+.dd-grid{display:grid;gap:14px}
+.dd-swatches{grid-template-columns:repeat(auto-fill,minmax(148px,1fr))}
+.dd-sw{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface)}
+.dd-sw .fill{height:64px}
+.dd-sw .meta{padding:10px 12px}
+.dd-sw .nm{font-size:12.5px;font-weight:650}
+.dd-sw .hex{font-family:var(--mono);font-size:11px;color:var(--faint);margin-top:2px}
+.dd-type-row{display:flex;align-items:baseline;gap:18px;padding:16px 0;border-top:1px solid var(--line-soft)}
+.dd-type-row:first-child{border-top:0}
+.dd-type-row .lbl{width:120px;flex:0 0 auto;font-size:11.5px;color:var(--faint);font-family:var(--mono)}
+.dd-showcase{display:flex;gap:14px;flex-wrap:wrap;align-items:center;padding:22px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+.dd-cols{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:760px){.dd-cols{grid-template-columns:1fr}}
+.dd-cap{font-size:11.5px;color:var(--faint);margin:10px 2px 0}
+.dd-scroll{overflow-x:auto}
+.dd-do-dont{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:640px){.dd-do-dont{grid-template-columns:1fr}}
+.dd-dd-card{border-radius:12px;padding:16px 18px;font-size:13px;line-height:1.7}
+.dd-dd-card.do{background:var(--signal-wash);border:1px solid var(--line-soft);color:var(--ink-2)}
+.dd-dd-card.dont{background:var(--amber-wash);border:1px solid var(--line-soft);color:var(--ink-2)}
+.dd-dd-card b{display:block;font-size:11px;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.dd-dd-card.do b{color:var(--signal-ink)}.dd-dd-card.dont b{color:var(--amber)}
+.dd-foot{text-align:center;color:var(--faint);font-size:12px;padding-top:28px;border-top:1px solid var(--line)}
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+ <g id="cmarkInk"><path d="M70.9 27.9 A30 30 0 1 0 70.9 72.1" fill="none" stroke="currentColor" stroke-width="15.5" stroke-linecap="round"/><circle cx="70.9" cy="27.9" r="9.6" fill="var(--signal-br)"/></g>
+ <g id="i-dash" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.4"/><rect x="14" y="3" width="7" height="5" rx="1.4"/><rect x="14" y="12" width="7" height="9" rx="1.4"/><rect x="3" y="16" width="7" height="5" rx="1.4"/></g>
+ <g id="i-load" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.7 20 7v10l-8 4.3L4 17V7z"/><path d="M4 7l8 4.3L20 7M12 11.3V21.3"/></g>
+ <g id="i-truck" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6h11v9H2z"/><path d="M13 9h4l4 3v3h-8z"/><circle cx="7" cy="18" r="2"/><circle cx="17.5" cy="18" r="2"/></g>
+ <g id="i-repeat" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9a7 7 0 0 1 12-3l2 2"/><path d="M20 15A7 7 0 0 1 8 18l-2-2"/><path d="M18 4v4h-4M6 20v-4h4"/></g>
+ <g id="i-gear" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></g>
+</defs></svg>
+
+<div class="dd-wrap">
+  <div class="dd-hero">
+    <div class="dd-eyebrow">Carroo — Design Direction</div>
+    <div class="dd-mark"><svg viewBox="12 12 69 77"><use href="#cmarkInk"/></svg><span>arroo</span></div>
+    <p class="dd-tag">現行プロダクトのデザインシステム。墨色のレール、紙のような明面、意味を持つ緑と琥珀。</p>
+    <div class="dd-toggle">
+      <button type="button" class="on" data-set="">自動（OS設定）</button>
+      <button type="button" data-set="light">ライト</button>
+      <button type="button" data-set="dark">ダーク</button>
+    </div>
+  </div>
+
+  <div class="dd-sec">
+    <h2>Concept</h2>
+    <h3>物流の「今どこか」が一目で分かる、静かな道具</h3>
+    <p class="dd-lede">Carrooは物流案件をTrabox・WebKitへ一括投稿する業務ツール。装飾ではなく状態（掲載中・成約・失敗）を色で語る。左の墨色レールが常に定位置を保証し、右の紙面が仕事の中身に集中させる。</p>
+  </div>
+
+  <div class="dd-sec">
+    <h2>Color</h2>
+    <h3>意味を持つ色だけを使う</h3>
+    <p class="dd-lede">ベースは紙とインクの明暗。アクセントは<b>シグナルグリーン</b>（進行・成功・掲載中）と<b>琥珀</b>（注意・処理待ち）の2色のみ。ライト/ダークで役割は変えず、明度だけ入れ替える。</p>
+    <div class="dd-grid dd-swatches">
+      <div class="dd-sw"><div class="fill" style="background:var(--paper)"></div><div class="meta"><div class="nm">Paper</div><div class="hex">--paper</div></div></div>
+      <div class="dd-sw"><div class="fill" style="background:var(--surface);border-bottom:1px solid var(--line)"></div><div class="meta"><div class="nm">Surface</div><div class="hex">--surface</div></div></div>
+      <div class="dd-sw"><div class="fill" style="background:var(--ink)"></div><div class="meta"><div class="nm">Ink</div><div class="hex">--ink</div></div></div>
+      <div class="dd-sw"><div class="fill" style="background:var(--rail)"></div><div class="meta"><div class="nm">Rail（墨）</div><div class="hex">--rail</div></div></div>
+      <div class="dd-sw"><div class="fill" style="background:var(--signal)"></div><div class="meta"><div class="nm">Signal</div><div class="hex">--signal</div></div></div>
+      <div class="dd-sw"><div class="fill" style="background:var(--signal-wash)"></div><div class="meta"><div class="nm">Signal Wash</div><div class="hex">--signal-wash</div></div></div>
+      <div class="dd-sw"><div class="fill" style="background:var(--amber)"></div><div class="meta"><div class="nm">Amber</div><div class="hex">--amber</div></div></div>
+      <div class="dd-sw"><div class="fill" style="background:var(--amber-wash)"></div><div class="meta"><div class="nm">Amber Wash</div><div class="hex">--amber-wash</div></div></div>
+      <div class="dd-sw"><div class="fill" style="background:var(--muted)"></div><div class="meta"><div class="nm">Muted</div><div class="hex">--muted</div></div></div>
+      <div class="dd-sw"><div class="fill" style="background:var(--line)"></div><div class="meta"><div class="nm">Line</div><div class="hex">--line</div></div></div>
+    </div>
+    <p class="dd-cap">緑＝進行・成功・掲載中／琥珀＝注意・処理待ち。この2つ以外を「意味の色」として増やさない。</p>
+  </div>
+
+  <div class="dd-sec">
+    <h2>Typography</h2>
+    <h3>OSネイティブ書体・数字は必ず等幅</h3>
+    <p class="dd-lede">游ゴシック／ヒラギノ角ゴをOS標準スタックで採用。Webフォント無し＝表示が速く、機種依存の崩れがない。金額・IDなど数字が並ぶ箇所は tabular-nums（.num）で桁を揃える。</p>
+    <div class="dd-type-row"><div class="lbl">h1.pt / 26px</div><h1 class="pt" style="margin:0">案件登録</h1></div>
+    <div class="dd-type-row"><div class="lbl">見出し / 17px</div><div style="font-size:17px;letter-spacing:-.02em">ダッシュボード</div></div>
+    <div class="dd-type-row"><div class="lbl">本文 / 14px</div><div style="font-size:14px;color:var(--ink-2)">投稿は背景で実行中です（1〜2分程度）。</div></div>
+    <div class="dd-type-row"><div class="lbl">補助 / .hl 13px</div><div class="hl">今月・前月・過去1年から選べます。</div></div>
+    <div class="dd-type-row"><div class="lbl">数字 / .mono .num</div><div class="mono num" style="font-size:20px;font-weight:650">¥ 128,400</div></div>
+  </div>
+
+  <div class="dd-sec">
+    <h2>Navigation</h2>
+    <h3>左レールは常に墨色――場所を問わず同じ</h3>
+    <p class="dd-lede">紙面がライト/ダークで入れ替わっても、レールは常に濃色で固定。「ここがCarrooの操縦席」という定位置の安心感を担保する。現在地は緑の縦バーで示す。</p>
+    <div class="dd-showcase">
+      <div class="rail-mock">
+        <div class="top"><span class="logotype"><svg width="20" height="20" viewBox="12 12 69 77"><use href="#cmarkInk" style="color:var(--cream)"/></svg>arroo</span></div>
+        <div class="nav on"><svg><use href="#i-dash"/></svg>ダッシュボード</div>
+        <div class="group">出す</div>
+        <div class="nav"><svg><use href="#i-load"/></svg>荷物を出す</div>
+        <div class="nav"><svg><use href="#i-truck"/></svg>空車を出す</div>
+        <div class="group">見る・追う</div>
+        <div class="nav"><svg><use href="#i-repeat"/></svg>空車定期登録</div>
+      </div>
+    </div>
+    <p class="dd-cap">.nav.on は左端に3pxのシグナルグリーンのバー＋アイコン発色で現在地を示す。</p>
+  </div>
+
+  <div class="dd-sec">
+    <h2>Components — Actions</h2>
+    <h3>ボタンは3段階、意図は色で語る</h3>
+    <div class="dd-showcase">
+      <button class="btn">保存する</button>
+      <button class="btn ghost">キャンセル</button>
+      <button class="btn danger">削除</button>
+      <button class="btn" disabled style="opacity:.9;cursor:progress"><span class="spin"></span>処理中…</button>
+    </div>
+    <p class="dd-cap">主＝塗り（シグナル）／副＝輪郭のみ／破壊的＝赤文字の輪郭のみ（塗らない）。送信は押下即スピナー化で二重送信を防ぐ。</p>
+  </div>
+
+  <div class="dd-sec">
+    <h3>状態はチップで語る</h3>
+    <div class="dd-showcase">
+      <span class="chip live">掲載中</span>
+      <span class="chip met">成約</span>
+      <span class="chip wait">処理中</span>
+      <span class="chip off">取下げ済</span>
+    </div>
+    <p class="dd-cap">4状態固定のボキャブラリー。新しい状態を増やす時もこの4トーン（緑濃／緑淡／琥珀／グレー）から選ぶ。</p>
+  </div>
+
+  <div class="dd-sec">
+    <h2>Components — Data</h2>
+    <h3>ダッシュボードの数字とルート表示</h3>
+    <div class="stats" style="margin-bottom:16px">
+      <div class="cell"><div class="k">投稿数<span class="sub">（今月）</span></div><div class="v num">42</div></div>
+      <div class="cell"><div class="k">掲載中<span class="sub">（現在）</span></div><div class="v num sig">18</div></div>
+      <div class="cell"><div class="k">成約数</div><div class="v num">12</div></div>
+      <div class="cell"><div class="k">成約率</div><div class="v num">29%</div></div>
+      <div class="cell"><div class="k">未決</div><div class="v num amb">6</div></div>
+    </div>
+    <div class="ledger">
+      <div class="lhead"><span class="t">進行中の経路</span><a class="a" href="#">すべての案件 →</a></div>
+      <div class="rrow">
+        <div class="place">東京都港区<small>7/29 09:00 積</small></div>
+        <div class="track"><div class="base"></div><div class="fill" style="width:70%;background:var(--signal)"></div><span class="o"></span><span class="node" style="left:70%"></span><span class="d"></span></div>
+        <div style="text-align:right"><div class="place" style="text-align:right">大阪府北区<small>7/30 09:00 卸</small></div></div>
+      </div>
+      <div class="rrow">
+        <div class="place">埼玉県川口市<small>7/28 13:00 積</small></div>
+        <div class="track"><div class="base"></div><div class="fill" style="width:100%;background:var(--signal)"></div><span class="o"></span><span class="d met"></span></div>
+        <div style="text-align:right"><div class="place" style="text-align:right">神奈川県横浜市<small>成約済み</small></div></div>
+      </div>
+    </div>
+    <p class="dd-cap">経路は線一本で表現、成約すると終点が緑の実点に変わる。数字は主要指標を横一列に並べ、視線移動を最小化。</p>
+  </div>
+
+  <div class="dd-sec">
+    <h3>テーブルとフォーム</h3>
+    <div class="dd-cols">
+      <div>
+        <div class="card dd-scroll" style="overflow:hidden">
+          <table>
+            <thead><tr><th>ID</th><th>ユーザー</th><th style="text-align:right">案件</th></tr></thead>
+            <tbody>
+              <tr><td class="mono" style="color:var(--faint)">1</td><td style="font-weight:600">管理者</td><td class="num" style="text-align:right">24件</td></tr>
+              <tr><td class="mono" style="color:var(--faint)">2</td><td style="font-weight:600">鈴木勝時</td><td class="num" style="text-align:right">9件</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="dd-cap">見出し行は薄い背景（--raise）で本文と区別。数字列は右寄せ＋tabular-nums。</p>
+      </div>
+      <div>
+        <div class="card" style="padding:18px">
+          <label class="fl">担当者名</label>
+          <input placeholder="山田太郎" style="margin-bottom:12px">
+          <label class="fl">その他対応可能行先</label>
+          <div class="pp-box"><span class="pp-chip">岐阜<button class="pp-x">×</button></span><span class="pp-chip">三重<button class="pp-x">×</button></span></div>
+        </div>
+        <p class="dd-cap">入力欄はフォーカス時にシグナルグリーンの縁＋ソフトなグロー。複数選択はチップ化して一覧性を確保。</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="dd-sec">
+    <h3>ヘルプと注意喚起</h3>
+    <details class="helpbox" open>
+      <summary><span>❓ 自動投稿のしくみ</span><svg class="chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></summary>
+      <div class="help-body"><ul style="margin:0;padding-left:18px"><li>毎朝7:00に自動投稿します。</li><li>初期登録回数を指定すると作成直後にまとめて投稿できます。</li></ul></div>
+    </details>
+    <p class="dd-cap">折りたたみは緑アクセント＋回転する矢印で「開閉できる」ことを明示。警告・エラーは琥珀トーンで温度を分ける。</p>
+  </div>
+
+  <div class="dd-sec">
+    <h2>Principles</h2>
+    <h3>やること・やらないこと</h3>
+    <div class="dd-do-dont">
+      <div class="dd-dd-card do"><b>Do</b>色は状態を語るためだけに使う。緑＝進行/成功、琥珀＝注意。装飾目的の色は追加しない。</div>
+      <div class="dd-dd-card dont"><b>Don't</b>新しい状態のために新しい色相を足さない。既存4チップ（live/met/wait/off）で表現できないか先に検討する。</div>
+      <div class="dd-dd-card do"><b>Do</b>レールは常に濃色で固定。紙面のみライト/ダークが入れ替わる。</div>
+      <div class="dd-dd-card dont"><b>Don't</b>レールをライトテーマで白くしない。「操縦席」の定位置感が失われる。</div>
+      <div class="dd-dd-card do"><b>Do</b>数字が並ぶ箇所は必ず .num（tabular-nums）＋右寄せ。</div>
+      <div class="dd-dd-card dont"><b>Don't</b>送信ボタンをクリック後そのままにしない。即スピナー化必須（二重送信防止）。</div>
+    </div>
+  </div>
+
+  <div class="dd-foot">Carroo Design Direction — app/ui_shell.py のトークンをそのまま反映（2026-07-29 時点）</div>
+</div>
+
+<script>
+(function(){
+  var btns = document.querySelectorAll('.dd-toggle button');
+  btns.forEach(function(b){
+    b.addEventListener('click', function(){
+      btns.forEach(function(x){x.classList.remove('on');});
+      b.classList.add('on');
+      var v = b.getAttribute('data-set');
+      if(v){ document.documentElement.setAttribute('data-theme', v); }
+      else { document.documentElement.removeAttribute('data-theme'); }
+    });
+  });
+})();
+</script>

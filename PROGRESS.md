@@ -16,6 +16,12 @@
 - 権限プロンプト対策：`.claude/settings.json` の allow に `"Bash"`（全Bash許可）＋ `Bash(cd *)` を追加
 - 本番デプロイ **rev carroo-00026-r5m**（asia-northeast1）稼働中
 
+### 🆕 2026-07-29 デザインディレクション資料（人に見せる用）
+- `docs/デザインディレクション_ver1.0.html`（Artifact: https://claude.ai/code/artifact/51e82779-a360-4be4-b006-e3e48a81a370 ）。
+  app/ui_shell.py の実CSSトークン・実コンポーネントをそのまま使用（架空リブランドではなく現行デザイン言語の正式まとめ）。
+  Concept/Color/Typography/Navigation/Components(ボタン・状態チップ・ダッシュ統計・ルート表示・テーブル・フォーム・ヘルプ)/Do・Don't。
+  ライト/ダーク切替トグルつき。
+
 ### 🆕 2026-07-29 パスワードリセット一式＋「初期設定が必要です」画面刷新（rev carroo-00087-qw7）
 - **セルフパスワードリセット**：ログイン画面に「パスワードをお忘れですか？」→ `/auth/forgot`（登録メール入力→ワンタイムトークンをメール送信・30分有効）
   → `/auth/reset?token=`（新パスワード設定）。アカウント有無に関わらず同一応答（列挙対策）。store.create_password_reset/consume_password_reset
