@@ -205,6 +205,50 @@ button.is-busy,.is-busy{opacity:.9;cursor:progress}
 :root[data-theme="dark"]{color-scheme:dark}
 :root[data-theme="light"]{color-scheme:light}
 input[type="date"],input[type="time"],input[type="month"],input[type="datetime-local"]{color-scheme:inherit}
+/* ==== 旧Tailwindフォーム橋渡し ====
+   荷物/空車/定期登録など一部フォームはまだ Tailwind の固定グレー/ブルーで書かれており、
+   ダークテーマだと「暗い背景に暗いグレー文字・浮いた白い箱」で読みにくくなる。
+   ここでダーク時のみ、それらのクラスをアプリのトークンへ橋渡しする（フォーム側は無改修）。 */
+@media (prefers-color-scheme:dark){
+ :root:not([data-theme="light"]) .bg-white{background:var(--surface)}
+ :root:not([data-theme="light"]) .bg-gray-50{background:var(--raise)}
+ :root:not([data-theme="light"]) .bg-gray-100{background:var(--line-soft)}
+ :root:not([data-theme="light"]) .bg-gray-200,:root:not([data-theme="light"]) .bg-gray-300{background:var(--line)}
+ :root:not([data-theme="light"]) .bg-gray-400,:root:not([data-theme="light"]) .bg-gray-500{background:var(--faint);color:var(--paper)}
+ :root:not([data-theme="light"]) .text-gray-900{color:var(--ink)}
+ :root:not([data-theme="light"]) .text-gray-800,:root:not([data-theme="light"]) .text-gray-700{color:var(--ink-2)}
+ :root:not([data-theme="light"]) .text-gray-600{color:var(--muted)}
+ :root:not([data-theme="light"]) .text-gray-500,:root:not([data-theme="light"]) .text-gray-400{color:var(--faint)}
+ :root:not([data-theme="light"]) .border-gray-100,:root:not([data-theme="light"]) .border-gray-200{border-color:var(--line-soft)}
+ :root:not([data-theme="light"]) .border-gray-300{border-color:var(--line)}
+ :root:not([data-theme="light"]) .shadow,:root:not([data-theme="light"]) .shadow-sm,:root:not([data-theme="light"]) .shadow-lg{box-shadow:var(--shadow)}
+ :root:not([data-theme="light"]) .text-blue-600,:root:not([data-theme="light"]) .text-blue-700,:root:not([data-theme="light"]) .text-blue-800,:root:not([data-theme="light"]) .text-blue-900{color:var(--signal-ink)}
+ :root:not([data-theme="light"]) .bg-blue-50{background:var(--signal-wash)}
+ :root:not([data-theme="light"]) .border-blue-200{border-color:var(--line-soft)}
+ :root:not([data-theme="light"]) .bg-blue-600{background:var(--signal)}
+ :root:not([data-theme="light"]) .hover\\:bg-blue-700:hover{background:var(--signal-br)}
+ :root:not([data-theme="light"]) .hover\\:bg-blue-50:hover{background:var(--signal-wash)}
+ :root:not([data-theme="light"]) .hover\\:text-blue-600:hover{color:var(--signal-ink)}
+}
+:root[data-theme="dark"] .bg-white{background:var(--surface)}
+:root[data-theme="dark"] .bg-gray-50{background:var(--raise)}
+:root[data-theme="dark"] .bg-gray-100{background:var(--line-soft)}
+:root[data-theme="dark"] .bg-gray-200,:root[data-theme="dark"] .bg-gray-300{background:var(--line)}
+:root[data-theme="dark"] .bg-gray-400,:root[data-theme="dark"] .bg-gray-500{background:var(--faint);color:var(--paper)}
+:root[data-theme="dark"] .text-gray-900{color:var(--ink)}
+:root[data-theme="dark"] .text-gray-800,:root[data-theme="dark"] .text-gray-700{color:var(--ink-2)}
+:root[data-theme="dark"] .text-gray-600{color:var(--muted)}
+:root[data-theme="dark"] .text-gray-500,:root[data-theme="dark"] .text-gray-400{color:var(--faint)}
+:root[data-theme="dark"] .border-gray-100,:root[data-theme="dark"] .border-gray-200{border-color:var(--line-soft)}
+:root[data-theme="dark"] .border-gray-300{border-color:var(--line)}
+:root[data-theme="dark"] .shadow,:root[data-theme="dark"] .shadow-sm,:root[data-theme="dark"] .shadow-lg{box-shadow:var(--shadow)}
+:root[data-theme="dark"] .text-blue-600,:root[data-theme="dark"] .text-blue-700,:root[data-theme="dark"] .text-blue-800,:root[data-theme="dark"] .text-blue-900{color:var(--signal-ink)}
+:root[data-theme="dark"] .bg-blue-50{background:var(--signal-wash)}
+:root[data-theme="dark"] .border-blue-200{border-color:var(--line-soft)}
+:root[data-theme="dark"] .bg-blue-600{background:var(--signal)}
+:root[data-theme="dark"] .hover\\:bg-blue-700:hover{background:var(--signal-br)}
+:root[data-theme="dark"] .hover\\:bg-blue-50:hover{background:var(--signal-wash)}
+:root[data-theme="dark"] .hover\\:text-blue-600:hover{color:var(--signal-ink)}
 """
 
 
