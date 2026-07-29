@@ -311,6 +311,7 @@ async def schedules_history(current_user: dict = Depends(_require_feature),
               "deleted": '<span class="chip off">取下げ済</span>',
               "error": '<span class="chip off">エラー</span>',
               "none": '<span class="chip off">—</span>'}
+    can_re = feature_enabled("reregister", current_user)
     trucks = [t for t in store.list_all_trucks(scope_tenant(current_user)) if t.get("schedule_id")]
     if not is_admin:
         trucks = [t for t in trucks if t.get("user_id") == uid]
@@ -331,11 +332,13 @@ async def schedules_history(current_user: dict = Depends(_require_feature),
             continue
         tb = _STATE.get(store.get_truck_platform_state(tid, "trabox"), "—")
         wk = _STATE.get(store.get_truck_platform_state(tid, "webkit"), "—")
+        re_btn = (f'<a class="btn ghost" style="padding:4px 10px;font-size:12px;margin-left:6px" '
+                  f'href="/trucks/register?from={tid}">再登録</a>' if can_re else "")
         rows += (f'<tr><td class="mono" style="color:var(--faint)">#{tid}</td>'
                  f'<td style="color:var(--faint);white-space:nowrap">ルール#{t.get("schedule_id","")}</td>'
                  f'<td style="white-space:nowrap">{esc(t.get("vacant_date",""))}</td><td>{esc(route)}</td>'
                  f'<td>トラ {tb}　WebKit {wk}</td>'
-                 f'<td><a href="/trucks/{tid}/manage" style="color:var(--signal-ink)">管理</a></td></tr>')
+                 f'<td style="white-space:nowrap"><a href="/trucks/{tid}/manage" style="color:var(--signal-ink)">管理</a>{re_btn}</td></tr>')
     if not rows:
         rows = '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:28px">該当する空車はありません</td></tr>'
     body = f"""
