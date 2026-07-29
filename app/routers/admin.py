@@ -158,8 +158,9 @@ async def create_user(
     tenant_id = current_user.get("tenant_id") or "takeuchi"
     # 契約シート数の上限チェック（課金稼働時）。超える場合はお支払い画面でシート追加が必要。
     from app.services import billing
-    if billing.billing_enabled():
-        tenant = store.get_tenant(tenant_id) or {}
+    _tenant_for_cap = store.get_tenant(tenant_id) or {}
+    if billing.billing_enabled() and not _tenant_for_cap.get("billing_exempt"):
+        tenant = _tenant_for_cap
         cap = tenant.get("seat_limit")
         cap = cap if cap is not None else 1
         used = store.count_tenant_users(tenant_id)

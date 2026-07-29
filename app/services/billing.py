@@ -204,6 +204,13 @@ def apply_subscription_to_tenant(subscription: dict) -> None:
     if not tenant_id:
         logger.warning("[Billing] subscription に紐づくテナント不明")
         return
+    tenant = store.get_tenant(tenant_id) or {}
+    if tenant.get("billing_exempt"):
+        # 課金対象外（内部利用など）テナントは Webhook で状態を書き換えない。
+        # 例: トライアル終了時の自動移行で seat_limit が縮小されユーザー追加が
+        # 止まる、といった実運用への影響を避ける。
+        logger.info(f"[Billing] tenant={tenant_id} は課金対象外のため Webhook 反映をスキップ")
+        return
     plan = _sub_plan(subscription)
     status = subscription.get("status")
     patch = {

@@ -113,17 +113,25 @@ async def ops_home(current_user: dict = Depends(_require_super)):
         status = t.get("subscription_status") or "—"
         plan_sel = "".join(
             f'<option value="{p}"{" selected" if p == plan else ""}>{p}</option>' for p in _PLANS)
+        exempt = t.get("billing_exempt")
+        exempt_badge = ' <span class="chip off" style="margin-left:4px">課金対象外</span>' if exempt else ''
+        exempt_form = (
+            f'<form method="post" action="/ops/tenants/{esc(tid)}/billing-exempt">'
+            f'<input type="hidden" name="value" value="{"0" if exempt else "1"}">'
+            f'<button class="btn ghost" style="padding:4px 10px;font-size:11.5px" type="submit">'
+            f'{"課金対象にする" if exempt else "課金対象外にする"}</button></form>')
         rows += (
             f'<tr><td class="mono" style="color:var(--faint)">{esc(tid)}</td>'
-            f'<td style="font-weight:600">{esc(t.get("name",""))}</td>'
+            f'<td style="font-weight:600">{esc(t.get("name",""))}{exempt_badge}</td>'
             f'<td><form method="post" action="/ops/tenants/{esc(tid)}/plan" style="display:flex;gap:6px;align-items:center">'
             f'<select name="plan" style="width:auto;padding:5px 8px;font-size:13px">{plan_sel}</select>'
             f'<button class="btn ghost" style="padding:5px 11px;font-size:12px" type="submit">変更</button></form></td>'
             f'<td class="num" style="text-align:right">{seats}</td>'
             f'<td style="color:var(--faint)">{esc(status)}</td>'
-            f'<td style="color:var(--faint)">{esc(t.get("created_at",""))}</td></tr>')
+            f'<td style="color:var(--faint)">{esc(t.get("created_at",""))}</td>'
+            f'<td style="white-space:nowrap">{exempt_form}</td></tr>')
     if not rows:
-        rows = '<tr><td colspan="6" style="text-align:center;color:var(--faint);padding:24px">テナントがありません</td></tr>'
+        rows = '<tr><td colspan="7" style="text-align:center;color:var(--faint);padding:24px">テナントがありません</td></tr>'
 
     plan_opts = "".join(f'<option value="{p}">{p}</option>' for p in _PLANS)
     body = f"""
@@ -132,7 +140,7 @@ async def ops_home(current_user: dict = Depends(_require_super)):
 
   <div class="card" style="overflow-x:auto;margin-bottom:22px"><table>
     <thead><tr><th>テナントID</th><th>会社名</th><th>プラン</th>
-      <th style="text-align:right">シート</th><th>課金状態</th><th>作成日</th></tr></thead>
+      <th style="text-align:right">シート</th><th>課金状態</th><th>作成日</th><th></th></tr></thead>
     <tbody>{rows}</tbody></table></div>
 
   {_users_panel(current_user)}
@@ -298,5 +306,21 @@ async def set_plan_route(tenant_id: str, plan: str = Form(...),
         raise HTTPException(400, "プランが不正です")
     store.update_tenant(tenant_id, {"plan": plan})
     audit("tenant_set_plan", tenant_id=tenant_id, plan=plan, by=current_user.get("username"))
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/ops/", status_code=302)
+
+
+@router.post("/tenants/{tenant_id}/billing-exempt")
+async def set_billing_exempt_route(tenant_id: str, value: str = Form("0"),
+                                   current_user: dict = Depends(_require_super)):
+    """課金対象外(内部利用など)の切替。ON時は Webhook が seat_limit/plan/status を
+    書き換えなくなる（billing.apply_subscription_to_tenant 側でスキップ）。
+    plan はそのまま維持されるため機能は使い続けられる。"""
+    from app.utils.audit import audit
+    if not store.get_tenant(tenant_id):
+        raise HTTPException(404, "テナントが見つかりません")
+    exempt = value in ("1", "yes", "true", "on")
+    store.update_tenant(tenant_id, {"billing_exempt": exempt})
+    audit("tenant_billing_exempt", tenant_id=tenant_id, exempt=exempt, by=current_user.get("username"))
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/ops/", status_code=302)
