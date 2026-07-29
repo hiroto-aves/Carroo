@@ -105,6 +105,7 @@ def occurrence_to_posting(schedule: Dict[str, Any], vacant_date: date) -> Dict[s
         "min_freight": schedule.get("min_freight"),
         "remarks": schedule.get("remarks") or "",
         "contact_name": schedule.get("contact_name"),
+        "contact_phone": schedule.get("contact_phone"),
         "post_to_trabox": bool(schedule.get("post_to_trabox")),
         "post_to_webkit": bool(schedule.get("post_to_webkit")),
     }

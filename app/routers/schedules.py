@@ -38,6 +38,11 @@ def _require_feature(current_user: dict = Depends(get_current_user)) -> dict:
 async def register_page(current_user: dict = Depends(_require_feature),
                         from_id: int = Query(None, alias="from")):
     today = date.today().isoformat()
+    from app.ui_shell import esc
+    # 担当者名・電話番号の初期値＝初期設定(credentials)。未設定ならログインユーザー名を担当者名に。
+    creds = store.get_credentials(current_user["id"]) or {}
+    def_name = esc(creds.get("contact_name") or current_user.get("username") or "")
+    def_phone = esc(creds.get("contact_phone") or "")
     prefill = None
     # 履歴から再登録（Pro機能）: 既存の定期ルールを元にフォームを埋める（有効期間は引き継がない）
     if from_id and feature_enabled("reregister", current_user):
@@ -55,6 +60,7 @@ async def register_page(current_user: dict = Depends(_require_feature),
                 "dest_able": ",".join(src.get("dest_able_prefs") or []),
                 "truck_weight": src.get("truck_weight"), "vehicle_type": src.get("vehicle_type"),
                 "min_freight": src.get("min_freight"), "lead_days": src.get("lead_days"),
+                "contact_name": src.get("contact_name"), "contact_phone": src.get("contact_phone"),
                 "post_to_trabox": bool(src.get("post_to_trabox")),
                 "post_to_webkit": bool(src.get("post_to_webkit")),
             }
@@ -132,6 +138,12 @@ async def register_page(current_user: dict = Depends(_require_feature),
         <select name="vehicle_type" class="border rounded px-3 py-2 w-full">{_opts(VEHICLES,"平")}</select></div>
       <div><label class="block text-sm mb-1">最低運賃(税別円)</label>
         <input name="min_freight" type="number" placeholder="任意" class="border rounded px-3 py-2 w-full"></div>
+    </div>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div><label class="block text-sm mb-1">担当者名</label>
+        <input name="contact_name" value="{def_name}" required placeholder="山田太郎" class="border rounded px-3 py-2 w-full"></div>
+      <div><label class="block text-sm mb-1">電話番号</label>
+        <input name="contact_phone" type="tel" value="{def_phone}" placeholder="09012345678" class="border rounded px-3 py-2 w-full"></div>
     </div>
     <div class="grid md:grid-cols-4 gap-4">
       <div><label class="block text-sm mb-1">初期登録回数</label>
@@ -225,6 +237,8 @@ async def create_schedule(
         raise HTTPException(400, "空車地の市区町村は必須です（例: 練馬区）")
     if not (form.get("dest_city") or "").strip():
         raise HTTPException(400, "行先地の市区町村は必須です（例: 大阪市北区）")
+    # 担当者名は Trabox 空車で必須。空ならログインユーザー名で補完。
+    contact_name = (form.get("contact_name") or "").strip() or current_user.get("username") or "担当"
 
     def _prefs(s):
         return [p.strip() for p in (s or "").replace("、", ",").split(",") if p.strip()]
@@ -246,7 +260,8 @@ async def create_schedule(
         "lead_days": int(form.get("lead_days") or 3),
         "active_from": form.get("active_from") or date.today().isoformat(),
         "active_until": form.get("active_until") or None,
-        "contact_name": current_user.get("username"),
+        "contact_name": contact_name,
+        "contact_phone": (form.get("contact_phone") or "").strip(),
         "post_to_trabox": want_trabox, "post_to_webkit": want_webkit,
         "status": "active",
     }
