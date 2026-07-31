@@ -387,21 +387,6 @@ async def case_register_page(access_token: Optional[str] = Cookie(None),
                             </div>
                         </div>
 
-                        <!-- トラボックス認証情報 -->
-                        <div id="trabox-auth" class="hidden bg-gradient-to-br from-blue-50 to-blue-100 p-6 rounded-lg border border-blue-200">
-                            <h4 class="font-semibold text-gray-900 mb-4">🔐 トラボックスのログイン情報</h4>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">ユーザーID</label>
-                                    <input type="text" name="trabox_username" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="ログインID">
-                                </div>
-                                <div>
-                                    <label class="block text-sm font-medium text-gray-700 mb-2">パスワード</label>
-                                    <input type="password" name="trabox_password" autocomplete="current-password" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent transition" placeholder="パスワード">
-                                </div>
-                            </div>
-                        </div>
-
                         <!-- 送信ボタン -->
                         <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition duration-200 mt-8">
                             ✓ 案件を登録
@@ -488,12 +473,6 @@ async def case_register_page(access_token: Optional[str] = Cookie(None),
                 }
             });
 
-            const traboxCheckbox = document.querySelector('input[name="post_to_trabox"]');
-            const traboxAuth = document.getElementById('trabox-auth');
-
-            traboxCheckbox.addEventListener('change', () => {
-                traboxAuth.classList.toggle('hidden');
-            });
         </script>
     </body>
     </html>
