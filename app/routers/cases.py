@@ -534,14 +534,39 @@ def _case_prefill(case_id: int, user: dict) -> Optional[dict]:
 # 複数日程一括投稿 UI（FEATURE_MULTIDATE）。上の積み/着 日時が「1本目」、
 # 追加行が別日程。送信時に JS が date_variants(JSON) にまとめる。
 _MULTIDATE_UI = """
-<div class="mb-6 border border-purple-200 rounded-lg p-4 bg-purple-50">
-  <label class="flex items-center gap-2 font-medium text-purple-800">
-    <input type="checkbox" id="md_toggle"> 複数日程で一括登録する（急ぎ・日程が柔軟なとき）
+<style>
+.md-box{margin-bottom:1.5rem;border:1px solid var(--line);border-radius:14px;padding:16px 18px;background:var(--raise)}
+.md-head{display:flex;align-items:flex-start;gap:10px;cursor:pointer;font-weight:600;color:var(--ink)}
+.md-head input[type="checkbox"]{width:18px;height:18px;margin-top:2px;flex:0 0 auto;accent-color:var(--signal)}
+.md-desc{font-size:12.5px;color:var(--muted);margin:8px 0 0 28px;line-height:1.6}
+.md-area{margin-top:14px}
+.md-rows{display:flex;flex-direction:column;gap:10px}
+.md-row{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;
+  background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px}
+.md-leg{grid-column:1/-1;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--muted);margin-bottom:-4px}
+.md-cell{display:flex;flex-direction:column;gap:4px;min-width:0}
+.md-cell label{font-size:11px;color:var(--faint);font-weight:600}
+.md-cell .pair{display:flex;gap:6px}
+.md-cell .pair input{min-width:0}
+.md-del{align-self:center;color:var(--danger,#C9503E);background:none;border:1px solid var(--line);
+  border-radius:8px;width:34px;height:34px;font-size:16px;cursor:pointer;padding:0}
+.md-del:hover{background:var(--signal-wash)}
+.md-add{margin-top:10px;font-size:13px;font-weight:600;color:var(--signal-ink);
+  background:var(--signal-wash);border:1px solid var(--signal);border-radius:9px;padding:8px 14px;cursor:pointer}
+.md-add:hover{filter:brightness(.97)}
+@media(max-width:640px){
+  .md-row{grid-template-columns:1fr 1fr}
+  .md-del{grid-column:1/-1;width:100%;height:38px}
+}
+</style>
+<div class="md-box">
+  <label class="md-head">
+    <input type="checkbox" id="md_toggle"> <span>複数日程で一括登録する（急ぎ・日程が柔軟なとき）</span>
   </label>
-  <p class="text-xs text-purple-700 mt-1 ml-6">上の「積み日時・着日時」が1本目です。別日程を追加すると、同じ荷物を各日程で同時に投稿します。1件決まったら残りを一括で取り下げできます（最大5日程）。</p>
-  <div id="md_area" class="hidden mt-3">
-    <div id="md_rows" class="space-y-2"></div>
-    <button type="button" id="md_add" class="mt-2 text-sm text-purple-700 border border-purple-300 rounded px-3 py-1 hover:bg-purple-100">＋ 日程を追加</button>
+  <p class="md-desc">上の「積み日時・着日時」が1本目です。別日程を追加すると、同じ荷物を各日程で同時に投稿します。1件決まったら残りを一括で取り下げできます（最大5日程）。</p>
+  <div id="md_area" class="md-area hidden">
+    <div id="md_rows" class="md-rows"></div>
+    <button type="button" id="md_add" class="md-add">＋ 日程を追加</button>
   </div>
   <input type="hidden" name="date_variants" id="date_variants">
 </div>
@@ -552,18 +577,23 @@ _MULTIDATE_UI = """
   const addBtn=document.getElementById('md_add'), hidden=document.getElementById('date_variants');
   const form=document.querySelector('form[action="/cases/register"]');
   if(!toggle||!form) return;
+  const MAX=4;  // 1本目(本体)＋追加4行＝最大5日程
   function addRow(){
+    if(rowsEl.children.length>=MAX) return;
     const el=document.createElement('div');
-    el.className='md-row flex flex-wrap items-center gap-2 bg-white p-2 rounded border';
-    el.innerHTML='<input type="date" class="md-pd border rounded px-2 py-1">'+
-      '<input type="time" class="md-pt border rounded px-2 py-1">'+
-      '<span class="text-gray-400">積 →</span>'+
-      '<input type="date" class="md-dd border rounded px-2 py-1">'+
-      '<input type="time" class="md-dt border rounded px-2 py-1"><span class="text-gray-400">卸</span>'+
-      '<button type="button" class="md-del text-red-500 ml-1 px-2">×</button>';
-    el.querySelector('.md-del').addEventListener('click',()=>el.remove());
+    el.className='md-row';
+    el.innerHTML='<div class="md-leg">追加日程 '+(rowsEl.children.length+2)+'本目</div>'+
+      '<div class="md-cell"><label>積地 日付・時刻</label><div class="pair">'+
+        '<input type="date" class="md-pd"><input type="time" class="md-pt"></div></div>'+
+      '<div class="md-cell"><label>卸地 日付・時刻</label><div class="pair">'+
+        '<input type="date" class="md-dd"><input type="time" class="md-dt"></div></div>'+
+      '<button type="button" class="md-del" title="この日程を削除">×</button>';
+    el.querySelector('.md-del').addEventListener('click',()=>{el.remove();renumber();updateAddBtn();});
     rowsEl.appendChild(el);
+    updateAddBtn();
   }
+  function renumber(){ rowsEl.querySelectorAll('.md-row .md-leg').forEach((n,i)=>{n.textContent='追加日程 '+(i+2)+'本目';}); }
+  function updateAddBtn(){ addBtn.style.display = rowsEl.children.length>=MAX ? 'none' : ''; }
   toggle.addEventListener('change',()=>{ area.classList.toggle('hidden',!toggle.checked);
     if(toggle.checked && rowsEl.children.length===0) addRow(); });
   addBtn.addEventListener('click',addRow);

@@ -125,7 +125,8 @@ a{color:inherit;text-decoration:none}
 .chip.live{color:var(--signal-ink);background:var(--signal-wash)}.chip.wait{color:var(--amber);background:var(--amber-wash)}
 .chip.met{color:#fff;background:var(--signal)}.chip.off{color:var(--muted);background:var(--line-soft)}
 label.fl{font-size:12px;color:var(--faint);display:block;margin-bottom:5px}
-input,select,textarea{font-family:var(--sans);font-size:15px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%}
+input:not([type="checkbox"]):not([type="radio"]),select,textarea{font-family:var(--sans);font-size:15px;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%}
+input[type="checkbox"],input[type="radio"]{width:auto;padding:0}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--signal);box-shadow:0 0 0 3px var(--signal-wash)}
 table{width:100%;border-collapse:collapse;font-size:13.5px}
 th{text-align:left;color:var(--muted);font-weight:600;padding:11px 14px;background:var(--raise);border-bottom:1px solid var(--line-soft)}
