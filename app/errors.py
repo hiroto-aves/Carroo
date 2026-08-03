@@ -33,9 +33,15 @@ ERROR_CATALOG = {
                        "セレクタ不一致。サイトのDOM変更の可能性が高い。"),
     "E-POST-NETWORK": ("通信エラーが発生しました。自動で再試行します。",
                        "ネットワーク/接続エラー。"),
+    "E-POST-NOTLISTED":("まだ掲載されていないため、変更・取下げできません。先に投稿してください。",
+                        "掲載番号(baggage_no)が未記録。初回投稿が未掲載/番号取得失敗。リトライ不可。"),
     "E-POST-UNKNOWN": ("投稿処理でエラーが発生しました。管理者にご連絡ください。",
                        "分類不能の投稿エラー。error_message 全文を確認。"),
 }
+
+# リトライしても状況が変わらない（＝Cloud Tasks で再試行させても無駄な）エラーコード。
+# tasks.py はこれらを全プラットフォームで検出したら、リトライせず即DLQ退避する。
+NON_RETRYABLE_CODES = frozenset({"E-POST-NOTLISTED"})
 
 
 def new_ref() -> str:
@@ -57,7 +63,10 @@ def classify(message) -> tuple:
     """例外/メッセージ文字列から (code, ユーザー向け説明) を推定（主に投稿エラー用）。"""
     m = str(message or "").lower()
     jp = str(message or "")
-    if "timeout" in m or "タイムアウト" in jp:
+    if ("掲載中の番号が見つかりません" in jp or "未登録または削除済み" in jp
+            or "掲載番号" in jp and "見つかり" in jp):
+        code = "E-POST-NOTLISTED"
+    elif "timeout" in m or "タイムアウト" in jp:
         code = "E-POST-TIMEOUT"
     elif "入力エラー" in jp or "invalid" in m or "受け付け" in jp:
         code = "E-POST-INPUT"

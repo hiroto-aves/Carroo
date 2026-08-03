@@ -60,7 +60,15 @@ async def execute_task_endpoint(request: Request):
         r.get("status") == "error" for r in results.values())
 
     if all_error:
-        is_final = retry_count >= _MAX_ATTEMPTS - 1
+        # 全プラットフォームが「リトライしても無駄なエラー」（例: 未掲載で変更・取下げ不可）なら、
+        # リトライ余地に関わらず即確定させ、無駄な再試行とメール連投を止める。
+        from app.errors import NON_RETRYABLE_CODES
+        all_non_retryable = all(
+            any(c in (r.get("message") or "") for c in NON_RETRYABLE_CODES)
+            for r in results.values())
+        is_final = retry_count >= _MAX_ATTEMPTS - 1 or all_non_retryable
+        if all_non_retryable and retry_count < _MAX_ATTEMPTS - 1:
+            logger.info("[Tasks] リトライ不能エラーのため再試行せず確定します")
         if is_final:
             # リトライ上限に到達 → Dead Letter Queue に退避＋監査ログ＋管理者アラート。
             # ここで 200 を返し、無意味な再試行を止める（捕捉済みのため）。
