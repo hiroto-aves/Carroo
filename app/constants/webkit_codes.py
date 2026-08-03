@@ -148,6 +148,32 @@ def get_webkit_car_code(trabox_shape: str) -> str:
     return TRABOX_SHAPE_TO_WEBKIT_CAR.get(trabox_shape, '13')
 
 
+# Trabox 車種形状の付帯（例:「平-低床」の「-低床」）→ WebKIT [車種形状]シート準拠の
+# 付帯コード。carkindtype（基本形）とは別に、WebKIT では任意項目として個別に送れる。
+_TRAYHEIGHT_MAP = {"低床": "2", "中低床": "4", "高床": "3"}   # 荷台高さ（標準=1は既定のため送らない）
+_LOADUNIT_PAWAGATE = "1"     # 荷役装置: パワーゲート
+_SUSPENSION_AIRSUS = "1"     # 懸架装置: エアサス車
+
+
+def get_shape_attrs(trabox_shape: str) -> dict:
+    """Trabox車種形状文字列（例:「平-低床」）から WebKIT の付帯項目を抽出。
+
+    該当が無ければキー自体を含めない（未指定=WebKIT側の既定=制限なし）。
+    """
+    attrs = {}
+    if not trabox_shape:
+        return attrs
+    for label, code in _TRAYHEIGHT_MAP.items():
+        if label in trabox_shape:
+            attrs["trayheighttype"] = code
+            break
+    if "パワーゲート" in trabox_shape:
+        attrs["loadunit"] = _LOADUNIT_PAWAGATE
+    if "エアサス" in trabox_shape:
+        attrs["suspension"] = _SUSPENSION_AIRSUS
+    return attrs
+
+
 def get_cargo_shape_code(name: str) -> str:
     """輸送品形状名からコードを取得（未知は 10=その他）"""
     return CARGO_SHAPE.get(name, '10')

@@ -199,7 +199,7 @@ class TraboxAutomation:
                         )
                 if "pickup_time" in updates and updates.get("pickup_time"):
                     await modal.locator(M.PICKUP_TIME_TEXT_SELECTOR).fill(
-                        str(updates["pickup_time"]),
+                        M.round_time_str(updates["pickup_time"]) or str(updates["pickup_time"]),
                         timeout=TRABOX_TIMEOUTS["action"],
                     )
 
@@ -664,11 +664,11 @@ class TraboxAutomation:
             )
             await self.debug_capture.capture_screenshot("step_4_filled_pickup_datetime")
 
-            # --- 2. 積み時間（フリーテキスト・任意） ---
+            # --- 2. 積み時間（フリーテキスト）: カレンダー(10分刻み)と表示を一致させる ---
             if case_data.get("pickup_time"):
                 await page.fill(
                     M.PICKUP_TIME_TEXT_SELECTOR,
-                    str(case_data["pickup_time"]),
+                    M.round_time_str(case_data["pickup_time"]) or str(case_data["pickup_time"]),
                     timeout=TRABOX_TIMEOUTS["action"],
                 )
 
@@ -681,11 +681,11 @@ class TraboxAutomation:
             await self._select_datetime(page, "着", drop_date, drop_time_labels)
             await self.debug_capture.capture_screenshot("step_4_filled_drop_datetime")
 
-            # --- 4b. 卸し時間（フリーテキスト・任意） ---
+            # --- 4b. 卸し時間（フリーテキスト）: カレンダー(10分刻み)と表示を一致させる ---
             if case_data.get("drop_time"):
                 await page.fill(
                     M.DROP_TIME_TEXT_SELECTOR,
-                    str(case_data["drop_time"]),
+                    M.round_time_str(case_data["drop_time"]) or str(case_data["drop_time"]),
                     timeout=TRABOX_TIMEOUTS["action"],
                 )
 
@@ -1080,7 +1080,25 @@ class TraboxAutomation:
             ".ant-select-item-option",
             has_text=_re.compile(f"^{_re.escape(option_text)}$"),
         )
+        # Ant Design の仮想スクロール(rc-virtual-list)では、選択肢が多い場合
+        # リスト下部の項目がスクロールするまで DOM に描画されない。
+        # 見つかるまでリスト内をスクロールしながら探す（例: 希望車両トン数の 9t 以上）。
+        scroll_holder = dropdown.locator(".rc-virtual-list-holder").first
+        found = await option.count() > 0
+        if not found and await scroll_holder.count() > 0:
+            for _ in range(20):
+                try:
+                    await scroll_holder.evaluate("el => { el.scrollTop += 140; }")
+                except Exception:
+                    break
+                await page.wait_for_timeout(80)
+                if await option.count() > 0:
+                    found = True
+                    break
         try:
+            if found:
+                await option.first.scroll_into_view_if_needed(
+                    timeout=TRABOX_TIMEOUTS["action"])
             await option.first.click(timeout=TRABOX_TIMEOUTS["action"])
             logger.info(f"[Trabox] セレクト選択: {option_text}")
         except Exception as e:

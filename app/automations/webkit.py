@@ -1,7 +1,8 @@
 import httpx
 from app.config import settings
 from app.constants.webkit_codes import (
-    get_prefecture_code, get_vehicle_code, get_cargo_type_code, get_handling_code
+    get_prefecture_code, get_vehicle_code, get_cargo_type_code, get_handling_code,
+    get_shape_attrs,
 )
 from typing import Dict, Any, Optional
 from xml.etree.ElementTree import Element, SubElement, tostring
@@ -279,9 +280,7 @@ class WebkitAutomation:
         - weight は【トン】単位（4.1形式）。kg入力を1000で割る
         - loadarea/destarea は市区町村（例: 港区）。分割入力の pick_city 等を使う
         """
-        from app.constants.webkit_codes import (
-            get_webkit_car_code, get_cargo_shape_code,
-        )
+        from app.constants.webkit_codes import get_cargo_shape_code
         from app.automations.trabox_form_mapper import TraboxFormMapper as M
 
         webkit = Element('webkit')
@@ -348,6 +347,10 @@ class WebkitAutomation:
         add('weight', self._weight_to_ton(case_data.get("cargo_weight")))   # 重量(t)【必須】
         add('carkindtype',
             get_webkit_car_code(case_data.get("vehicle_type", "")))  # 希望車種【必須】
+        # 車種形状の付帯（例:「平-低床」の低床、「-パワーゲート」「-エアサス」）は
+        # 任意項目として個別に送る。未指定なら送らない（WebKIT側の既定=制限なし）。
+        for k, v in get_shape_attrs(case_data.get("vehicle_type", "")).items():
+            add(k, v)
 
         # --- 積合せ（1:可 2:不可 9:未選択）: Trabox share と整合 ---
         share = case_data.get("share", "不可")

@@ -259,6 +259,21 @@ class TraboxFormMapper:
             rounded = 0
         return (f"{hour}時", f"{rounded:02d}分")
 
+    @classmethod
+    def round_time_str(cls, value: Any) -> Optional[str]:
+        """"HH:MM" を Trabox カレンダー(10分刻み)と同じ丸めで "HH:MM" に正規化。
+
+        発着日時カレンダーは10分刻みしか選べない一方、積み/卸し時間の
+        フリーテキスト欄は分単位で入力できてしまうため、丸めずに転記すると
+        カレンダー表示（例: 18:40）とフリーテキスト表示（例: 18:35）が
+        食い違って見える。両方を同じ丸め結果で統一する。
+        """
+        parsed = cls.parse_time(value)
+        if not parsed:
+            return None
+        hour_label, minute_label = parsed
+        return f"{int(hour_label.rstrip('時')):02d}:{minute_label.rstrip('分')}"
+
     @staticmethod
     def format_freight(value: Any) -> Optional[str]:
         """運賃を整数円の文字列に変換"""
