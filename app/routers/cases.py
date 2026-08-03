@@ -1165,6 +1165,7 @@ async def case_delete(case_id: int, platforms: str = Form(...),
 async def case_group_page(group_id: int, current_user: dict = Depends(get_current_user)):
     """複数日程一括投稿グループの管理（各日程の状態＋一括取り下げ）。"""
     from app.db import store
+    from app.ui_shell import shell_open, SHELL_CLOSE, esc
     user_id = current_user["id"]
     is_admin = current_user.get("is_admin")
     cases = store.list_group_cases(group_id, None if is_admin else user_id)
@@ -1190,7 +1191,6 @@ async def case_group_page(group_id: int, current_user: dict = Depends(get_curren
                  f'<td class="px-3 py-2 text-sm"><a href="/cases/{cid}/manage" class="text-blue-600 hover:underline">個別</a>'
                  f' <button data-act="keepOne" data-args="[{cid}]" class="ml-2 text-amber-700 hover:underline">これで成約→他を取下げ</button></td></tr>')
     c0 = cases[0]
-    from app.ui_shell import shell_open, SHELL_CLOSE, esc
     return HTMLResponse(shell_open(title=f"複数日程グループ #{group_id}", active="load_list",
                                    user=current_user, crumb="Carroo / 荷物") + f"""
 <div class="max-w-4xl">
