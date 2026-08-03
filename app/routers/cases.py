@@ -169,7 +169,16 @@ async def case_register_page(access_token: Optional[str] = Cookie(None),
                                         </div>
                                         <div>
                                             <label class="block text-sm font-medium text-gray-700 mb-2">積み時間<span class="ml-1 px-1.5 py-0.5 text-xs font-semibold text-red-600 bg-red-50 rounded">必須</span></label>
-                                            <input type="time" name="pickup_time" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required>
+                                            <div class="flex gap-2">
+                                                <input type="time" name="pickup_time" class="w-1/2 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required>
+                                                <select name="loading_time_option" class="webkit-time-opt w-1/2 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition">
+                                                    <option value="以降">以降</option>
+                                                    <option value="必着">必着</option>
+                                                    <option value="迄">迄</option>
+                                                    <option value="から">から</option>
+                                                </select>
+                                            </div>
+                                            <p class="text-xs text-gray-500 mt-1">WebKit投稿時は必須項目です</p>
                                         </div>
                                     </div>
                                     <div>
@@ -198,7 +207,16 @@ async def case_register_page(access_token: Optional[str] = Cookie(None),
                                         </div>
                                         <div>
                                             <label class="block text-sm font-medium text-gray-700 mb-2">卸し時間<span class="ml-1 px-1.5 py-0.5 text-xs font-semibold text-red-600 bg-red-50 rounded">必須</span></label>
-                                            <input type="time" name="drop_time" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required>
+                                            <div class="flex gap-2">
+                                                <input type="time" name="drop_time" class="w-1/2 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition" required>
+                                                <select name="unloading_time_option" class="webkit-time-opt w-1/2 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 transition">
+                                                    <option value="以降">以降</option>
+                                                    <option value="必着">必着</option>
+                                                    <option value="迄">迄</option>
+                                                    <option value="から">から</option>
+                                                </select>
+                                            </div>
+                                            <p class="text-xs text-gray-500 mt-1">WebKit投稿時は必須項目です</p>
                                         </div>
                                     </div>
                                     <div>
@@ -473,6 +491,14 @@ async def case_register_page(access_token: Optional[str] = Cookie(None),
                 }
             });
 
+            // WebKit投稿時は積み/卸し時間区分（以降・必着・迄・から）を必須にする
+            const timeOptSelects = document.querySelectorAll('.webkit-time-opt');
+            function syncTimeOptRequired() {
+                timeOptSelects.forEach(el => { el.required = webkitCheckbox.checked; });
+            }
+            webkitCheckbox.addEventListener('change', syncTimeOptRequired);
+            syncTimeOptRequired();
+
         </script>
     </body>
     </html>
@@ -695,6 +721,9 @@ async def register_case(
     contact_method: Optional[str] = Form(None),
     visibility: Optional[str] = Form(None),
     remarks: Optional[str] = Form(None),
+    # --- WebKit 積/卸日時指定区分（WebKIT API仕様書準拠。WebKit投稿時は必須） ---
+    loading_time_option: Optional[str] = Form(None),
+    unloading_time_option: Optional[str] = Form(None),
     # --- 複数日程一括投稿（FEATURE_MULTIDATE）: JSON配列
     #     [{"pickup_date","pickup_time","drop_date","drop_time"}, ...] ---
     date_variants: Optional[str] = Form(None),
@@ -726,6 +755,20 @@ async def register_case(
 
         want_trabox = _checked(post_to_trabox)
         want_webkit = _checked(post_to_webkit)
+
+        # WebKit投稿時は積み/卸し時間区分が必須（WebKIT API仕様書: loaddatetype/destdatetype 必須項目）
+        _TIME_OPT_CHOICES = ("以降", "必着", "迄", "から")
+        if want_webkit:
+            if loading_time_option not in _TIME_OPT_CHOICES:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="積み時間区分（以降・必着・迄・から）はWebKit投稿時は必須です",
+                )
+            if unloading_time_option not in _TIME_OPT_CHOICES:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="卸し時間区分（以降・必着・迄・から）はWebKit投稿時は必須です",
+                )
 
         # Step 0: 発地/着地を組み立て（新UI: pref+city+address 分割入力）
         # Trabox は市区町村必須のため「東京都港区」形式に結合する
@@ -797,6 +840,8 @@ async def register_case(
                 "contact_method": contact_method,
                 "visibility": visibility,
                 "remarks": remarks,
+                "loading_time_option": loading_time_option,
+                "unloading_time_option": unloading_time_option,
             }.items() if v not in (None, "")
         }
 

@@ -386,8 +386,9 @@ class WebkitAutomation:
 
     @staticmethod
     def _datetime_type(option: str) -> str:
-        """積/卸日時指定区分（1:以降 2:必着 3:迄 9:指定なし）。既定 1:以降"""
-        mapping = {"以降": "1", "必着": "2", "迄": "3", "指定なし": "9"}
+        """積/卸日時指定区分（WebKIT API仕様書「API詳細」シート準拠）
+        1:以降 2:必着 3:迄 4:期間「～」（から） 9:指定なし。既定 1:以降"""
+        mapping = {"以降": "1", "必着": "2", "迄": "3", "から": "4", "指定なし": "9"}
         return mapping.get(option or "", "1")
 
     @staticmethod

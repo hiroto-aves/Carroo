@@ -603,10 +603,11 @@ class TraboxAutomation:
             drop_city = case_data.get("drop_city") or M.extract_city(
                 case_data.get("drop_location", "")
             )
-            # トン数: UI で直接指定された場合はそれを優先、無ければ荷物重量から切上げ算出
+            # トン数: UI で「問わず」以外が明示指定された場合はそれを優先、
+            # 「問わず」/未指定なら荷物重量(kg)から切上げ算出する。
+            _tw = case_data.get("truck_weight")
             weight_class = (
-                case_data.get("truck_weight")
-                if case_data.get("truck_weight") in M.TRUCK_WEIGHT_OPTIONS
+                _tw if (_tw in M.TRUCK_WEIGHT_OPTIONS and _tw != "問わず")
                 else M.weight_to_class(case_data.get("cargo_weight"))
             )
             vehicle_option = M.vehicle_to_option(case_data.get("vehicle_type", ""))
