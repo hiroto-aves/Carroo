@@ -748,6 +748,22 @@ class TraboxAutomation:
             ).first
             await count_input.fill(str(truck_count), timeout=TRABOX_TIMEOUTS["action"])
 
+            # --- 11b. 必要装備（任意・フリーテキスト。正規化仕様書 #11） ---
+            # ⚠️ セレクタは画面キャプチャからの推測実装。実地確認で失敗しても
+            # 他の必須項目の入力を止めないよう warning に留める。
+            equipment_text = M.format_equipment_text(
+                case_data.get("equipment_items"), case_data.get("equipment_other"))
+            if equipment_text:
+                try:
+                    equipment_input = page.locator(
+                        f"{M.row_selector('必要装備')} input"
+                    ).first
+                    await equipment_input.fill(
+                        equipment_text, timeout=TRABOX_TIMEOUTS["action"])
+                    logger.info(f"[Trabox] 必要装備: {equipment_text}")
+                except Exception as e:
+                    logger.warning(f"[Trabox] 必要装備の入力に失敗（任意のため続行）: {e}")
+
             # --- 12. 運賃（必須・円税別）: 要相談の場合は金額の代わりにチェック ---
             if freight_negotiable:
                 negotiable_checkbox = page.locator(

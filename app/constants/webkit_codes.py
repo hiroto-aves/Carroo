@@ -174,6 +174,28 @@ def get_shape_attrs(trabox_shape: str) -> dict:
     return attrs
 
 
+def get_transport_type_codes(labels) -> str:
+    """輸送取扱区分（複数選択・正規化仕様書 #10）のラベル配列 → WebKIT用カンマ区切りコード。
+
+    未知のラベルは無視する。空/Noneなら空文字（フィールド自体を送らない）。
+    """
+    if not labels:
+        return ""
+    codes = [TRANSPORT_HANDLING[l] for l in labels if l in TRANSPORT_HANDLING]
+    return ",".join(codes)
+
+
+def get_safety_unit_codes(labels) -> str:
+    """必要装備（複数選択・正規化仕様書 #11）のラベル配列 → WebKIT用カンマ区切りコード。
+
+    未知のラベルは無視する。空/Noneなら空文字（フィールド自体を送らない）。
+    """
+    if not labels:
+        return ""
+    codes = [SAFETY_DEVICE[l] for l in labels if l in SAFETY_DEVICE]
+    return ",".join(codes)
+
+
 def get_cargo_shape_code(name: str) -> str:
     """輸送品形状名からコードを取得（未知は 10=その他）"""
     return CARGO_SHAPE.get(name, '10')

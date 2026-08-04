@@ -259,6 +259,17 @@ class TraboxFormMapper:
             rounded = 0
         return (f"{hour}時", f"{rounded:02d}分")
 
+    @staticmethod
+    def format_equipment_text(items, other: str = None) -> str:
+        """必要装備（正規化仕様書 #11）: 選択ラベル配列＋自由記入を Trabox の
+        フリーテキスト欄向けに読点区切りの文字列へ結合する。
+        例: ["ヘルメット","安全靴"], "リフト" → "ヘルメット、安全靴、リフト"
+        """
+        parts = list(items) if items else []
+        if other:
+            parts.append(str(other).strip())
+        return "、".join(p for p in parts if p)
+
     @classmethod
     def round_time_str(cls, value: Any) -> Optional[str]:
         """"HH:MM" を Trabox カレンダー(10分刻み)と同じ丸めで "HH:MM" に正規化。

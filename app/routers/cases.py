@@ -124,6 +124,23 @@ async def case_register_page(access_token: Optional[str] = Cookie(None),
         f'<option value="{s}">{s}</option>'
         for s in TraboxFormMapper.VEHICLE_SHAPE_OPTIONS
     )
+    # 荷物区分（品目）は WebKit の21択を正規語彙として採用（Trabox は自由記述欄なので
+    # 表示文字列をそのまま転記すれば通る）。既定値「鋼材」。
+    from app.constants.webkit_codes import CARGO_TYPES, TRANSPORT_HANDLING, SAFETY_DEVICE
+    cargo_type_options = "".join(
+        f'<option value="{c}"{" selected" if c == "鋼材" else ""}>{c}</option>'
+        for c in CARGO_TYPES
+    )
+    transport_type_checkboxes = "".join(
+        f'<label class="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">'
+        f'<input type="checkbox" name="transport_types" value="{t}" class="w-4 h-4 text-blue-600 rounded">{t}</label>'
+        for t in TRANSPORT_HANDLING
+    )
+    equipment_checkboxes = "".join(
+        f'<label class="flex items-center gap-1.5 text-sm text-gray-700 cursor-pointer">'
+        f'<input type="checkbox" name="equipment_items" value="{e}" class="w-4 h-4 text-blue-600 rounded">{e}</label>'
+        for e in SAFETY_DEVICE
+    )
     html = """
     <!DOCTYPE html>
     <html lang="ja">
@@ -281,8 +298,10 @@ async def case_register_page(access_token: Optional[str] = Cookie(None),
                                 </summary>
                                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-gray-50 rounded-lg">
                                     <div>
-                                        <label class="block text-sm font-medium text-gray-700 mb-2">荷種</label>
-                                        <input type="text" name="cargo_type" value="鋼材" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg transition">
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">荷種（荷物区分）</label>
+                                        <select name="cargo_type" class="w-full px-4 py-2.5 border border-gray-300 rounded-lg transition">
+                                            CARGO_TYPE_OPTIONS
+                                        </select>
                                     </div>
                                     <div>
                                         <label class="block text-sm font-medium text-gray-700 mb-2">荷姿・輸送形状</label>
@@ -343,9 +362,23 @@ async def case_register_page(access_token: Optional[str] = Cookie(None),
                                     </div>
                                     <div class="md:col-span-2">
                                         <label class="flex items-center gap-2 cursor-pointer">
-                                            <input type="checkbox" name="moving_case" value="yes" class="w-5 h-5 text-blue-600 rounded">
+                                            <input type="checkbox" name="moving_case" id="moving_case" value="yes" class="w-5 h-5 text-blue-600 rounded">
                                             <span class="text-sm font-medium text-gray-700">引越し案件</span>
+                                            <span class="text-xs text-gray-500">（WebKitは荷種を自動で「引越貨物」にします）</span>
                                         </label>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">輸送取扱区分 <span class="text-xs text-gray-500">（複数可・WebKitのみ反映）</span></label>
+                                        <div class="flex flex-wrap gap-x-4 gap-y-2">
+                                            TRANSPORT_TYPE_CHECKBOXES
+                                        </div>
+                                    </div>
+                                    <div class="md:col-span-2">
+                                        <label class="block text-sm font-medium text-gray-700 mb-2">必要装備 <span class="text-xs text-gray-500">（複数可）</span></label>
+                                        <div class="flex flex-wrap gap-x-4 gap-y-2">
+                                            EQUIPMENT_CHECKBOXES
+                                        </div>
+                                        <input type="text" name="equipment_other" placeholder="その他の装備（自由記入）" class="mt-2 w-full px-4 py-2.5 border border-gray-300 rounded-lg transition">
                                     </div>
                                     <div class="md:col-span-2">
                                         <label class="block text-sm font-medium text-gray-700 mb-2">備考</label>
@@ -513,6 +546,9 @@ async def case_register_page(access_token: Optional[str] = Cookie(None),
         .replace("PREF_OPTIONS", pref_options)
         .replace("WEIGHT_OPTIONS", weight_options)
         .replace("SHAPE_OPTIONS", shape_options)
+        .replace("CARGO_TYPE_OPTIONS", cargo_type_options)
+        .replace("TRANSPORT_TYPE_CHECKBOXES", transport_type_checkboxes)
+        .replace("EQUIPMENT_CHECKBOXES", equipment_checkboxes)
         .replace("CONTACT_NAME_VALUE", contact["name"])
         .replace("CONTACT_PHONE_VALUE", contact["phone"])
         .replace("CONTACT_EMAIL_VALUE", contact["email"])
@@ -721,6 +757,10 @@ async def register_case(
     contact_method: Optional[str] = Form(None),
     visibility: Optional[str] = Form(None),
     remarks: Optional[str] = Form(None),
+    # --- 輸送取扱区分（複数選択・WebKit専用）／必要装備（複数選択＋自由記入・両対応） ---
+    transport_types: Optional[list] = Form(None),
+    equipment_items: Optional[list] = Form(None),
+    equipment_other: Optional[str] = Form(None),
     # --- WebKit 積/卸日時指定区分（WebKIT API仕様書準拠。WebKit投稿時は必須） ---
     loading_time_option: Optional[str] = Form(None),
     unloading_time_option: Optional[str] = Form(None),
@@ -842,6 +882,9 @@ async def register_case(
                 "remarks": remarks,
                 "loading_time_option": loading_time_option,
                 "unloading_time_option": unloading_time_option,
+                "transport_types": transport_types or None,
+                "equipment_items": equipment_items or None,
+                "equipment_other": equipment_other,
             }.items() if v not in (None, "")
         }
 

@@ -2,7 +2,7 @@ import httpx
 from app.config import settings
 from app.constants.webkit_codes import (
     get_prefecture_code, get_vehicle_code, get_cargo_type_code, get_handling_code,
-    get_shape_attrs,
+    get_shape_attrs, get_transport_type_codes, get_safety_unit_codes,
 )
 from typing import Dict, Any, Optional
 from xml.etree.ElementTree import Element, SubElement, tostring
@@ -330,7 +330,12 @@ class WebkitAutomation:
             add('destaddress', case_data["drop_address"])
 
         # --- 荷物 ---
-        cargo_type = case_data.get("cargo_type") or "その他"
+        # 引越し案件（正規化仕様書 #13）: WebKitには専用フラグが無いため、
+        # 荷物区分の選択に関わらず「引越貨物」へ強制的に上書きする。
+        if case_data.get("moving_case"):
+            cargo_type = "引越貨物"
+        else:
+            cargo_type = case_data.get("cargo_type") or "その他"
         loadkind_code = get_cargo_type_code(cargo_type) or '21'
         add('loadkind', loadkind_code)                          # 輸送品区分【必須】
         # loadkind=21(その他) の場合は輸送品区分その他の記述が必須
@@ -351,6 +356,17 @@ class WebkitAutomation:
         # 任意項目として個別に送る。未指定なら送らない（WebKIT側の既定=制限なし）。
         for k, v in get_shape_attrs(case_data.get("vehicle_type", "")).items():
             add(k, v)
+
+        # --- 輸送取扱区分（正規化仕様書 #10・WebKit専用・任意・複数可） ---
+        transport_codes = get_transport_type_codes(case_data.get("transport_types"))
+        if transport_codes:
+            add('transporttype', transport_codes)
+        # --- 必要装備/安全装置（正規化仕様書 #11・任意・複数可） ---
+        safety_codes = get_safety_unit_codes(case_data.get("equipment_items"))
+        if safety_codes:
+            add('safetyunit', safety_codes)
+            if "その他" in (case_data.get("equipment_items") or []) and case_data.get("equipment_other"):
+                add('safetyunit_other', str(case_data["equipment_other"])[:32])
 
         # --- 積合せ（1:可 2:不可 9:未選択）: Trabox share と整合 ---
         share = case_data.get("share", "不可")
