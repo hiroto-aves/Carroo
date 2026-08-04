@@ -440,8 +440,9 @@ async def case_register_page(access_token: Optional[str] = Cookie(None),
                         </div>
 
                         <!-- 送信ボタン -->
-                        <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition duration-200 mt-8">
-                            ✓ 案件を登録
+                        <button type="submit" id="register-submit-btn" class="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition duration-200 mt-8 flex items-center justify-center gap-2">
+                            <span id="register-submit-spinner" class="hidden w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                            <span id="register-submit-label">✓ 案件を登録</span>
                         </button>
                     </form>
                     </div>
@@ -537,12 +538,18 @@ async def case_register_page(access_token: Optional[str] = Cookie(None),
             // このページのまま赤いバナーで表示する（生のJSONページに飛ぶのを防ぐ）。
             const registerForm = document.querySelector('form[action="/cases/register"]');
             const errorBanner = document.getElementById('register-error');
+            const submitBtn = document.getElementById('register-submit-btn');
+            const submitSpinner = document.getElementById('register-submit-spinner');
+            const submitLabel = document.getElementById('register-submit-label');
             if (registerForm && errorBanner) {
                 registerForm.addEventListener('submit', async (e) => {
                     e.preventDefault();
                     errorBanner.classList.add('hidden');
-                    const submitBtn = registerForm.querySelector('button[type="submit"]');
-                    if (submitBtn) { submitBtn.disabled = true; }
+                    if (submitBtn) {
+                        submitBtn.disabled = true;
+                        submitSpinner.classList.remove('hidden');
+                        submitLabel.textContent = '登録中…（サイトへの投稿処理のため数十秒かかることがあります）';
+                    }
                     try {
                         const res = await fetch('/cases/register', {
                             method: 'POST', body: new FormData(registerForm),
@@ -567,7 +574,11 @@ async def case_register_page(access_token: Optional[str] = Cookie(None),
                         errorBanner.textContent = '⚠ 通信エラーが発生しました: ' + err.message;
                         errorBanner.classList.remove('hidden');
                     } finally {
-                        if (submitBtn) { submitBtn.disabled = false; }
+                        if (submitBtn) {
+                            submitBtn.disabled = false;
+                            submitSpinner.classList.add('hidden');
+                            submitLabel.textContent = '✓ 案件を登録';
+                        }
                     }
                 });
             }
