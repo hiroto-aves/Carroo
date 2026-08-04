@@ -174,7 +174,11 @@ async def _app_error_handler(request: _Req, exc: AppError):
 
 @app.exception_handler(RequestValidationError)
 async def _validation_handler(request: _Req, exc: RequestValidationError):
-    """入力バリデーション失敗(422): 一般ユーザー向けに言い換え＋コード。"""
+    """入力バリデーション失敗(422): 一般ユーザー向けに言い換え＋コード。
+    どのフィールドで何が失敗したかは画面には出さず、ログにのみ残す
+    （管理者がCloud Loggingで path=... の直後の詳細を見て原因調査できるようにする）。"""
+    logging.getLogger("errors").warning(
+        f"[E-VALIDATION] path={request.url.path} errors={exc.errors()}")
     return JSONResponse(status_code=422,
                         content={"detail": format_detail(user_message("E-VALIDATION"),
                                                          "E-VALIDATION"),
