@@ -6,7 +6,7 @@ from app.automations.trabox import TraboxAutomation
 from app.automations.webkit import WebkitAutomation
 from app.dependencies import get_current_user
 from app.services.cloud_tasks import get_task_client
-from typing import Optional
+from typing import Optional, List
 import json
 import logging
 
@@ -167,6 +167,7 @@ async def case_register_page(access_token: Optional[str] = Cookie(None),
                     <div class="p-8">
 
                     <form method="post" action="/cases/register" class="space-y-8">
+                        <div id="register-error" class="hidden bg-red-50 border border-red-300 text-red-700 text-sm font-semibold rounded-lg px-4 py-3"></div>
                         <!-- セクション 1: 基本情報 -->
                         <div>
                             <h3 class="text-lg font-semibold text-gray-900 mb-4 flex items-center">
@@ -532,6 +533,41 @@ async def case_register_page(access_token: Optional[str] = Cookie(None),
             webkitCheckbox.addEventListener('change', syncTimeOptRequired);
             syncTimeOptRequired();
 
+            // 送信をfetch化: サーバー側エラー(400/422)時は画面遷移せず
+            // このページのまま赤いバナーで表示する（生のJSONページに飛ぶのを防ぐ）。
+            const registerForm = document.querySelector('form[action="/cases/register"]');
+            const errorBanner = document.getElementById('register-error');
+            if (registerForm && errorBanner) {
+                registerForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    errorBanner.classList.add('hidden');
+                    const submitBtn = registerForm.querySelector('button[type="submit"]');
+                    if (submitBtn) { submitBtn.disabled = true; }
+                    try {
+                        const res = await fetch('/cases/register', {
+                            method: 'POST', body: new FormData(registerForm),
+                        });
+                        if (res.ok) {
+                            const html = await res.text();
+                            document.open(); document.write(html); document.close();
+                            return;
+                        }
+                        let detail = '入力内容に誤りがあります。赤字の項目を確認してください。';
+                        try {
+                            const data = await res.json();
+                            detail = data.detail || detail;
+                        } catch (_) { /* JSON以外の応答は既定メッセージのまま */ }
+                        errorBanner.textContent = '⚠ ' + detail;
+                        errorBanner.classList.remove('hidden');
+                        errorBanner.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    } catch (err) {
+                        errorBanner.textContent = '⚠ 通信エラーが発生しました: ' + err.message;
+                        errorBanner.classList.remove('hidden');
+                    } finally {
+                        if (submitBtn) { submitBtn.disabled = false; }
+                    }
+                });
+            }
         </script>
     </body>
     </html>
@@ -758,8 +794,8 @@ async def register_case(
     visibility: Optional[str] = Form(None),
     remarks: Optional[str] = Form(None),
     # --- 輸送取扱区分（複数選択・WebKit専用）／必要装備（複数選択＋自由記入・両対応） ---
-    transport_types: Optional[list] = Form(None),
-    equipment_items: Optional[list] = Form(None),
+    transport_types: Optional[List[str]] = Form(None),
+    equipment_items: Optional[List[str]] = Form(None),
     equipment_other: Optional[str] = Form(None),
     # --- WebKit 積/卸日時指定区分（WebKIT API仕様書準拠。WebKit投稿時は必須） ---
     loading_time_option: Optional[str] = Form(None),
