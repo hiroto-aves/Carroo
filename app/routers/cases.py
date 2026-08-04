@@ -1202,6 +1202,34 @@ async def case_delete(case_id: int, platforms: str = Form(...),
     return HTMLResponse(f'<meta http-equiv="refresh" content="0; url=/cases/{case_id}/manage">')
 
 
+@router.post("/bulk-delete")
+async def cases_bulk_delete(case_ids: str = Form(...),
+                            current_user: dict = Depends(get_current_user)):
+    """荷物一覧からの一括削除。チェックした案件の トラボックス・WebKit 両方の掲載を
+    まとめて取り下げる（未掲載のプラットフォームは E-POST-NOTLISTED として即確定するだけで、
+    処理自体は害がないためチェック状態に関わらず両方を対象にする）。
+    所有していない/存在しない案件IDは黙ってスキップする（一部失敗で全体を止めない）。"""
+    from app.db import store
+    from app.utils.audit import audit
+    user_id = current_user["id"]
+    ids = [int(x) for x in case_ids.split(",") if x.strip().isdigit()]
+    deleted = []
+    for cid in ids:
+        row = _load_case_row(cid, user_id)
+        if not row:
+            continue
+        for p in ("trabox", "webkit"):
+            store.add_posting_event(cid, p, "delete", "pending")
+        get_task_client().add_task({
+            "action": "delete", "user_id": user_id, "case_id": cid,
+            "platforms": ["trabox", "webkit"],
+        })
+        deleted.append(cid)
+    audit("case_bulk_delete", case_ids=deleted, user_id=user_id,
+          username=current_user.get("username"))
+    return RedirectResponse(url="/dashboard/cases", status_code=303)
+
+
 @router.get("/group/{group_id}", response_class=HTMLResponse)
 async def case_group_page(group_id: int, current_user: dict = Depends(get_current_user),
                           registered: int = Query(0)):

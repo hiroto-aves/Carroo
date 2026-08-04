@@ -357,9 +357,16 @@ async def cases_list(
         for case in cases:
             cid = case["id"]
             tds = "".join(f'<td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{esc(cell(case, k))}</td>' for k in visible)
-            body += f'<tr class="border-b border-gray-100 hover:bg-gray-50"><td class="px-4 py-3 text-sm font-semibold text-gray-900">#{cid}</td>{tds}<td class="px-4 py-3 text-sm whitespace-nowrap"><a href="/cases/{cid}/manage" class="text-blue-600 hover:text-blue-700 font-medium">管理</a></td></tr>'
+            body += (f'<tr class="border-b border-gray-100 hover:bg-gray-50">'
+                     f'<td class="px-4 py-3"><input type="checkbox" class="row-sel w-4 h-4" value="{cid}"></td>'
+                     f'<td class="px-4 py-3 text-sm font-semibold text-gray-900">#{cid}</td>{tds}'
+                     f'<td class="px-4 py-3 text-sm whitespace-nowrap">'
+                     f'<a href="/cases/{cid}/manage" class="text-blue-600 hover:text-blue-700 font-medium">管理</a>'
+                     f' <button type="button" data-act="quickDeleteCase" data-args="[{cid}]" '
+                     f'class="ml-2 text-red-600 hover:text-red-700 font-medium">削除</button></td></tr>')
+        colspan = len(visible) + 3
         if not cases:
-            body = f'<tr><td colspan="{len(visible)+2}" class="px-6 py-8 text-center text-gray-500">条件に一致する案件がありません</td></tr>'
+            body = f'<tr><td colspan="{colspan}" class="px-6 py-8 text-center text-gray-500">条件に一致する案件がありません</td></tr>'
 
         # カラム設定チェックボックス
         col_checks = "".join(
@@ -396,13 +403,51 @@ async def cases_list(
     </form>
   </details>
 
+  <div id="bulk-delete-bar" class="hidden bg-red-50 border border-red-200 rounded-lg shadow p-3 mb-3 flex items-center gap-3">
+    <span class="text-sm text-red-800 font-semibold"><span id="bulk-delete-count">0</span>件選択中</span>
+    <button type="button" data-act="bulkDeleteCases" class="bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">選択した案件を一括削除</button>
+    <button type="button" onclick="document.querySelectorAll('.row-sel').forEach(c=>c.checked=false);updateBulkDeleteBar();" class="text-gray-500 hover:text-gray-700 text-sm">選択解除</button>
+  </div>
+
   <div class="bg-white rounded-lg shadow overflow-hidden"><div class="overflow-x-auto"><table class="w-full">
     <thead class="bg-gray-50 border-b border-gray-200"><tr>
+      <th class="px-4 py-3"><input type="checkbox" id="row-sel-all" class="w-4 h-4"></th>
       <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700">ID</th>{th}
       <th class="px-4 py-3 text-left text-xs font-semibold text-gray-700">操作</th>
     </tr></thead>
     <tbody>{body}</tbody>
   </table></div></div>
+
+  <form id="bulkDeleteForm" method="post" action="/cases/bulk-delete" style="display:none"><input type="hidden" name="case_ids" id="bulkDeleteIds"></form>
+  <form id="quickDeleteForm" method="post" style="display:none"><input type="hidden" name="platforms" value="trabox,webkit"></form>
+  <script>
+    function updateBulkDeleteBar() {{
+      const n = document.querySelectorAll('.row-sel:checked').length;
+      document.getElementById('bulk-delete-count').textContent = n;
+      document.getElementById('bulk-delete-bar').classList.toggle('hidden', n === 0);
+    }}
+    document.querySelectorAll('.row-sel').forEach(cb => cb.addEventListener('change', updateBulkDeleteBar));
+    const selAll = document.getElementById('row-sel-all');
+    if (selAll) {{
+      selAll.addEventListener('change', () => {{
+        document.querySelectorAll('.row-sel').forEach(cb => {{ cb.checked = selAll.checked; }});
+        updateBulkDeleteBar();
+      }});
+    }}
+    function quickDeleteCase(cid) {{
+      if (!confirm('案件 #' + cid + ' のトラボックス・WebKit両方の掲載を削除します。よろしいですか？（登録の履歴は残ります）')) return;
+      const f = document.getElementById('quickDeleteForm');
+      f.action = '/cases/' + cid + '/delete';
+      f.submit();
+    }}
+    function bulkDeleteCases() {{
+      const ids = Array.from(document.querySelectorAll('.row-sel:checked')).map(cb => cb.value);
+      if (ids.length === 0) return;
+      if (!confirm(ids.length + '件の案件のトラボックス・WebKit両方の掲載を一括削除します。よろしいですか？（登録の履歴は残ります）')) return;
+      document.getElementById('bulkDeleteIds').value = ids.join(',');
+      document.getElementById('bulkDeleteForm').submit();
+    }}
+  </script>
 </div>"""
         actions = ('<a class="btn ghost" href="/dashboard/cases/history">履歴</a>'
                    '<a class="btn" href="/cases/register" style="margin-left:8px">＋ 荷物を出す</a>')
