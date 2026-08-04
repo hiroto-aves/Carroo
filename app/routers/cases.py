@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, status, Form, Depends, Cookie, Query
+from fastapi import APIRouter, HTTPException, status, Form, Depends, Cookie, Query, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from app.models.schemas import CaseCreate, Case
 from app.db.database import get_db_connection
@@ -6,7 +6,7 @@ from app.automations.trabox import TraboxAutomation
 from app.automations.webkit import WebkitAutomation
 from app.dependencies import get_current_user
 from app.services.cloud_tasks import get_task_client
-from typing import Optional, List
+from typing import Optional
 import json
 import logging
 
@@ -758,6 +758,7 @@ def _batch_result_page(case_ids, group_id, pick_location, drop_location,
 
 @router.post("/register")
 async def register_case(
+    request: Request,
     # 後方互換: 旧API（結合済み文字列）でも新UI（pref+city 分割）でも受け付ける
     pick_location: Optional[str] = Form(None),
     drop_location: Optional[str] = Form(None),
@@ -794,8 +795,9 @@ async def register_case(
     visibility: Optional[str] = Form(None),
     remarks: Optional[str] = Form(None),
     # --- 輸送取扱区分（複数選択・WebKit専用）／必要装備（複数選択＋自由記入・両対応） ---
-    transport_types: Optional[List[str]] = Form(None),
-    equipment_items: Optional[List[str]] = Form(None),
+    # 🔴 List[str] = Form(None) は選択数が1個だけの場合に単一文字列のまま渡り
+    #    Pydantic の "list_type" 検証エラーになる既知の制約（FastAPI 0.103系）。
+    #    型宣言をやめ、request.form() から getlist() で確実に取得する。
     equipment_other: Optional[str] = Form(None),
     # --- WebKit 積/卸日時指定区分（WebKIT API仕様書準拠。WebKit投稿時は必須） ---
     loading_time_option: Optional[str] = Form(None),
@@ -831,6 +833,12 @@ async def register_case(
 
         want_trabox = _checked(post_to_trabox)
         want_webkit = _checked(post_to_webkit)
+
+        # 複数選択チェックボックス（選択数が1個でも確実にリストで取れるよう
+        # request.form() から直接 getlist する。上記の理由により Form(List[str]) は使わない）
+        _form = await request.form()
+        transport_types = _form.getlist("transport_types") or None
+        equipment_items = _form.getlist("equipment_items") or None
 
         # WebKit投稿時は積み/卸し時間区分が必須（WebKIT API仕様書: loaddatetype/destdatetype 必須項目）
         _TIME_OPT_CHOICES = ("以降", "必着", "迄", "から")
