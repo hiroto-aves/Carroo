@@ -971,10 +971,6 @@ async def register_case(
                 url=f"/cases/group/{group_id}?registered=1", status_code=303)
         return RedirectResponse(
             url=f"/cases/{case_id}/manage?registered=1", status_code=303)
-        return HTMLResponse(render_page(
-            title="登録完了", active="load_new", body=body,
-            user=current_user, page_title="登録完了",
-            crumb="Carroo · 荷物"))
 
     except HTTPException:
         # バリデーションエラー等はそのまま返す（detail を握りつぶさない）

@@ -2,7 +2,7 @@ import httpx
 from app.config import settings
 from app.constants.webkit_codes import (
     get_prefecture_code, get_vehicle_code, get_cargo_type_code, get_handling_code,
-    get_shape_attrs, get_transport_type_codes, get_safety_unit_codes,
+    get_webkit_car_code, get_shape_attrs, get_transport_type_codes, get_safety_unit_codes,
 )
 from typing import Dict, Any, Optional
 from xml.etree.ElementTree import Element, SubElement, tostring
