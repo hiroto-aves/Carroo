@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, status, Form, Depends, Cookie, Query, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from app.models.schemas import CaseCreate, Case
 from app.db.database import get_db_connection
 from app.automations.trabox import TraboxAutomation
@@ -548,8 +548,11 @@ async def case_register_page(access_token: Optional[str] = Cookie(None),
                             method: 'POST', body: new FormData(registerForm),
                         });
                         if (res.ok) {
-                            const html = await res.text();
-                            document.open(); document.write(html); document.close();
+                            // 成功時はサーバーが 303 で結果ページへリダイレクトする。
+                            // fetch はリダイレクトを自動追跡するので res.url が最終URL。
+                            // document.write は CSP nonce 不一致等で不安定なため、
+                            // 必ず実ページ遷移で反映する（連打による重複登録を防ぐ）。
+                            window.location.href = res.url;
                             return;
                         }
                         let detail = '入力内容に誤りがあります。赤字の項目を確認してください。';
@@ -721,39 +724,6 @@ def _user_from_token(access_token):
         return store.get_user_by_id(td.get("user_id"))
     except Exception:
         return None
-
-
-def _batch_result_page(case_ids, group_id, pick_location, drop_location,
-                        variants, want_trabox, want_webkit, user=None) -> HTMLResponse:
-    """複数日程一括登録の結果ページ（各日程の案件IDとグループ管理導線）。左レール・シェル。"""
-    from app.ui_shell import render_page, esc
-    plats = "・".join([p for p, w in (("トラボックス", want_trabox), ("WebKit", want_webkit)) if w]) or "なし"
-    rows = ""
-    for cid, v in zip(case_ids, variants):
-        rows += (f'<tr><td class="mono" style="color:var(--faint)">{cid}</td>'
-                 f'<td>{esc(v["pickup_date"])} {esc(v["pickup_time"])} 積 → {esc(v["drop_date"])} {esc(v["drop_time"])} 卸</td>'
-                 f'<td><a href="/cases/{cid}/manage" style="color:var(--signal-ink);font-weight:600">状況</a></td></tr>')
-    body = f"""
-  <div class="card" style="max-width:640px;margin:8px auto;padding:28px">
-    <div style="text-align:center;margin-bottom:20px">
-      <div style="font-size:48px;line-height:1;margin-bottom:10px">✅</div>
-      <h1 class="pt" style="margin-bottom:4px">{len(case_ids)}件の日程で一括登録しました</h1>
-      <p class="hl" style="margin:0">{esc(pick_location)} → {esc(drop_location)}／投稿先 {plats}</p>
-    </div>
-    <div class="card" style="overflow:hidden;margin-bottom:18px;box-shadow:none">
-      <table><thead><tr><th>案件ID</th><th>日程</th><th></th></tr></thead><tbody>{rows}</tbody></table>
-    </div>
-    <div style="background:var(--amber-wash);border:1px solid var(--line-soft);border-radius:12px;padding:14px;font-size:13px;color:var(--amber);margin-bottom:20px">
-      💡 1件が成約したら、<b>グループ管理画面から残りをまとめて取り下げ</b>できます（二重成約防止）。
-    </div>
-    <div style="display:flex;gap:12px;justify-content:center">
-      <a class="btn" href="/cases/group/{group_id}">グループを管理</a>
-      <a class="btn ghost" href="/cases/register">続けて登録</a>
-    </div>
-  </div>"""
-    return HTMLResponse(render_page(
-        title="一括登録完了", active="load_new", body=body, user=user,
-        page_title="一括登録完了", crumb="Carroo · 荷物"))
 
 
 @router.post("/register")
@@ -993,38 +963,14 @@ async def register_case(
         case_ids = [_create_and_enqueue(v) for v in variants]
         case_id = case_ids[0]
 
-        # 複数日程の場合は一括結果ページを返す
+        # 成功時は Post-Redirect-Get（実ページ遷移）で結果画面へ。
+        # document.write によるクライアント側の差し替えは CSP nonce 不一致等で
+        # 不安定になり「押しても何も起きない→連打で重複登録」を起こしたため廃止。
         if len(case_ids) > 1:
-            return _batch_result_page(case_ids, group_id, pick_location,
-                                      drop_location, variants, want_trabox, want_webkit,
-                                      user=current_user)
-
-        # Step 5: 結果画面を返す（投稿処理は背景で実行される）
-        platforms = []
-        if want_trabox:
-            platforms.append("トラボックス")
-        if want_webkit:
-            platforms.append("WebKit")
-        platforms_text = "・".join(platforms) if platforms else "なし（案件保存のみ）"
-
-        from app.ui_shell import render_page, esc
-        body = f"""
-  <div class="card" style="max-width:560px;margin:8px auto;padding:32px;text-align:center">
-    <div style="font-size:52px;line-height:1;margin-bottom:12px">✅</div>
-    <h1 class="pt" style="margin-bottom:6px">案件を登録しました</h1>
-    <p class="hl" style="margin:0 0 22px">案件ID: <span class="mono" style="font-weight:600">{case_id}</span></p>
-    <div style="text-align:left;background:var(--raise);border:1px solid var(--line-soft);border-radius:12px;padding:16px;margin-bottom:20px;font-size:13.5px;display:grid;gap:8px">
-      <div><span class="hl">積地:</span> <b>{esc(pick_location)}</b></div>
-      <div><span class="hl">卸地:</span> <b>{esc(drop_location)}</b></div>
-      <div><span class="hl">積み日:</span> <b>{esc(pickup_date)}</b></div>
-      <div><span class="hl">投稿先:</span> <b>{platforms_text}</b></div>
-    </div>
-    <p class="hl" style="font-size:12.5px;margin:0 0 24px">投稿は背景で実行中です（1〜2分程度）。<br>結果（成功/失敗・荷物番号）はダッシュボードの案件詳細で確認できます。</p>
-    <div style="display:flex;gap:12px;justify-content:center">
-      <a class="btn" href="/cases/{case_id}/manage">投稿状況を確認</a>
-      <a class="btn ghost" href="/cases/register">続けて登録</a>
-    </div>
-  </div>"""
+            return RedirectResponse(
+                url=f"/cases/group/{group_id}?registered=1", status_code=303)
+        return RedirectResponse(
+            url=f"/cases/{case_id}/manage?registered=1", status_code=303)
         return HTMLResponse(render_page(
             title="登録完了", active="load_new", body=body,
             user=current_user, page_title="登録完了",
@@ -1054,7 +1000,8 @@ def _load_case_row(case_id: int, user_id: int):
 
 
 @router.get("/{case_id}/manage", response_class=HTMLResponse)
-async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(None)):
+async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(None),
+                           registered: int = Query(0)):
     """案件管理画面: プラットフォーム別/一括の変更・削除＋投稿履歴タイムライン"""
     from app.utils.security import decode_access_token
     from app.db import store
@@ -1148,9 +1095,15 @@ async def case_manage_page(case_id: int, access_token: Optional[str] = Cookie(No
 
     from app.ui_shell import shell_open, SHELL_CLOSE, esc
     _u = store.get_user_by_id(user_id)
+    registered_banner = (
+        '<div class="bg-green-50 border border-green-300 text-green-800 text-sm font-semibold '
+        'rounded-lg px-4 py-3 mb-4">✅ 案件を登録しました。投稿は背景で実行中です（1〜2分程度）。'
+        'このページで結果（成功/失敗・荷物番号）を確認できます。</div>'
+        if registered else '')
     return HTMLResponse(shell_open(title=f"荷物 #{case_id}", active="load_list",
                                    user=_u, crumb="Carroo / 荷物") + f"""
 <div class="max-w-4xl">
+  {registered_banner}
   <p class="text-sm text-gray-500 mb-3"><a href="/dashboard/cases" class="text-blue-600">荷物一覧</a> › 案件 #{case_id}</p>
   <div class="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
     <div class="text-xs text-gray-500 font-mono">案件 ID {case_id} ・ {esc(row.get('created_at',''))} 登録 ・ 登録者: {esc(row.get('contact_name','') or '-')}</div>
@@ -1249,7 +1202,8 @@ async def case_delete(case_id: int, platforms: str = Form(...),
 
 
 @router.get("/group/{group_id}", response_class=HTMLResponse)
-async def case_group_page(group_id: int, current_user: dict = Depends(get_current_user)):
+async def case_group_page(group_id: int, current_user: dict = Depends(get_current_user),
+                          registered: int = Query(0)):
     """複数日程一括投稿グループの管理（各日程の状態＋一括取り下げ）。"""
     from app.db import store
     from app.ui_shell import shell_open, SHELL_CLOSE, esc
@@ -1278,9 +1232,15 @@ async def case_group_page(group_id: int, current_user: dict = Depends(get_curren
                  f'<td class="px-3 py-2 text-sm"><a href="/cases/{cid}/manage" class="text-blue-600 hover:underline">個別</a>'
                  f' <button data-act="keepOne" data-args="[{cid}]" class="ml-2 text-amber-700 hover:underline">これで成約→他を取下げ</button></td></tr>')
     c0 = cases[0]
+    registered_banner = (
+        '<div class="bg-green-50 border border-green-300 text-green-800 text-sm font-semibold '
+        'rounded-lg px-4 py-3 mb-4">✅ 複数日程で登録しました。投稿は背景で実行中です（1〜2分程度）。'
+        'このページで各日程の結果を確認できます。</div>'
+        if registered else '')
     return HTMLResponse(shell_open(title=f"複数日程グループ #{group_id}", active="load_list",
                                    user=current_user, crumb="Carroo / 荷物") + f"""
 <div class="max-w-4xl">
+  {registered_banner}
   <p class="text-gray-600 mb-4">{esc(c0.get('pick_location',''))} → {esc(c0.get('drop_location',''))}／{len(cases)}日程</p>
   <div class="bg-white rounded-lg shadow overflow-x-auto mb-4">
     <table class="w-full text-sm"><thead class="bg-gray-100 text-left text-gray-600">
