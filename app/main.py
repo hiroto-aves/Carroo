@@ -175,13 +175,24 @@ async def _app_error_handler(request: _Req, exc: AppError):
 @app.exception_handler(RequestValidationError)
 async def _validation_handler(request: _Req, exc: RequestValidationError):
     """入力バリデーション失敗(422): 一般ユーザー向けに言い換え＋コード。
-    どのフィールドで何が失敗したかは画面には出さず、ログにのみ残す
-    （管理者がCloud Loggingで path=... の直後の詳細を見て原因調査できるようにする）。"""
+    「どの項目が原因か」を FIELD_LABELS で日本語化して画面にも表示する
+    （生のフィールド名/型エラー詳細はログにのみ残し、管理者が原因調査する）。"""
+    from app.errors import FIELD_LABELS
     logging.getLogger("errors").warning(
         f"[E-VALIDATION] path={request.url.path} errors={exc.errors()}")
+    field_names = []
+    for err in exc.errors():
+        loc = err.get("loc") or ()
+        if loc:
+            name = str(loc[-1])
+            label = FIELD_LABELS.get(name, name)
+            if label not in field_names:
+                field_names.append(label)
+    user_msg = user_message("E-VALIDATION")
+    if field_names:
+        user_msg = f"{user_msg}（該当項目: {'、'.join(field_names)}）"
     return JSONResponse(status_code=422,
-                        content={"detail": format_detail(user_message("E-VALIDATION"),
-                                                         "E-VALIDATION"),
+                        content={"detail": format_detail(user_msg, "E-VALIDATION"),
                                  "code": "E-VALIDATION"})
 
 

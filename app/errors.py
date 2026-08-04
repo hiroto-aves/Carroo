@@ -11,6 +11,32 @@
 """
 import secrets
 
+# フォームのフィールド名 → 画面表示用の日本語ラベル。
+# E-VALIDATION（型不一致等）発生時に「どの項目か」をユーザーにも見せるための対応表。
+# 未登録のフィールド名はそのままの名前で表示する（隠さない）。
+FIELD_LABELS = {
+    "pick_location": "積地", "drop_location": "卸地",
+    "pick_pref": "積地(都道府県)", "pick_city": "積地(市区町村)",
+    "drop_pref": "卸地(都道府県)", "drop_city": "卸地(市区町村)",
+    "cargo_weight": "荷物重量", "vehicle_type": "希望車両(車種形状)",
+    "truck_weight": "希望車両(トン数)",
+    "freight_rate": "運賃", "freight_negotiable": "運賃(要相談)",
+    "pickup_date": "積み日", "pickup_time": "積み時間",
+    "drop_date": "着日", "drop_time": "卸し時間",
+    "contact_name": "担当者名", "contact_phone": "担当者電話番号",
+    "contact_email": "担当者メールアドレス",
+    "cargo_type": "荷物区分(品目)", "package_type": "荷姿",
+    "truck_count": "台数", "share": "積合せ",
+    "highway_fee": "高速代", "omakase_billing": "おまかせ請求受入可否",
+    "contact_method": "連絡方法", "visibility": "公開範囲",
+    "remarks": "備考", "moving_case": "引越し案件",
+    "transport_types": "輸送取扱区分", "equipment_items": "必要装備",
+    "equipment_other": "必要装備(その他)",
+    "loading_time_option": "積み時間区分", "unloading_time_option": "卸し時間区分",
+    "post_to_trabox": "投稿先(トラボックス)", "post_to_webkit": "投稿先(WebKit)",
+    "date_variants": "複数日程",
+}
+
 # コード → (ユーザー向け説明, 管理者向けヒント)
 ERROR_CATALOG = {
     "E-SYS-500":   ("予期しないエラーが発生しました。時間をおいて再度お試しください。",
