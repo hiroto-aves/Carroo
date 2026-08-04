@@ -79,16 +79,22 @@ _PWA_HEAD = (
     '<link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="any">'
     '<link rel="icon" type="image/png" sizes="48x48" href="/static/icons/favicon-32.png">'
     '<script>if("serviceWorker"in navigator){navigator.serviceWorker.register("/static/sw.js").catch(function(){});}'
-    'document.addEventListener("click",function(e){var el=e.target.closest("[data-act]");'
-    'if(!el)return;var f=window[el.getAttribute("data-act")];if(typeof f!=="function")return;'
-    'e.preventDefault();var a=[];try{a=JSON.parse(el.getAttribute("data-args")||"[]");}catch(_){}'
-    'f.apply(null,a);});'
-    # 送信ボタンの即時フィードバック（押した瞬間にスピナー＋無効化。二度押し防止）
+    # 送信ボタンの即時フィードバック（押した瞬間にスピナー＋無効化。二度押し防止）。
+    # data-act ディスパッチャ・submit監視の両方がこれを使うため、先に定義する。
     'window.__busy=function(b){if(!b||b.dataset.busy)return;b.dataset.busy="1";b.dataset.lbl=b.innerHTML;'
     'b.disabled=true;b.classList.add("is-busy");'
     'b.innerHTML=\'<span class="spin"></span>\'+(b.getAttribute("data-busy-text")||"処理中…");};'
     'window.__idle=function(b){if(!b||!b.dataset.busy)return;b.disabled=false;b.classList.remove("is-busy");'
     'b.innerHTML=b.dataset.lbl;delete b.dataset.busy;};'
+    'document.addEventListener("click",function(e){var el=e.target.closest("[data-act]");'
+    'if(!el)return;var f=window[el.getAttribute("data-act")];if(typeof f!=="function")return;'
+    'e.preventDefault();var a=[];try{a=JSON.parse(el.getAttribute("data-args")||"[]");}catch(_){}'
+    'window.__busy(el);var r;try{r=f.apply(null,a);}catch(err){window.__idle(el);throw err;}'
+    # f が Promise を返す(非同期処理)場合は完了時に自動で idle に戻す。
+    # 同期関数（confirm()キャンセルで早期returnする削除系など）は直後に idle に戻す
+    # （navigate/formsubmitが実際に走るケースはページ遷移でどのみちリセットされるため無害）。
+    'if(r&&typeof r.finally==="function"){r.finally(function(){window.__idle(el);});}'
+    'else{window.__idle(el);}});'
     'document.addEventListener("submit",function(e){var f=e.target;if(!f||f.tagName!=="FORM")return;'
     'var b=f.querySelector(\'button[type=submit],input[type=submit],button:not([type])\');'
     'if(b){f.__busyBtn=b;window.__busy(b);}},true);</script>'
