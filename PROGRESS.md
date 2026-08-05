@@ -1,5 +1,14 @@
 # Progress Tracking - OneLogi-Post
 
+## 🆕 2026-08-05 荷物一覧からのクイック削除・チェックボックス一括削除（rev carroo-00111-hn5）
+- 荷物一覧(/dashboard/cases)の各行に「削除」ボタンを追加。管理画面に移動せず
+  トラボックス・WebKit両方の掲載をワンクリック削除できる（quickDeleteCase）。
+- 各行＋ヘッダーに選択チェックボックスを追加。1件以上選択すると上部に赤い
+  「N件選択中」バーが出現し、「選択した案件を一括削除」でまとめて削除できる（bulkDeleteCases）。
+- バックエンドに `POST /cases/bulk-delete` を新設。所有していない/存在しないIDは
+  黙ってスキップし、一部失敗で全体を止めない設計。
+- 両ボタンとも共通のbusy表示(window.__busy/__idle)が自動で効く。
+
 ## 🆕 2026-08-05 全ボタンのbusy表示(スピナー+無効化)を共通化（rev carroo-00110-4vt）
 - 荷物登録ボタンにスピナーを追加したが、実際には既存のグローバル仕組み(window.__busy/__idle、
   main.pyの_PWA_HEAD、全HTMLに自動注入)が先に発火し、独自スピナー要素がinnerHTMLごと
