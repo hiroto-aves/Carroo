@@ -131,6 +131,9 @@ async def html_rewrite_middleware(request, call_next):
                                      "content-security-policy"):
                     new.headers[k] = v
             new.headers["Content-Security-Policy"] = _csp(nonce)
+            # 動的HTMLはブラウザ/中間キャッシュに残さない（デプロイ後も古い画面が
+            # 表示され続ける事故を防ぐ。静的アセットは影響しない）。
+            new.headers["Cache-Control"] = "no-store"
             return new
     except Exception:
         pass
