@@ -355,8 +355,32 @@ class TraboxAutomation:
                 )
                 await self._dismiss_overlays(page)
 
+                # 🔴 一覧はページネーションされており、対象が1ページ目に無いと
+                # 「見つかりません」エラーになる不具合があった（登録数が多いと発生）。
+                # 見つかるまで「次へ」をクリックしてページを送る（最大20ページ）。
                 row = page.locator(f"tr[data-row-key='{baggage_no}']")
-                if await row.count() != 1:
+                found = await row.count() == 1
+                if not found:
+                    next_btn = page.locator(
+                        "li.ant-pagination-next button, .ant-pagination-next button"
+                    ).first
+                    for _ in range(20):
+                        if await next_btn.count() == 0:
+                            break
+                        next_li = page.locator(
+                            "li.ant-pagination-next, .ant-pagination-next"
+                        ).first
+                        cls = await next_li.get_attribute("class") or ""
+                        if "ant-pagination-disabled" in cls:
+                            break
+                        await next_btn.click(timeout=TRABOX_TIMEOUTS["action"])
+                        await page.wait_for_timeout(600)
+                        row = page.locator(f"tr[data-row-key='{baggage_no}']")
+                        if await row.count() == 1:
+                            found = True
+                            logger.info(f"[Trabox] 次ページで発見: {baggage_no}")
+                            break
+                if not found:
                     raise ValueError(
                         f"荷物番号 {baggage_no} が一覧に見つかりません"
                         "（既に削除済みか、番号が不正です）"
