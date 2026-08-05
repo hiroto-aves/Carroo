@@ -416,7 +416,7 @@ async def cases_list(
     </form>
   </details>
 
-  <div id="bulk-delete-bar" class="hidden bg-red-50 border border-red-200 rounded-lg shadow p-3 mb-3 flex items-center gap-3">
+  <div id="bulk-delete-bar" style="display:none" class="bg-red-50 border border-red-200 rounded-lg shadow p-3 mb-3 items-center gap-3">
     <span class="text-sm text-red-800 font-semibold"><span id="bulk-delete-count">0</span>件選択中</span>
     <button type="button" data-act="bulkDeleteCases" class="bg-red-600 hover:bg-red-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">選択した案件を一括削除</button>
     <button type="button" onclick="document.querySelectorAll('.row-sel').forEach(c=>c.checked=false);updateBulkDeleteBar();" class="text-gray-500 hover:text-gray-700 text-sm">選択解除</button>
@@ -437,7 +437,10 @@ async def cases_list(
     function updateBulkDeleteBar() {{
       const n = document.querySelectorAll('.row-sel:checked').length;
       document.getElementById('bulk-delete-count').textContent = n;
-      document.getElementById('bulk-delete-bar').classList.toggle('hidden', n === 0);
+      // Tailwindの hidden(display:none) と flex(display:flex) を同じ要素に
+      // 併記すると、ユーティリティの定義順次第でどちらが勝つか不定になり
+      // 「未選択でもバーが出る」不具合になっていたため、style.display で確実に制御する。
+      document.getElementById('bulk-delete-bar').style.display = n === 0 ? 'none' : 'flex';
     }}
     document.querySelectorAll('.row-sel').forEach(cb => cb.addEventListener('change', updateBulkDeleteBar));
     const selAll = document.getElementById('row-sel-all');
