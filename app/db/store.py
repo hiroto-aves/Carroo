@@ -538,6 +538,48 @@ def get_platform_state(case_id: int, platform: str) -> str:
     return "deleted" if d.get("action") == "delete" else "live"
 
 
+def get_platform_states_bulk(case_ids: List[int]) -> Dict[int, Dict[str, str]]:
+    """複数案件分の live/deleted/working/error/none をまとめて判定（一覧画面用）。
+    get_platform_state を件数分ループ呼び出しすると N+1 クエリになるため、
+    posting_history を Firestore の 'in' フィルタ（最大30件ずつ）でまとめて取得し、
+    Python 側で最新イベントを判定する。
+    戻り値: {case_id: {"trabox": state, "webkit": state}}
+    """
+    ids = [int(c) for c in case_ids]
+    if not ids:
+        return {}
+    col = _db().collection("posting_history")
+    docs = []
+    for i in range(0, len(ids), 30):  # Firestore の in は最大30件
+        chunk = ids[i:i + 30]
+        docs.extend(col.where("case_id", "in", chunk).stream())
+    # (case_id, platform) ごとに最新（id最大）の1件を選ぶ
+    latest: Dict[tuple, Dict[str, Any]] = {}
+    for s in docs:
+        d = s.to_dict() or {}
+        key = (d.get("case_id"), d.get("platform"))
+        if key not in latest or int(s.id) > latest[key]["_id"]:
+            d["_id"] = int(s.id)
+            latest[key] = d
+
+    def _state(d):
+        if not d:
+            return "none"
+        if d.get("status") == "pending":
+            return "working"
+        if d.get("status") == "error":
+            return "error"
+        return "deleted" if d.get("action") == "delete" else "live"
+
+    out = {}
+    for cid in ids:
+        out[cid] = {
+            "trabox": _state(latest.get((cid, "trabox"))),
+            "webkit": _state(latest.get((cid, "webkit"))),
+        }
+    return out
+
+
 def list_posting_history(case_id: int) -> List[Dict[str, Any]]:
     col = _db().collection("posting_history")
     rows = []

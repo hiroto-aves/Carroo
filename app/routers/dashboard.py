@@ -302,6 +302,13 @@ async def cases_list(
             uname_by_id = {u["id"]: u["username"] for u in store.list_users()}
         cases = rows  # dict のリスト
 
+        # 一括削除チェックボックスの活性判定用: 両プラットフォームとも
+        # live/working でなければ「もう削除するものがない」ので選択不可にする。
+        plat_states = store.get_platform_states_bulk([c["id"] for c in cases])
+        def _has_active_platform(cid):
+            st = plat_states.get(cid, {})
+            return st.get("trabox") in ("live", "working") or st.get("webkit") in ("live", "working")
+
         user_options = ""
         if is_admin:
             for u in store.list_users():
@@ -357,13 +364,19 @@ async def cases_list(
         for case in cases:
             cid = case["id"]
             tds = "".join(f'<td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{esc(cell(case, k))}</td>' for k in visible)
+            active = _has_active_platform(cid)
+            checkbox_html = (f'<input type="checkbox" class="row-sel w-4 h-4" value="{cid}">' if active
+                             else '<input type="checkbox" class="w-4 h-4" disabled title="削除済み/未投稿のため対象なし">')
+            delete_btn_html = (
+                f'<button type="button" data-act="quickDeleteCase" data-args="[{cid}]" '
+                f'class="ml-2 text-red-600 hover:text-red-700 font-medium">削除</button>' if active
+                else '<span class="ml-2 text-gray-400">削除済み</span>')
             body += (f'<tr class="border-b border-gray-100 hover:bg-gray-50">'
-                     f'<td class="px-4 py-3"><input type="checkbox" class="row-sel w-4 h-4" value="{cid}"></td>'
+                     f'<td class="px-4 py-3">{checkbox_html}</td>'
                      f'<td class="px-4 py-3 text-sm font-semibold text-gray-900">#{cid}</td>{tds}'
                      f'<td class="px-4 py-3 text-sm whitespace-nowrap">'
                      f'<a href="/cases/{cid}/manage" class="text-blue-600 hover:text-blue-700 font-medium">管理</a>'
-                     f' <button type="button" data-act="quickDeleteCase" data-args="[{cid}]" '
-                     f'class="ml-2 text-red-600 hover:text-red-700 font-medium">削除</button></td></tr>')
+                     f' {delete_btn_html}</td></tr>')
         colspan = len(visible) + 3
         if not cases:
             body = f'<tr><td colspan="{colspan}" class="px-6 py-8 text-center text-gray-500">条件に一致する案件がありません</td></tr>'
