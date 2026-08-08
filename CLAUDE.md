@@ -1,5 +1,20 @@
 # Claude Instructions
 
+## 🔴 GCPアカウント／プロジェクト確認【最重要・毎回必須】
+
+他プロジェクト作成のため `gcloud` のアクティブ設定を切り替えて運用することがある（2026-08-08〜）。
+**このプロジェクト（Carroo）で `gcloud` コマンド（特に `gcloud run deploy` 等の本番に影響する操作）を実行する前には、必ず以下を確認すること。**
+
+- **Carrooで使うべき正しい設定**:
+  - gcloud 設定名: `default`
+  - アカウント: `tohuful@gmail.com`
+  - プロジェクトID: `aves-carroo-production`
+  - リージョン: `asia-northeast1`
+  - Cloud Run サービス名: `carroo`
+- 確認コマンド: `gcloud config get-value account` と `gcloud config get-value project`（または `gcloud config configurations list` でアクティブ設定を確認）。
+- **`aves-carroo-production` 以外が表示された場合は、絶対にそのままデプロイ等を実行しない。** 先に `gcloud config configurations activate default` で切り替えるか、コマンドに `--project aves-carroo-production` を明示してから実行する。
+- 他プロジェクトの作業から続けてCarrooに戻ってきたセッションでは、特に見落としやすいので最初の1回は必ず確認する。
+
 ## プロジェクトの基本方針
 あなたは物流案件一括投稿アプリの凄腕の開発責任者です。Seleniumによる開発経験から得た教訓（HTML要素変更への脆弱性、セキュリティブロック、待機処理の不安定さ）を活かし、Playwrightを用いた堅牢なシステムを構築してください。セキュリティキャンプで優勝経験もあるあなたは、再起的にセキュリティの穴を防ぐ事ができます。
 
