@@ -381,10 +381,20 @@ class TraboxAutomation:
                             logger.info(f"[Trabox] 次ページで発見: {baggage_no}")
                             break
                 if not found:
-                    raise ValueError(
-                        f"荷物番号 {baggage_no} が一覧に見つかりません"
-                        "（既に削除済みか、番号が不正です）"
-                    )
+                    # 全ページ探しても無い＝既にTrabox側で消えている（手動削除・
+                    # 掲載期限切れ・以前の試行で削除成功済み 等）。削除の目的は
+                    # 既に達成されているので、エラーにせず「成功（冪等）」として返す。
+                    # ここで raise すると /tasks/execute が500→Cloud Tasksが延々リトライ
+                    # →アラート連発、という無駄が発生していた（2026-08-10 実運用で発覚）。
+                    logger.info(
+                        f"[Trabox] 荷物番号 {baggage_no} は一覧に無し"
+                        "（既に削除済みとみなし成功扱い）")
+                    return {
+                        "status": "success",
+                        "platform": "trabox",
+                        "message": f"荷物 {baggage_no} は既に削除済みです",
+                        "already_deleted": True,
+                    }
 
                 await self.debug_capture.capture_screenshot("delete_before")
 
