@@ -1,5 +1,21 @@
 # Progress Tracking - OneLogi-Post
 
+## 🆕 2026-08-10/18 削除の冪等化＋スピナーCSS共通化＋GCP権限/アカウント整理（rev carroo-00117/118）
+- **Trabox削除を冪等化**（rev carroo-00117-fhk）: 全ページ探しても荷物が無い＝既に
+  Trabox側で消えている場合、raiseせず「成功（既に削除済み）」を返すように変更。従来は
+  500→Cloud Tasksリトライ→アラートメール連発になっていた（8/10 実運用のアラートの正体）。
+- **送信ボタンのスピナーが独自テンプレページで回らない不具合修正**（rev carroo-00118-bzq）:
+  .spin のCSS/@keyframesが ui_shell のCSS内にしか無く、荷物登録のような独自HTMLテンプレ
+  （ui_shellを使わない）ページでは __busy が span.spin を挿入しても無定義で回らなかった。
+  .spin/@keyframes/.is-busy を _PWA_HEAD（全ページ共通注入）へ移し、全ページで確実に回るように。
+- **GCPアカウント/権限の整理（重要）**: ローカルgcloudが tohuful@gmail.com を向いていて
+  Cloud Logging が PERMISSION_DENIED だった。実際のプロジェクトオーナーは
+  **takeuchi.hrt@gmail.com**（表示名「OneLogi-Post Production」/ ID aves-carroo-production）
+  と判明。takeuchi.hrt で認証し直してログ閲覧可能に。CLAUDE.md の「アカウント: tohuful@gmail.com」
+  記載は誤りだった（※要修正: 正しくは takeuchi.hrt@gmail.com）。
+- 別プロジェクト作業でgcloud設定が marketing に切り替わっていることが度々あり、
+  デプロイ前の `gcloud config configurations activate default` 確認を継続徹底。
+
 ## 🆕 2026-08-06/07 一括削除バーの表示バグ修正＋HTML no-store化（rev carroo-00115/116）
 - 一括削除バー(#bulk-delete-bar)に `hidden` と `flex` を同じ要素に併記していたため、
   Tailwindユーティリティの定義順次第でflexがhiddenを上書きし、チェック未選択でも

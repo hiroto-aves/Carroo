@@ -7,8 +7,9 @@
 
 - **Carrooで使うべき正しい設定**:
   - gcloud 設定名: `default`
-  - アカウント: `tohuful@gmail.com`
-  - プロジェクトID: `aves-carroo-production`
+  - アカウント: `takeuchi.hrt@gmail.com`（プロジェクトの**オーナー**。2026-08-18 修正。
+    以前は `tohuful@gmail.com` と記載していたが誤り。tohuful ではログ閲覧等が権限不足になる）
+  - プロジェクトID: `aves-carroo-production`（GCPコンソール表示名: 「OneLogi-Post Production」）
   - リージョン: `asia-northeast1`
   - Cloud Run サービス名: `carroo`
 - 確認コマンド: `gcloud config get-value account` と `gcloud config get-value project`（または `gcloud config configurations list` でアクティブ設定を確認）。
