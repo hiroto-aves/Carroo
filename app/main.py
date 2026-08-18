@@ -78,6 +78,15 @@ _PWA_HEAD = (
     '<link rel="apple-touch-icon" href="/static/icons/icon-180.png">'
     '<link rel="icon" type="image/x-icon" href="/favicon.ico" sizes="any">'
     '<link rel="icon" type="image/png" sizes="48x48" href="/static/icons/favicon-32.png">'
+    # 送信ボタンのスピナーCSS。__busy が全ページで <span class="spin"> を挿入するのに、
+    # このCSSは従来 ui_shell の CSS 内にしか無かった。荷物登録のような「独自HTMLテンプレ
+    # （ui_shell を使わない）」ページではスピナーが無定義で回らなかったため、__busy と
+    # 同じくここ（全ページ共通注入）に置く。ui_shell 側の定義と重複しても無害。
+    '<style>.spin{display:inline-block;width:14px;height:14px;border:2px solid rgba(255,255,255,.4);'
+    'border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite;vertical-align:-2px;margin-right:7px}'
+    '@keyframes spin{to{transform:rotate(360deg)}}'
+    'button.is-busy,.is-busy{opacity:.9;cursor:progress}'
+    '@media(prefers-reduced-motion:reduce){.spin{animation:none}}</style>'
     '<script>if("serviceWorker"in navigator){navigator.serviceWorker.register("/static/sw.js").catch(function(){});}'
     # 送信ボタンの即時フィードバック（押した瞬間にスピナー＋無効化。二度押し防止）。
     # data-act ディスパッチャ・submit監視の両方がこれを使うため、先に定義する。
