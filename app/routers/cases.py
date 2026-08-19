@@ -1423,10 +1423,45 @@ async def case_update(case_id: int,
         fields["contact_name"] = contact_name  # 登録者名の変更も反映
     store.update_case(case_id, user_id, fields)
 
-    # 履歴に update を pending 追記 → 非同期タスク投入
-    for p in plats:
-        store.add_posting_event(case_id, p, "update", "pending")
-    get_task_client().add_task({
-        "action": "update", "user_id": user_id, "case_id": case_id, "platforms": plats,
-    })
+    # 🔴 プラットフォームごとに「掲載中か」で update/register を自動振り分ける。
+    # 未掲載（登録失敗・未投稿・削除済み）のプラットフォームに update を投げると
+    # 「まだ掲載されていないため変更できません（E-POST-NOTLISTED）」で永久に失敗する
+    # （案件44で発覚。管理画面の「投稿する」ボタンが変更フォームに固定で飛んでいたため）。
+    from app.db.store import get_platform_state
+    to_update = [p for p in plats if get_platform_state(case_id, p) == "live"]
+    to_register = [p for p in plats if p not in to_update]
+
+    task_client = get_task_client()
+
+    if to_update:
+        for p in to_update:
+            store.add_posting_event(case_id, p, "update", "pending")
+        task_client.add_task({
+            "action": "update", "user_id": user_id, "case_id": case_id,
+            "platforms": to_update,
+        })
+
+    if to_register:
+        row2 = store.get_case(case_id, user_id)  # 保存直後の最新値を取り直す
+        extras2 = dict(row2.get("extras") or {})
+        case_data = {
+            "case_id": case_id, "user_id": user_id,
+            "pick_location": row2.get("pick_location"),
+            "drop_location": row2.get("drop_location"),
+            "cargo_weight": row2.get("cargo_weight"),
+            "vehicle_type": row2.get("vehicle_type"),
+            "freight_rate": row2.get("freight_rate"),
+            "pickup_date": row2.get("pickup_date"),
+            "pickup_time": row2.get("pickup_time"),
+            "contact_name": row2.get("contact_name"),
+            "contact_phone": row2.get("contact_phone"),
+            "contact_email": row2.get("contact_email"),
+            "post_to_trabox": "trabox" in to_register,
+            "post_to_webkit": "webkit" in to_register,
+            **extras2,
+        }
+        for p in to_register:
+            store.add_posting_event(case_id, p, "register", "pending")
+        task_client.add_posting_task(case_data, user_id)
+
     return HTMLResponse(f'<meta http-equiv="refresh" content="0; url=/cases/{case_id}/manage">')
